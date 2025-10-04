@@ -1,0 +1,10 @@
+{
+  "name": "com.lumi.host",
+  "description": "LUMI Native Host",
+  "path": "/Users/supergeorge/Desktop/project/lumi/host/runner.sh",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://ckmpjgpgedfaadmbphngdifhppioobpp/"
+  ]
+}
+

@@ -1,0 +1,12 @@
+{
+  "projectMap": {
+    "http://localhost:3000": "/ABSOLUTE/PATH/TO/YOUR/PROJECT",
+    "default": "/ABSOLUTE/PATH/TO/YOUR/PROJECT"
+  },
+  "defaults": {
+    "engine": "codex",
+    "approvals": "auto",
+    "network": "off"
+  }
+}
+

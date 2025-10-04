@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "LUMI",
+  "version": "0.1.0",
+  "description": "Select a page region or element, describe intent, and let a local AI CLI (Codex/Claude) propose and apply code changes via a native host.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "nativeMessaging",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://localhost/*"
+  ],
+  "action": {
+    "default_title": "LUMI — Select and edit"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
