@@ -1,0 +1,24 @@
+{
+  "name": "lumi-server",
+  "version": "1.0.0",
+  "description": "LUMI Local Server - Bridge between Chrome extension and AI CLIs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --dev",
+    "install-service": "node install-service.js",
+    "uninstall-service": "node uninstall-service.js",
+    "test": "node test-server.js"
+  },
+  "keywords": ["lumi", "ai", "codex", "claude", "chrome-extension"],
+  "author": "LUMI",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
+
