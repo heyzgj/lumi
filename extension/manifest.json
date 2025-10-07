@@ -1,23 +1,35 @@
 {
   "manifest_version": 3,
   "name": "LUMI",
-  "version": "0.1.0",
-  "description": "Select a page region or element, describe intent, and let a local AI CLI (Codex/Claude) propose and apply code changes via a native host.",
+  "version": "3.0.0",
+  "description": "Select a page region or element, describe your intent, and let local AI (Codex/Claude) propose code changes via native host.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
-    "nativeMessaging",
-    "tabs",
-    "contextMenus"
+    "tabs"
   ],
   "host_permissions": [
-    "http://localhost/*"
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
-    "default_title": "LUMI — Select and edit"
+    "default_title": "LUMI - Select and Edit"
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
+

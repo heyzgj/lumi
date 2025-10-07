@@ -302,18 +302,40 @@ function buildPrompt(context) {
   prompt += `- Title: ${context.pageTitle}\n`;
   prompt += `- Selection Mode: ${context.selectionMode}\n`;
 
-  if (context.selectionMode === 'element' && context.element) {
-    prompt += `\n## Selected Element\n`;
-    prompt += `- Tag: ${context.element.tagName}\n`;
-    prompt += `- Selector: ${context.element.selector}\n`;
-    if (context.element.className) {
-      prompt += `- Class: ${context.element.className}\n`;
+  if (context.selectionMode === 'element') {
+    // Multi-element support
+    if (Array.isArray(context.elements) && context.elements.length > 0) {
+      prompt += `\n## Selected Elements (${context.elements.length})\n`;
+      context.elements.forEach((el, idx) => {
+        prompt += `\n### Element ${idx + 1}\n`;
+        prompt += `- Tag: ${el.tagName}\n`;
+        prompt += `- Selector: ${el.selector}\n`;
+        if (el.className) prompt += `- Class: ${el.className}\n`;
+        if (el.id) prompt += `- ID: ${el.id}\n`;
+        if (el.outerHTML) {
+          prompt += `\nHTML\n\`\`\`html\n${String(el.outerHTML).slice(0, 1000)}\n\`\`\`\n`;
+        }
+        if (el.computedStyle) {
+          prompt += `\nComputed Styles\n\`\`\`json\n${JSON.stringify(el.computedStyle, null, 2)}\n\`\`\`\n`;
+        }
+        if (el.bbox) {
+          prompt += `- BBox: (${Math.round(el.bbox.left)}, ${Math.round(el.bbox.top)}) ${Math.round(el.bbox.width)}×${Math.round(el.bbox.height)}\n`;
+        }
+      });
+    } else if (context.element) {
+      // Single element (legacy)
+      prompt += `\n## Selected Element\n`;
+      prompt += `- Tag: ${context.element.tagName}\n`;
+      prompt += `- Selector: ${context.element.selector}\n`;
+      if (context.element.className) {
+        prompt += `- Class: ${context.element.className}\n`;
+      }
+      if (context.element.id) {
+        prompt += `- ID: ${context.element.id}\n`;
+      }
+      prompt += `\n### HTML\n\`\`\`html\n${context.element.outerHTML.slice(0, 1000)}\n\`\`\`\n`;
+      prompt += `\n### Computed Styles\n\`\`\`json\n${JSON.stringify(context.element.computedStyle, null, 2)}\n\`\`\`\n`;
     }
-    if (context.element.id) {
-      prompt += `- ID: ${context.element.id}\n`;
-    }
-    prompt += `\n### HTML\n\`\`\`html\n${context.element.outerHTML.slice(0, 1000)}\n\`\`\`\n`;
-    prompt += `\n### Computed Styles\n\`\`\`json\n${JSON.stringify(context.element.computedStyle, null, 2)}\n\`\`\`\n`;
   }
 
   if (context.bbox) {
@@ -568,4 +590,3 @@ startServer().catch((error) => {
   logError('Failed to start server:', error);
   process.exit(1);
 });
-
