@@ -44,6 +44,7 @@ export default class ServerClient {
           className: elements[0].element.className,
           id: elements[0].element.id,
           outerHTML: elements[0].element.outerHTML,
+          textContent: getElementText(elements[0].element),
           computedStyle: getComputedStyleSummary(elements[0].element)
         };
         context.bbox = elements[0].bbox;
@@ -56,6 +57,7 @@ export default class ServerClient {
           className: item.element.className,
           id: item.element.id,
           outerHTML: item.element.outerHTML,
+          textContent: getElementText(item.element),
           computedStyle: getComputedStyleSummary(item.element),
           bbox: item.bbox
         }));
@@ -70,4 +72,10 @@ export default class ServerClient {
     
     return context;
   }
+}
+
+function getElementText(element) {
+  if (!element) return '';
+  const text = (element.textContent || '').trim();
+  return text.length > 400 ? text.slice(0, 400) + '…' : text;
 }

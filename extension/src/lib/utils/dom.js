@@ -6,12 +6,58 @@
  * Get CSS selector for an element
  */
 export function getElementSelector(element) {
-  if (element.id) return `#${element.id}`;
-  if (element.className) {
-    const classes = element.className.split(' ').filter(c => c).slice(0, 2);
-    return `${element.tagName.toLowerCase()}.${classes.join('.')}`;
+  if (!element) return '';
+
+  // Prefer id when available
+  if (element.id) return `#${CSS.escape(element.id)}`;
+
+  const parts = [];
+  const tag = element.tagName ? element.tagName.toLowerCase() : '*';
+  parts.push(tag);
+
+  // Use up to 2 class names for specificity
+  const classes = Array.from(element.classList || []).slice(0, 2);
+  classes.forEach(cls => parts.push(`.${CSS.escape(cls)}`));
+
+  let selector = parts.join('');
+
+  // If selector without nth-child uniquely identifies element, return early
+  try {
+    if (element.ownerDocument?.querySelectorAll(selector).length === 1) {
+      return selector;
+    }
+  } catch (_) {
+    // Fall through if invalid selector
   }
-  return element.tagName.toLowerCase();
+
+  // Otherwise, include :nth-of-type and parent context to ensure uniqueness
+  const position = getNthOfType(element);
+  selector = `${selector}:nth-of-type(${position})`;
+
+  const parent = element.parentElement;
+  if (parent && parent !== document.body && parent !== document.documentElement) {
+    const parentSelector = getElementSelector(parent);
+    if (parentSelector) {
+      selector = `${parentSelector} > ${selector}`;
+    }
+  }
+
+  return selector;
+}
+
+function getNthOfType(element) {
+  if (!element || !element.parentElement) return 1;
+  const tagName = element.tagName;
+  if (!tagName) return 1;
+  let index = 1;
+  let sibling = element.previousElementSibling;
+  while (sibling) {
+    if (sibling.tagName === tagName) {
+      index += 1;
+    }
+    sibling = sibling.previousElementSibling;
+  }
+  return index;
 }
 
 /**
@@ -64,4 +110,3 @@ export function shouldIgnoreElement(element) {
   
   return false;
 }
-

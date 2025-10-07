@@ -137,6 +137,11 @@ app.post('/execute', async (req, res) => {
 
   log(`Execute request: engine=${engine}, intent="${context?.intent?.slice(0, 50)}..."`);
 
+  const elementsCount = Array.isArray(context?.elements)
+    ? context.elements.length
+    : context?.element ? 1 : 0;
+  log(`Context contains ${elementsCount} selected element(s)`);
+
   if (!context || !context.intent) {
     return res.status(400).json({
       error: 'Invalid request: missing intent'
@@ -303,38 +308,27 @@ function buildPrompt(context) {
   prompt += `- Selection Mode: ${context.selectionMode}\n`;
 
   if (context.selectionMode === 'element') {
+    const summaries = summarizeElements(context);
+    if (summaries.length > 0) {
+      prompt += `\n## Context Summary\n`;
+      summaries.forEach((summary, idx) => {
+        prompt += `- Element ${idx + 1}: ${summary}\n`;
+      });
+    }
+  }
+
+  if (context.selectionMode === 'element') {
     // Multi-element support
     if (Array.isArray(context.elements) && context.elements.length > 0) {
       prompt += `\n## Selected Elements (${context.elements.length})\n`;
       context.elements.forEach((el, idx) => {
         prompt += `\n### Element ${idx + 1}\n`;
-        prompt += `- Tag: ${el.tagName}\n`;
-        prompt += `- Selector: ${el.selector}\n`;
-        if (el.className) prompt += `- Class: ${el.className}\n`;
-        if (el.id) prompt += `- ID: ${el.id}\n`;
-        if (el.outerHTML) {
-          prompt += `\nHTML\n\`\`\`html\n${String(el.outerHTML).slice(0, 1000)}\n\`\`\`\n`;
-        }
-        if (el.computedStyle) {
-          prompt += `\nComputed Styles\n\`\`\`json\n${JSON.stringify(el.computedStyle, null, 2)}\n\`\`\`\n`;
-        }
-        if (el.bbox) {
-          prompt += `- BBox: (${Math.round(el.bbox.left)}, ${Math.round(el.bbox.top)}) ${Math.round(el.bbox.width)}×${Math.round(el.bbox.height)}\n`;
-        }
+        prompt += renderElementDetail(el);
       });
     } else if (context.element) {
       // Single element (legacy)
       prompt += `\n## Selected Element\n`;
-      prompt += `- Tag: ${context.element.tagName}\n`;
-      prompt += `- Selector: ${context.element.selector}\n`;
-      if (context.element.className) {
-        prompt += `- Class: ${context.element.className}\n`;
-      }
-      if (context.element.id) {
-        prompt += `- ID: ${context.element.id}\n`;
-      }
-      prompt += `\n### HTML\n\`\`\`html\n${context.element.outerHTML.slice(0, 1000)}\n\`\`\`\n`;
-      prompt += `\n### Computed Styles\n\`\`\`json\n${JSON.stringify(context.element.computedStyle, null, 2)}\n\`\`\`\n`;
+      prompt += renderElementDetail(context.element);
     }
   }
 
@@ -349,8 +343,59 @@ function buildPrompt(context) {
   prompt += `- Focus only on the selected element and related code\n`;
   prompt += `- Keep changes minimal - don't modify unrelated code\n`;
   prompt += `- Maintain code quality and accessibility\n`;
+  prompt += `- Do not modify elements outside the listed selections\n`;
 
   return prompt;
+}
+
+function summarizeElements(context) {
+  const items = [];
+  const elements = Array.isArray(context.elements) ? context.elements : (context.element ? [context.element] : []);
+  elements.forEach((el) => {
+    if (!el) return;
+    const selector = el.selector || el.tagName || 'element';
+    const words = (el.textContent || el.text || '').trim().split(/\s+/).filter(Boolean);
+    const textSummary = words.length > 0 ? words.slice(0, 6).join(' ') + (words.length > 6 ? '…' : '') : 'no text';
+    items.push(`${selector} — text: "${textSummary}"`);
+  });
+  return items;
+}
+
+function renderElementDetail(el) {
+  if (!el) return '';
+  let output = '';
+  output += `- Tag: ${el.tagName}\n`;
+  output += `- Selector: ${el.selector}\n`;
+  if (el.className) output += `- Class: ${el.className}\n`;
+  if (el.id) output += `- ID: ${el.id}\n`;
+  if (el.textContent) {
+    const words = el.textContent.trim().split(/\s+/).filter(Boolean);
+    const text = words.slice(0, 24).join(' ');
+    output += `- Text: "${text}${words.length > 24 ? '…' : ''}"\n`;
+  }
+  if (el.outerHTML) {
+    output += `\nHTML\n\`\`\`html\n${String(el.outerHTML).slice(0, 800)}\n\`\`\`\n`;
+  }
+  if (el.computedStyle) {
+    const styleSubset = pickStyles(el.computedStyle);
+    output += `\nStyles\n\`\`\`json\n${JSON.stringify(styleSubset, null, 2)}\n\`\`\`\n`;
+  }
+  if (el.bbox) {
+    output += `- BBox: (${Math.round(el.bbox.left)}, ${Math.round(el.bbox.top)}) ${Math.round(el.bbox.width)}×${Math.round(el.bbox.height)}\n`;
+  }
+  return output;
+}
+
+function pickStyles(style = {}) {
+  const keys = [
+    'display', 'position', 'top', 'left', 'width', 'height',
+    'backgroundColor', 'color', 'fontSize', 'fontFamily', 'fontWeight',
+    'lineHeight', 'padding', 'margin', 'border', 'borderRadius'
+  ];
+  return keys.reduce((acc, key) => {
+    if (style[key] !== undefined) acc[key] = style[key];
+    return acc;
+  }, {});
 }
 
 /**

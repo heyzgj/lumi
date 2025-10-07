@@ -1388,12 +1388,58 @@
    * Get CSS selector for an element
    */
   function getElementSelector(element) {
-    if (element.id) return `#${element.id}`;
-    if (element.className) {
-      const classes = element.className.split(' ').filter(c => c).slice(0, 2);
-      return `${element.tagName.toLowerCase()}.${classes.join('.')}`;
+    if (!element) return '';
+
+    // Prefer id when available
+    if (element.id) return `#${CSS.escape(element.id)}`;
+
+    const parts = [];
+    const tag = element.tagName ? element.tagName.toLowerCase() : '*';
+    parts.push(tag);
+
+    // Use up to 2 class names for specificity
+    const classes = Array.from(element.classList || []).slice(0, 2);
+    classes.forEach(cls => parts.push(`.${CSS.escape(cls)}`));
+
+    let selector = parts.join('');
+
+    // If selector without nth-child uniquely identifies element, return early
+    try {
+      if (element.ownerDocument?.querySelectorAll(selector).length === 1) {
+        return selector;
+      }
+    } catch (_) {
+      // Fall through if invalid selector
     }
-    return element.tagName.toLowerCase();
+
+    // Otherwise, include :nth-of-type and parent context to ensure uniqueness
+    const position = getNthOfType(element);
+    selector = `${selector}:nth-of-type(${position})`;
+
+    const parent = element.parentElement;
+    if (parent && parent !== document.body && parent !== document.documentElement) {
+      const parentSelector = getElementSelector(parent);
+      if (parentSelector) {
+        selector = `${parentSelector} > ${selector}`;
+      }
+    }
+
+    return selector;
+  }
+
+  function getNthOfType(element) {
+    if (!element || !element.parentElement) return 1;
+    const tagName = element.tagName;
+    if (!tagName) return 1;
+    let index = 1;
+    let sibling = element.previousElementSibling;
+    while (sibling) {
+      if (sibling.tagName === tagName) {
+        index += 1;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+    return index;
   }
 
   /**
@@ -2515,6 +2561,7 @@
             className: elements[0].element.className,
             id: elements[0].element.id,
             outerHTML: elements[0].element.outerHTML,
+            textContent: getElementText(elements[0].element),
             computedStyle: getComputedStyleSummary(elements[0].element)
           };
           context.bbox = elements[0].bbox;
@@ -2527,6 +2574,7 @@
             className: item.element.className,
             id: item.element.id,
             outerHTML: item.element.outerHTML,
+            textContent: getElementText(item.element),
             computedStyle: getComputedStyleSummary(item.element),
             bbox: item.bbox
           }));
@@ -2541,6 +2589,12 @@
       
       return context;
     }
+  }
+
+  function getElementText(element) {
+    if (!element) return '';
+    const text = (element.textContent || '').trim();
+    return text.length > 400 ? text.slice(0, 400) + '…' : text;
   }
 
   /**
