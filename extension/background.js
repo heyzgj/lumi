@@ -3,22 +3,169 @@
  * Handles extension lifecycle, content script injection, and local server communication
  */
 
-const SERVER_URL = 'http://127.0.0.1:3456';
+const DEFAULT_SERVER_URL = 'http://127.0.0.1:3456';
+const STORAGE_KEY = 'lumiSettings';
+const DEFAULT_SETTINGS = {
+  serverUrl: DEFAULT_SERVER_URL,
+  defaultEngine: 'codex',
+  codex: {
+    model: 'gpt-5-codex-high',
+    sandbox: 'workspace-write',
+    approvals: 'never',
+    extraArgs: ''
+  },
+  claude: {
+    model: 'claude-sonnet-4.5',
+    tools: ['TextEditor', 'Read'],
+    outputFormat: 'json',
+    permissionMode: 'acceptEdits',
+    extraArgs: ''
+  },
+  projects: []
+};
+
+let serverUrl = DEFAULT_SERVER_URL;
 let serverHealthy = false;
 
-// Initialize on install/update
-chrome.runtime.onInstalled.addListener((details) => {
-  console.log('[LUMI] Extension installed/updated:', details.reason);
-  
-  // Initialize storage with defaults
-  chrome.storage.local.get(['engine', 'selectionMode'], (result) => {
-    if (!result.engine) {
-      chrome.storage.local.set({ engine: 'codex' });
-    }
-    if (!result.selectionMode) {
-      chrome.storage.local.set({ selectionMode: 'rectangle' });
-    }
+function sanitizeUrl(url) {
+  if (!url || typeof url !== 'string') return DEFAULT_SERVER_URL;
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function normalizeHostPattern(value) {
+  if (!value) return '';
+  let pattern = String(value).trim().toLowerCase();
+  if (!pattern) return '';
+
+  if (pattern.startsWith('http://')) {
+    pattern = pattern.slice(7);
+  } else if (pattern.startsWith('https://')) {
+    pattern = pattern.slice(8);
+  }
+
+  if (pattern.startsWith('//')) {
+    pattern = pattern.slice(2);
+  }
+
+  if (pattern.endsWith('/')) {
+    pattern = pattern.replace(/\/+$/, '');
+  }
+
+  return pattern;
+}
+
+function sanitizeProjects(projects = []) {
+  if (!Array.isArray(projects)) return [];
+  return projects
+    .map((project, index) => {
+      if (!project || typeof project !== 'object') return null;
+      const id = typeof project.id === 'string' && project.id.trim().length
+        ? project.id.trim()
+        : `project-${index + 1}`;
+      const name = typeof project.name === 'string' ? project.name : '';
+      const workingDirectory = typeof project.workingDirectory === 'string'
+        ? project.workingDirectory.trim()
+        : '';
+      const hosts = Array.isArray(project.hosts)
+        ? project.hosts.map((host) => normalizeHostPattern(host)).filter(Boolean)
+        : [];
+      const enabled = project.enabled !== false;
+
+      if (!workingDirectory || hosts.length === 0) return null;
+
+      return { id, name, workingDirectory, hosts, enabled };
+    })
+    .filter(Boolean);
+}
+
+function sanitizeProjects(projects = []) {
+  if (!Array.isArray(projects)) return [];
+  return projects
+    .map((project) => {
+      if (!project || typeof project !== 'object') return null;
+      const id = typeof project.id === 'string' ? project.id : undefined;
+      const name = typeof project.name === 'string' ? project.name : '';
+      const workingDirectory = typeof project.workingDirectory === 'string'
+        ? project.workingDirectory.trim()
+        : '';
+      const hosts = Array.isArray(project.hosts)
+        ? project.hosts.map((host) => String(host).trim()).filter(Boolean)
+        : [];
+      const enabled = project.enabled !== false;
+
+      if (!workingDirectory || hosts.length === 0) return null;
+
+      return {
+        id,
+        name,
+        workingDirectory,
+        hosts,
+        enabled
+      };
+    })
+    .filter(Boolean);
+}
+
+async function refreshSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEY, 'engine', 'selectionMode'], (result) => {
+      const stored = result[STORAGE_KEY];
+      const settings = stored ? mergeSettings(stored) : DEFAULT_SETTINGS;
+      serverUrl = sanitizeUrl(settings.serverUrl);
+
+      const updates = {};
+      if (!stored) updates[STORAGE_KEY] = settings;
+      if (!result.engine) updates.engine = settings.defaultEngine || DEFAULT_SETTINGS.defaultEngine;
+      if (!result.selectionMode) updates.selectionMode = 'rectangle';
+
+      if (Object.keys(updates).length > 0) {
+        chrome.storage.local.set(updates);
+      }
+
+      resolve(settings);
+    });
   });
+}
+
+function mergeSettings(input = {}) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...input,
+    codex: {
+      ...DEFAULT_SETTINGS.codex,
+      ...(input.codex || {})
+    },
+    claude: {
+      ...DEFAULT_SETTINGS.claude,
+      ...(input.claude || {})
+    },
+    projects: sanitizeProjects(input.projects)
+  };
+}
+
+refreshSettings().then((settings) => {
+  handleApplySettings(settings).catch((error) => {
+    console.warn('[LUMI] Initial config sync failed:', error?.message);
+  });
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[STORAGE_KEY]) {
+    const next = changes[STORAGE_KEY].newValue || DEFAULT_SETTINGS;
+    serverUrl = sanitizeUrl(next.serverUrl);
+  }
+});
+
+// Initialize on install/update
+chrome.runtime.onInstalled.addListener(async (details) => {
+  console.log('[LUMI] Extension installed/updated:', details.reason);
+  await refreshSettings();
+
+  if (details.reason === 'install') {
+    chrome.runtime.openOptionsPage().catch((error) => {
+      console.warn('[LUMI] Failed to open options page:', error?.message);
+    });
+  }
 });
 
 // Health check for local server
@@ -26,24 +173,23 @@ async function checkServerHealth() {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
-    
-    const response = await fetch(`${SERVER_URL}/health`, {
+
+    const response = await fetch(`${serverUrl}/health`, {
       method: 'GET',
       signal: controller.signal
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (response.ok) {
       const data = await response.json();
-      serverHealthy = (data.status === 'ok');
+      serverHealthy = data.status === 'ok';
       if (serverHealthy) {
         console.log('[LUMI] Server is healthy');
       }
-      // Return structured data so content script can reflect capabilities
       return { healthy: serverHealthy, config: data };
     }
-    
+
     serverHealthy = false;
     return { healthy: false };
   } catch (error) {
@@ -58,7 +204,6 @@ chrome.action.onClicked.addListener(async (tab) => {
   console.log('[LUMI] Extension icon clicked for tab:', tab.id);
 
   try {
-    // Check if content script is already injected
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => !!window.LUMI_INJECTED
@@ -66,72 +211,22 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     if (result.result) {
       console.log('[LUMI] Content script already injected, toggling bubble');
-      // Send message to toggle bubble
       chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' });
       return;
     }
 
-    // Inject content script and styles
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['content.js']
     });
 
     console.log('[LUMI] Content script injected successfully');
-    // After injection, explicitly toggle bubble once so first click shows bubble only
     setTimeout(() => {
       chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' });
     }, 80);
-    
   } catch (error) {
     console.error('[LUMI] Failed to inject content script:', error);
   }
-});
-
-// Handle messages from content script
-chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) => {
-  const { type } = message;
-  console.log('[LUMI] Message received:', type);
-
-  if (type === 'CHECK_SERVER') {
-    checkServerHealth()
-      .then((result) => {
-        if (typeof result === 'boolean') {
-          sendResponse({ healthy: result });
-        } else {
-          sendResponse({ healthy: !!result.healthy, config: result.config });
-        }
-      })
-      .catch((error) => {
-        console.error('[LUMI] CHECK_SERVER failed:', error);
-        sendResponse({ healthy: false, error: error?.message || 'Health check failed' });
-      });
-    return true; // Keep message channel open
-  }
-
-  if (type === 'CAPTURE_SCREENSHOT') {
-    handleScreenshotCapture(sender, sendResponse);
-    return true; // Async response
-  }
-
-  if (type === 'SEND_TO_SERVER') {
-    const { engine, context } = message.payload || {};
-    forwardToServer(engine, context)
-      .then((result) => sendResponse(result))
-      .catch((error) => {
-        console.error('[LUMI] SEND_TO_SERVER failed:', error);
-        sendResponse({
-          error: error?.message || 'Failed to connect to server. Is the LUMI server running?',
-          errorName: error?.name,
-          errorMessage: error?.message,
-          details: error?.toString(),
-          timestamp: Date.now()
-        });
-      });
-    return true;
-  }
-
-  return false;
 });
 
 async function forwardToServer(engine, context) {
@@ -153,7 +248,7 @@ async function forwardToServer(engine, context) {
       console.warn('[LUMI] Payload exceeds 50MB limit!');
     }
 
-    const response = await fetch(`${SERVER_URL}/execute`, {
+    const response = await fetch(`${serverUrl}/execute`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -177,6 +272,91 @@ async function forwardToServer(engine, context) {
     clearTimeout(timeoutId);
   }
 }
+
+async function handleApplySettings(payload = {}) {
+  const merged = mergeSettings(payload);
+  const projects = sanitizeProjects(merged.projects);
+  merged.projects = projects;
+  serverUrl = sanitizeUrl(merged.serverUrl);
+
+  try {
+    const response = await fetch(`${serverUrl}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        defaultEngine: merged.defaultEngine,
+        workingDirectory: merged.workingDirectory,
+        codex: merged.codex,
+        claude: merged.claude,
+        projects
+      })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Server responded with ${response.status}`);
+    }
+  } catch (error) {
+    console.warn('[LUMI] Failed to sync config with server:', error?.message);
+  }
+
+  return merged;
+}
+
+// Handle messages from content script
+chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) => {
+  const { type } = message;
+  console.log('[LUMI] Message received:', type);
+
+  if (type === 'CHECK_SERVER') {
+    checkServerHealth()
+      .then((result) => {
+        if (typeof result === 'boolean') {
+          sendResponse({ healthy: result });
+        } else {
+          sendResponse({ healthy: !!result.healthy, config: result.config });
+        }
+      })
+      .catch((error) => {
+        console.error('[LUMI] CHECK_SERVER failed:', error);
+        sendResponse({ healthy: false, error: error?.message || 'Health check failed' });
+      });
+    return true;
+  }
+
+  if (type === 'CAPTURE_SCREENSHOT') {
+    handleScreenshotCapture(sender, sendResponse);
+    return true;
+  }
+
+  if (type === 'SEND_TO_SERVER') {
+    const { engine, context } = message.payload || {};
+    forwardToServer(engine, context)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('[LUMI] SEND_TO_SERVER failed:', error);
+        sendResponse({
+          error: error?.message || 'Failed to connect to server. Is the LUMI server running?',
+          errorName: error?.name,
+          errorMessage: error?.message,
+          details: error?.toString(),
+          timestamp: Date.now()
+        });
+      });
+    return true;
+  }
+
+  if (type === 'APPLY_SETTINGS') {
+    handleApplySettings(message.payload)
+      .then((settings) => sendResponse({ success: true, settings }))
+      .catch((error) => {
+        console.error('[LUMI] APPLY_SETTINGS failed:', error);
+        sendResponse({ success: false, error: error?.message });
+      });
+    return true;
+  }
+
+  return false;
+});
 
 function handleScreenshotCapture(sender, sendResponse) {
   const windowId = sender?.tab?.windowId;
@@ -223,4 +403,4 @@ function handleScreenshotCapture(sender, sendResponse) {
 // Check server on startup
 checkServerHealth();
 
-console.log('[LUMI] Background service worker initialized v2.0 (HTTP Server)');
+console.log('[LUMI] Background service worker initialized v3.0 (configurable server)');

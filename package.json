@@ -1,0 +1,17 @@
+{
+  "name": "lumi",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "setup": "node scripts/init.js",
+    "dev": "npm run dev --prefix server",
+    "build": "npm run build --prefix extension",
+    "test": "npm run test --prefix extension && npm run test --prefix server",
+    "package:extension": "npm run build --prefix extension && (cd extension && npm run package --if-present)",
+    "lint": "npm run lint --prefix extension --if-present"
+  }
+}

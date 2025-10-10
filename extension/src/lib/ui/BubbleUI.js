@@ -423,12 +423,13 @@ export default class BubbleUI {
     const input = this.shadow.getElementById('intent-input');
     const elements = this.stateManager.get('selection.elements');
     const screenshot = this.stateManager.get('selection.screenshot');
+    const projectAllowed = this.stateManager.get('projects.allowed');
     
     const hasContext = elements.length > 0 || screenshot;
     const hasIntent = input && input.textContent.trim().length > 0;
     const isProcessing = this.stateManager.get('processing.active');
     
-    sendBtn.disabled = !hasContext || !hasIntent || isProcessing;
+    sendBtn.disabled = !hasContext || !hasIntent || isProcessing || projectAllowed === false;
   }
 
   getShadowRoot() {

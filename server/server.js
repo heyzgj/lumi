@@ -12,57 +12,284 @@ const path = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
 
-// Configuration
+// ---------------------------------------------------------------------------
+// Configuration bootstrap
+// ---------------------------------------------------------------------------
+
 const PORT = process.env.LUMI_PORT || 3456;
-const CONFIG_DIR = path.join(os.homedir(), '.lumi');
+const DEV_MODE = process.argv.includes('--dev');
+
+const defaultConfig = {
+  workingDirectory: process.cwd(),
+  serverUrl: 'http://127.0.0.1:3456',
+  defaultEngine: 'codex',
+  codex: {
+    model: 'gpt-5-codex-high',
+    sandbox: 'workspace-write',
+    approvals: 'never',
+    extraArgs: ''
+  },
+  claude: {
+    model: 'claude-sonnet-4.5',
+    tools: ['TextEditor', 'Read'],
+    outputFormat: 'json',
+    permissionMode: 'acceptEdits',
+    extraArgs: ''
+  },
+  projects: []
+};
+
+function readJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    return null;
+  }
+}
+
+function resolveConfigDirectory() {
+  if (process.env.LUMI_CONFIG_DIR) {
+    return path.resolve(process.env.LUMI_CONFIG_DIR);
+  }
+
+  const markerCandidates = [
+    path.resolve('.lumi-location'),
+    path.resolve('..', '.lumi-location'),
+    path.resolve(process.cwd(), '..', '..', '.lumi-location')
+  ];
+
+  for (const candidate of markerCandidates) {
+    if (fs.existsSync(candidate)) {
+      const data = readJson(candidate);
+      if (data?.configDir) {
+        return path.resolve(data.configDir);
+      }
+    }
+  }
+
+  return path.join(os.homedir(), '.lumi');
+}
+
+function normalizeConfig(raw = {}) {
+  const merged = {
+    ...defaultConfig,
+    ...raw,
+    codex: {
+      ...defaultConfig.codex,
+      ...(raw.codex || {})
+    },
+    claude: {
+      ...defaultConfig.claude,
+      ...(raw.claude || {})
+    }
+  };
+
+  // Legacy keys support
+  if (raw.codexModel) merged.codex.model = raw.codexModel;
+  if (raw.codexApprovals) merged.codex.approvals = raw.codexApprovals;
+  if (raw.codexSandbox) merged.codex.sandbox = raw.codexSandbox;
+  if (raw.codexExtraArgs) merged.codex.extraArgs = raw.codexExtraArgs;
+
+  if (raw.claudeModel) merged.claude.model = raw.claudeModel;
+  if (raw.claudeTools) merged.claude.tools = raw.claudeTools;
+  if (raw.claudeOutputFormat) merged.claude.outputFormat = raw.claudeOutputFormat;
+  if (raw.claudePermissionMode) merged.claude.permissionMode = raw.claudePermissionMode;
+  if (raw.claudeExtraArgs) merged.claude.extraArgs = raw.claudeExtraArgs;
+
+  merged.projects = sanitizeProjects(raw.projects ?? merged.projects);
+
+  return merged;
+}
+
+function mergeConfig(current, updates = {}) {
+  const candidate = {
+    ...current,
+    ...updates,
+    codex: {
+      ...current.codex,
+      ...(updates.codex || {})
+    },
+    claude: {
+      ...current.claude,
+      ...(updates.claude || {})
+    },
+    projects: updates.projects !== undefined ? updates.projects : current.projects
+  };
+  return normalizeConfig(candidate);
+}
+
+function sanitizeProjects(projects) {
+  if (!Array.isArray(projects)) return [];
+
+  return projects
+    .map((project, index) => {
+      if (!project || typeof project !== 'object') return null;
+      const id = typeof project.id === 'string' && project.id.trim().length
+        ? project.id.trim()
+        : `project-${index + 1}`;
+      const name = typeof project.name === 'string' ? project.name.trim() : '';
+      const workingDirectory = typeof project.workingDirectory === 'string'
+        ? project.workingDirectory.trim()
+        : '';
+      const hosts = Array.isArray(project.hosts)
+        ? project.hosts.map((host) => normalizeHostPattern(String(host))).filter(Boolean)
+        : [];
+      const enabled = project.enabled !== false;
+
+      if (!workingDirectory || hosts.length === 0) {
+        return null;
+      }
+
+      return {
+        id,
+        name,
+        workingDirectory,
+        hosts,
+        enabled,
+        note: typeof project.note === 'string' ? project.note : undefined
+      };
+    })
+    .filter(Boolean);
+}
+
+function ensureDirectory(dir) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+const CONFIG_DIR = resolveConfigDirectory();
+ensureDirectory(CONFIG_DIR);
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const CLI_CACHE_PATH = path.join(CONFIG_DIR, 'cli-capabilities.json');
 const LOG_PATH = path.join(CONFIG_DIR, 'server.log');
-const DEV_MODE = process.argv.includes('--dev');
 
-// Ensure config directory exists
-if (!fs.existsSync(CONFIG_DIR)) {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
-}
-
-// Load configuration
-let config = {
-  workingDirectory: process.cwd(),
-  codexModel: 'gpt-5-codex',
-  codexApprovals: 'read-only',
-  codexDisableNetwork: true,
-  claudeOutputFormat: 'json',
-  claudeTools: ['TextEditor', 'Read']
-};
+let config = defaultConfig;
+let cliCapabilities = {};
 
 try {
   if (fs.existsSync(CONFIG_PATH)) {
-    const userConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    config = { ...config, ...userConfig };
+    const rawConfig = readJson(CONFIG_PATH);
+    if (rawConfig) {
+      config = normalizeConfig(rawConfig);
+    }
+  } else {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
   }
 } catch (error) {
-  logError('Failed to load config:', error.message);
+  console.error('[LUMI][Config] Failed to load config:', error.message);
 }
 
-// CLI capabilities cache
-let cliCapabilities = {};
 try {
   if (fs.existsSync(CLI_CACHE_PATH)) {
-    cliCapabilities = JSON.parse(fs.readFileSync(CLI_CACHE_PATH, 'utf8'));
+    const cached = readJson(CLI_CACHE_PATH);
+    if (cached) cliCapabilities = cached;
   }
 } catch (error) {
-  logError('Failed to load CLI capabilities cache:', error.message);
+  console.error('[LUMI][Config] Failed to load CLI cache:', error.message);
 }
 
-// Logging
+function persistConfig(nextConfig) {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(nextConfig, null, 2));
+  } catch (error) {
+    console.error('[LUMI][Config] Failed to persist config:', error.message);
+  }
+}
+
+function publicConfig() {
+  return {
+    workingDirectory: config.workingDirectory,
+    defaultEngine: config.defaultEngine,
+    codex: config.codex,
+    claude: config.claude,
+    projects: config.projects
+  };
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hostMatches(pattern, host) {
+  if (!pattern || !host) return false;
+  const normalizedPattern = normalizeHostPattern(pattern).toLowerCase();
+  const normalizedHost = host.trim().toLowerCase();
+
+  if (!normalizedPattern.includes('*')) {
+    return normalizedPattern === normalizedHost;
+  }
+
+  const regex = new RegExp('^' + normalizedPattern.split('*').map(escapeRegex).join('.*') + '$');
+  return regex.test(normalizedHost);
+}
+
+function resolveProjectForUrl(pageUrl) {
+  if (!pageUrl) {
+    return { project: null, cwd: config.workingDirectory };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(pageUrl);
+  } catch (error) {
+    return { project: null, cwd: config.workingDirectory };
+  }
+
+  const host = parsed.host;
+  const projects = Array.isArray(config.projects) ? config.projects : [];
+
+  for (const project of projects) {
+    if (!project || project.enabled === false) continue;
+    const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+    if (hosts.length === 0) continue;
+    const matched = hosts.some((pattern) => hostMatches(pattern, host));
+    if (!matched) continue;
+
+    const cwd = project.workingDirectory || config.workingDirectory;
+    if (!cwd) continue;
+
+    return { project, cwd };
+  }
+
+  return { project: null, cwd: config.workingDirectory };
+}
+
+function normalizeHostPattern(value) {
+  if (!value) return '';
+  let pattern = value.trim().toLowerCase();
+  if (!pattern) return '';
+
+  if (pattern.startsWith('http://')) {
+    pattern = pattern.slice(7);
+  } else if (pattern.startsWith('https://')) {
+    pattern = pattern.slice(8);
+  }
+
+  if (pattern.startsWith('//')) {
+    pattern = pattern.slice(2);
+  }
+
+  // Remove trailing slash but keep port if present
+  if (pattern.endsWith('/')) {
+    pattern = pattern.replace(/\/+$/, '');
+  }
+
+  return pattern;
+}
+
+// ---------------------------------------------------------------------------
+// Logging helpers
+// ---------------------------------------------------------------------------
+
 function log(...args) {
   const timestamp = new Date().toISOString();
   const message = `[${timestamp}] ${args.join(' ')}\n`;
-  
+
   if (DEV_MODE) {
     console.log(...args);
   }
-  
+
   try {
     fs.appendFileSync(LOG_PATH, message);
   } catch (error) {
@@ -73,9 +300,9 @@ function log(...args) {
 function logError(...args) {
   const timestamp = new Date().toISOString();
   const message = `[${timestamp}] ERROR: ${args.join(' ')}\n`;
-  
+
   console.error(...args);
-  
+
   try {
     fs.appendFileSync(LOG_PATH, message);
   } catch (error) {
@@ -83,54 +310,58 @@ function logError(...args) {
   }
 }
 
-// Express app
+// ---------------------------------------------------------------------------
+// Express setup
+// ---------------------------------------------------------------------------
+
 const app = express();
 
-// Middleware
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
-
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 
-// Request logging
 app.use((req, res, next) => {
   log(`${req.method} ${req.path} from ${req.ip}`);
   next();
 });
 
-/**
- * Health check endpoint
- */
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '1.0.0',
+    version: '1.1.0',
     uptime: process.uptime(),
     config: {
       workingDirectory: config.workingDirectory,
-      cliCapabilities
+      cliCapabilities,
+      codex: config.codex,
+      claude: config.claude
     }
   });
 });
 
-/**
- * CLI capabilities endpoint
- */
 app.get('/capabilities', (req, res) => {
   res.json({
     cliCapabilities,
-    config: {
-      codexModel: config.codexModel,
-      claudeOutputFormat: config.claudeOutputFormat
-    }
+    config: publicConfig()
   });
 });
 
-/**
- * Execute AI CLI endpoint
- */
+app.post('/config', (req, res) => {
+  try {
+    const updates = req.body || {};
+    const next = mergeConfig(config, updates);
+    config = next;
+    persistConfig(config);
+    res.json({ success: true, config: publicConfig() });
+  } catch (error) {
+    logError('Failed to update config:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.post('/execute', async (req, res) => {
   const startTime = Date.now();
   const { engine, context } = req.body;
@@ -143,52 +374,66 @@ app.post('/execute', async (req, res) => {
   log(`Context contains ${elementsCount} selected element(s)`);
 
   if (!context || !context.intent) {
-    return res.status(400).json({
-      error: 'Invalid request: missing intent'
-    });
+    return res.status(400).json({ error: 'Invalid request: missing intent' });
   }
 
   try {
-    // Save screenshot if provided
+    const { project, cwd } = resolveProjectForUrl(context.pageUrl);
+    const hasProjects = Array.isArray(config.projects) && config.projects.length > 0;
+
+    if (hasProjects && !project) {
+      const message = 'No configured project matches the current page. Update LUMI settings to map this host.';
+      logError('Project match failed for URL:', context.pageUrl);
+      return res.status(400).json({
+        error: message,
+        code: 'NO_PROJECT_MATCH',
+        host: (() => {
+          try {
+            return new URL(context.pageUrl).host;
+          } catch (_) {
+            return null;
+          }
+        })(),
+        projects: config.projects
+      });
+    }
+
+    const workingDirectory = cwd || config.workingDirectory;
+    log('Resolved working directory:', workingDirectory, 'project:', project?.name || 'default');
+
     let screenshotPath = null;
     if (context.screenshot) {
       const requestId = `req_${Date.now()}`;
       screenshotPath = await saveScreenshot(context.screenshot, requestId);
     }
 
-    // Execute based on engine
     let result;
     if (engine === 'claude') {
-      result = await executeClaude(context, screenshotPath);
+      result = await executeClaude(context, screenshotPath, { cwd: workingDirectory, project });
     } else {
-      // Default to Codex
-      result = await executeCodex(context, screenshotPath);
+      result = await executeCodex(context, screenshotPath, { cwd: workingDirectory, project });
     }
 
     const duration = Date.now() - startTime;
     log(`Execute completed in ${duration}ms: ${result.success ? 'success' : 'error'}`);
 
-    // With -a never --sandbox workspace-write, Codex directly modifies files
-    // No need to manually apply diffs - files are already changed
     res.json({
       ...result,
-      filesModified: result.success, // True if Codex ran successfully
+      filesModified: result.success,
       duration,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      project: project ? { id: project.id, name: project.name, workingDirectory } : null
     });
-
   } catch (error) {
     logError('Execute error:', error.message);
-    res.status(500).json({
-      error: error.message,
-      timestamp: Date.now()
-    });
+    res.status(500).json({ error: error.message, timestamp: Date.now() });
   }
 });
 
-/**
- * Run shell command safely
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function runCommand(command, args = [], options = {}) {
   return new Promise((resolve) => {
     const proc = spawn(command, args, {
@@ -202,7 +447,6 @@ function runCommand(command, args = [], options = {}) {
     let stdout = '';
     let stderr = '';
 
-    // If stdin data provided, write it and close
     if (options.stdin) {
       proc.stdin.write(options.stdin);
       proc.stdin.end();
@@ -211,7 +455,6 @@ function runCommand(command, args = [], options = {}) {
     proc.stdout.on('data', (data) => {
       const chunk = data.toString();
       stdout += chunk;
-      // Live log (truncated lines)
       try { log(`[stdout] ${chunk.slice(0, 2000)}`); } catch (_) {}
     });
 
@@ -222,30 +465,210 @@ function runCommand(command, args = [], options = {}) {
     });
 
     proc.on('error', (error) => {
-      resolve({
-        exitCode: -1,
-        stdout: '',
-        stderr: error.message,
-        error: error.message
-      });
+      resolve({ exitCode: -1, stdout: '', stderr: error.message, error: error.message });
     });
 
     proc.on('close', (exitCode) => {
-      resolve({
-        exitCode: exitCode || 0,
-        stdout,
-        stderr
-      });
+      resolve({ exitCode: exitCode || 0, stdout, stderr });
     });
   });
 }
 
-// NOTE: extractUnifiedDiff and applyUnifiedDiff functions removed
-// Codex with --sandbox workspace-write directly modifies files - no manual diff application needed
+function parseArgs(str = '') {
+  if (!str.trim()) return [];
+  const result = [];
+  const regex = /"([^"]*)"|[^\s"]+/g;
+  let match;
+  while ((match = regex.exec(str)) !== null) {
+    result.push(match[1] !== undefined ? match[1] : match[0]);
+  }
+  return result;
+}
 
-/**
- * Detect CLI capabilities
- */
+async function saveScreenshot(dataUrl, requestId) {
+  if (!dataUrl) return null;
+
+  const value = typeof dataUrl === 'string'
+    ? dataUrl
+    : (typeof dataUrl === 'object' && typeof dataUrl.dataUrl === 'string'
+      ? dataUrl.dataUrl
+      : null);
+
+  if (!value) {
+    logError('Invalid screenshot payload, expected data URL string.');
+    return null;
+  }
+
+  try {
+    const base64Data = value.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const tempPath = path.join(CONFIG_DIR, `screenshot_${requestId}.png`);
+    fs.writeFileSync(tempPath, buffer);
+
+    const stats = fs.statSync(tempPath);
+    if (stats.size > 1024 * 1024) {
+      log('Warning: Screenshot exceeds 1MB');
+    }
+
+    return tempPath;
+  } catch (error) {
+    logError('Failed to save screenshot:', error.message);
+    return null;
+  }
+}
+
+async function executeCodex(context, screenshotPath, execOptions = {}) {
+  const capabilities = await detectCLI('codex');
+
+  if (!capabilities.available) {
+    return {
+      error: 'Codex CLI not available',
+      message: 'Please install Codex CLI or check your PATH'
+    };
+  }
+
+  let prompt = buildPrompt(context);
+
+  if (screenshotPath) {
+    prompt += `\n\n# Screenshot Reference\n- Local Path: ${screenshotPath}\n- Please review the image when making the requested changes.`;
+  }
+  const args = [];
+
+  const approval = config.codex.approvals || 'never';
+  args.push('-a', approval);
+  args.push('exec');
+
+  if (capabilities.supportsModel && config.codex.model) {
+    args.push('--model', config.codex.model);
+  }
+
+  if (capabilities.supportsSandbox && config.codex.sandbox) {
+    args.push('--sandbox', config.codex.sandbox);
+  }
+
+  if (capabilities.supportsImage && screenshotPath) {
+    args.push('-i', screenshotPath);
+  }
+
+  const extraArgs = parseArgs(config.codex.extraArgs);
+  if (extraArgs.length) {
+    args.push(...extraArgs);
+  }
+
+  const useStdin = !!(capabilities.supportsImage && screenshotPath);
+  if (!useStdin) {
+    args.push(prompt);
+  }
+
+  const cmdPreview = args.join(' ') + (useStdin ? ' <prompt-from-stdin>' : ' <prompt>');
+  log('Executing Codex:', cmdPreview);
+  log('Using stdin for prompt:', useStdin);
+  log('--- Codex started ---');
+  log('Working directory:', config.workingDirectory);
+
+  const result = await runCommand('codex', args, {
+    timeout: 3600000,
+    cwd: execOptions.cwd || config.workingDirectory,
+    stdin: useStdin ? prompt : null
+  });
+
+  if (screenshotPath) {
+    try { fs.unlinkSync(screenshotPath); } catch (error) { logError('Failed to delete screenshot:', error.message); }
+  }
+
+  if (result.exitCode !== 0) {
+    return {
+      error: 'Codex execution failed',
+      message: result.stderr || result.stdout,
+      exitCode: result.exitCode
+    };
+  }
+
+  return {
+    success: true,
+    output: result.stdout,
+    stderr: result.stderr,
+    engine: 'codex'
+  };
+}
+
+async function executeClaude(context, screenshotPath, execOptions = {}) {
+  const capabilities = await detectCLI('claude');
+
+  if (!capabilities.available) {
+    return {
+      error: 'Claude CLI not available',
+      message: 'Please install Claude Code CLI or check your PATH'
+    };
+  }
+
+  const prompt = buildPrompt(context);
+  const args = [];
+
+  if (capabilities.supportsPrompt) {
+    args.push('-p', prompt);
+  } else {
+    args.push(prompt);
+  }
+
+  if (config.claude.model) {
+    args.push('--model', config.claude.model);
+  }
+
+  if (capabilities.supportsOutputFormat && config.claude.outputFormat) {
+    args.push('--output-format', config.claude.outputFormat);
+  }
+
+  if (config.claude.permissionMode) {
+    args.push('--permission-mode', config.claude.permissionMode);
+  }
+
+  if (Array.isArray(config.claude.tools) && config.claude.tools.length) {
+    args.push('--tools', config.claude.tools.join(','));
+  }
+
+  const extraArgs = parseArgs(config.claude.extraArgs);
+  if (extraArgs.length) {
+    args.push(...extraArgs);
+  }
+
+  log('Executing Claude:', 'claude', args.slice(0, 4).join(' '), '...');
+
+  const result = await runCommand('claude', args, {
+    timeout: 3600000,
+    cwd: execOptions.cwd || config.workingDirectory
+  });
+
+  if (screenshotPath) {
+    try { fs.unlinkSync(screenshotPath); } catch (error) { logError('Failed to delete screenshot:', error.message); }
+  }
+
+  if (result.exitCode !== 0) {
+    return {
+      error: 'Claude execution failed',
+      message: result.stderr || result.stdout,
+      exitCode: result.exitCode
+    };
+  }
+
+  let output = result.stdout;
+  if (capabilities.supportsOutputFormat && config.claude.outputFormat === 'json') {
+    try {
+      output = JSON.parse(result.stdout);
+    } catch (error) {
+      // keep as string if parse fails
+    }
+  }
+
+  return {
+    success: true,
+    output,
+    stderr: result.stderr,
+    engine: 'claude'
+  };
+}
+
 async function detectCLI(cliName) {
   const cached = cliCapabilities[cliName];
   if (cached && Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) {
@@ -258,6 +681,9 @@ async function detectCLI(cliName) {
     version: null,
     supportsImage: false,
     supportsOutputFormat: false,
+    supportsModel: false,
+    supportsSandbox: false,
+    supportsPrompt: false,
     timestamp: Date.now()
   };
 
@@ -271,12 +697,11 @@ async function detectCLI(cliName) {
     const helpResult = await runCommand(cliName, ['--help'], { timeout: 5000 });
     if (helpResult.exitCode === 0) {
       const helpText = helpResult.stdout + helpResult.stderr;
-      
+
       if (cliName === 'codex') {
         capabilities.supportsImage = helpText.includes('-i') || helpText.includes('--image');
         capabilities.supportsModel = helpText.includes('--model');
         capabilities.supportsSandbox = helpText.includes('--sandbox');
-        capabilities.supportsFullAuto = helpText.includes('--full-auto');
       } else if (cliName === 'claude') {
         capabilities.supportsOutputFormat = helpText.includes('--output-format');
         capabilities.supportsPrompt = helpText.includes('-p');
@@ -296,9 +721,6 @@ async function detectCLI(cliName) {
   return capabilities;
 }
 
-/**
- * Build AI prompt from context
- */
 function buildPrompt(context) {
   let prompt = `# Task\n${context.intent}\n\n`;
 
@@ -318,7 +740,6 @@ function buildPrompt(context) {
   }
 
   if (context.selectionMode === 'element') {
-    // Multi-element support
     if (Array.isArray(context.elements) && context.elements.length > 0) {
       prompt += `\n## Selected Elements (${context.elements.length})\n`;
       context.elements.forEach((el, idx) => {
@@ -326,7 +747,6 @@ function buildPrompt(context) {
         prompt += renderElementDetail(el);
       });
     } else if (context.element) {
-      // Single element (legacy)
       prompt += `\n## Selected Element\n`;
       prompt += renderElementDetail(context.element);
     }
@@ -398,191 +818,14 @@ function pickStyles(style = {}) {
   }, {});
 }
 
-/**
- * Save screenshot to temp file
- */
-async function saveScreenshot(dataUrl, requestId) {
-  if (!dataUrl) return null;
+// ---------------------------------------------------------------------------
+// Start server
+// ---------------------------------------------------------------------------
 
-  try {
-    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    
-    const tempPath = path.join(CONFIG_DIR, `screenshot_${requestId}.png`);
-    fs.writeFileSync(tempPath, buffer);
-    
-    const stats = fs.statSync(tempPath);
-    if (stats.size > 1024 * 1024) {
-      log('Warning: Screenshot exceeds 1MB');
-    }
-
-    return tempPath;
-  } catch (error) {
-    logError('Failed to save screenshot:', error.message);
-    return null;
-  }
-}
-
-/**
- * Execute Codex CLI
- */
-async function executeCodex(context, screenshotPath) {
-  const capabilities = await detectCLI('codex');
-  
-  if (!capabilities.available) {
-    return {
-      error: 'Codex CLI not available',
-      message: 'Please install Codex CLI or check your PATH'
-    };
-  }
-
-  const prompt = buildPrompt(context);
-  const args = [];
-
-  // Global options (before 'exec' subcommand)
-  // Approval policy (important for non-interactive execution)
-  // ALWAYS use -a never (not --full-auto) so we can pass prompt as CLI arg
-  args.push('-a', 'never');
-
-  // Subcommand
-  args.push('exec');
-
-  // Exec-specific options
-  if (capabilities.supportsModel) {
-    const model = config.codexModel || 'gpt-5-codex';
-    args.push('--model', model);
-  }
-
-  // Sandbox mode for write permissions
-  if (capabilities.supportsSandbox) {
-    const sandbox = config.codexSandbox || 'workspace-write';
-    args.push('--sandbox', sandbox);
-  }
-
-  if (capabilities.supportsImage && screenshotPath) {
-    args.push('-i', screenshotPath);
-  }
-
-  // When using -i (image), Codex expects prompt from stdin, NOT as CLI arg
-  // So we DON'T push prompt to args, we pass it via stdin option
-  const useStdin = !!(capabilities.supportsImage && screenshotPath);
-  
-  if (!useStdin) {
-    args.push(prompt);
-  }
-
-  // Log full command (hide prompt content for brevity)
-  const cmdPreview = args.join(' ') + (useStdin ? ' <prompt-from-stdin>' : ' <prompt>');
-  log('Executing Codex:', cmdPreview);
-  log('Using stdin for prompt:', useStdin);
-  log('--- Codex started ---');
-  log('Working directory:', config.workingDirectory);
-
-  const result = await runCommand('codex', args, {
-    timeout: 3600000, // 60 minutes
-    cwd: config.workingDirectory,
-    stdin: useStdin ? prompt : null
-  });
-
-  // Clean up screenshot
-  if (screenshotPath) {
-    try {
-      fs.unlinkSync(screenshotPath);
-    } catch (error) {
-      logError('Failed to delete screenshot:', error.message);
-    }
-  }
-
-  if (result.exitCode !== 0) {
-    return {
-      error: 'Codex execution failed',
-      message: result.stderr || result.stdout,
-      exitCode: result.exitCode
-    };
-  }
-
-  return {
-    success: true,
-    output: result.stdout,
-    stderr: result.stderr,
-    engine: 'codex'
-  };
-}
-
-/**
- * Execute Claude CLI
- */
-async function executeClaude(context, screenshotPath) {
-  const capabilities = await detectCLI('claude');
-  
-  if (!capabilities.available) {
-    return {
-      error: 'Claude CLI not available',
-      message: 'Please install Claude Code CLI or check your PATH'
-    };
-  }
-
-  const prompt = buildPrompt(context);
-  const args = [];
-
-  if (capabilities.supportsPrompt) {
-    args.push('-p', prompt);
-  } else {
-    args.push(prompt);
-  }
-
-  if (capabilities.supportsOutputFormat) {
-    args.push('--output-format', 'json');
-  }
-
-  log('Executing Claude:', 'claude', args.slice(0, 2).join(' '), '...');
-
-  const result = await runCommand('claude', args, {
-    timeout: 3600000, // 60 minutes
-    cwd: config.workingDirectory
-  });
-
-  // Clean up screenshot
-  if (screenshotPath) {
-    try {
-      fs.unlinkSync(screenshotPath);
-    } catch (error) {
-      logError('Failed to delete screenshot:', error.message);
-    }
-  }
-
-  if (result.exitCode !== 0) {
-    return {
-      error: 'Claude execution failed',
-      message: result.stderr || result.stdout,
-      exitCode: result.exitCode
-    };
-  }
-
-  let output = result.stdout;
-  if (capabilities.supportsOutputFormat) {
-    try {
-      output = JSON.parse(result.stdout);
-    } catch (error) {
-      // Keep as string if parse fails
-    }
-  }
-
-  return {
-    success: true,
-    output,
-    stderr: result.stderr,
-    engine: 'claude'
-  };
-}
-
-/**
- * Start server
- */
 async function startServer() {
   log('='.repeat(50));
   log('LUMI Server Starting...');
-  log('Version: 1.0.0');
+  log('Version: 1.1.0');
   log('Node.js:', process.version);
   log('Platform:', process.platform);
   log('Config directory:', CONFIG_DIR);
@@ -590,20 +833,17 @@ async function startServer() {
   log('Dev mode:', DEV_MODE);
   log('='.repeat(50));
 
-  // Detect CLIs on startup
   log('Detecting CLIs...');
   await detectCLI('codex');
   await detectCLI('claude');
   log('CLI capabilities:', JSON.stringify(cliCapabilities, null, 2));
 
-  // Start HTTP server
   const server = app.listen(PORT, '127.0.0.1', () => {
     log(`✅ Server running at http://127.0.0.1:${PORT}`);
     log('Ready to accept requests from Chrome extension');
     log('Press Ctrl+C to stop');
   });
 
-  // Graceful shutdown
   process.on('SIGINT', () => {
     log('Received SIGINT, shutting down gracefully...');
     server.close(() => {
@@ -620,7 +860,6 @@ async function startServer() {
     });
   });
 
-  // Error handling
   process.on('uncaughtException', (error) => {
     logError('Uncaught exception:', error);
   });
@@ -630,7 +869,6 @@ async function startServer() {
   });
 }
 
-// Start the server
 startServer().catch((error) => {
   logError('Failed to start server:', error);
   process.exit(1);

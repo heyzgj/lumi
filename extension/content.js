@@ -140,6 +140,11 @@
         processing: {
           active: false,
           stage: null
+        },
+        projects: {
+          allowed: true,
+          current: null,
+          list: []
         }
       };
       
@@ -254,6 +259,11 @@
         processing: {
           active: false,
           stage: null
+        },
+        projects: {
+          allowed: true,
+          current: null,
+          list: []
         }
       };
       
@@ -1295,12 +1305,13 @@
       const input = this.shadow.getElementById('intent-input');
       const elements = this.stateManager.get('selection.elements');
       const screenshot = this.stateManager.get('selection.screenshot');
+      const projectAllowed = this.stateManager.get('projects.allowed');
       
       const hasContext = elements.length > 0 || screenshot;
       const hasIntent = input && input.textContent.trim().length > 0;
       const isProcessing = this.stateManager.get('processing.active');
       
-      sendBtn.disabled = !hasContext || !hasIntent || isProcessing;
+      sendBtn.disabled = !hasContext || !hasIntent || isProcessing || projectAllowed === false;
     }
 
     getShadowRoot() {
@@ -2260,16 +2271,6 @@
 
     async checkOnce() {
       try {
-        // Only ping server from allowed project origins to reduce noise
-        const host = window.location && window.location.host;
-        const allowed = host && (host.includes('localhost') || host.includes('127.0.0.1'));
-        if (!allowed) {
-          this.stateManager.set('engine.serverHealthy', false);
-          this.engineManager.updateAvailability(false, false);
-          this.eventBus.emit('health-check:skipped', { reason: 'outside-allowed-origin', host });
-          return;
-        }
-
         const result = await this.chromeBridge.checkServerHealth();
 
         this.stateManager.set('engine.serverHealthy', result.healthy);
@@ -2280,6 +2281,32 @@
         const rawConfig = result?.config || null;
         const capsContainer = rawConfig?.cliCapabilities ? rawConfig : rawConfig?.config;
         const caps = capsContainer?.cliCapabilities || null;
+        const projects = Array.isArray(rawConfig?.projects)
+          ? rawConfig.projects
+          : Array.isArray(rawConfig?.config?.projects)
+            ? rawConfig.config.projects
+            : [];
+        const host = window.location?.host || '';
+        const projectMatch = resolveProject(projects, window.location?.href);
+        const projectAllowed = projects.length === 0 || !!projectMatch?.project;
+
+        this.stateManager.batch({
+          'projects.allowed': projectAllowed,
+          'projects.current': projectMatch?.project || null,
+          'projects.list': projects
+        });
+
+        if (!projectAllowed) {
+          this.eventBus.emit('projects:blocked', {
+            host,
+            projects
+          });
+        } else {
+          this.eventBus.emit('projects:allowed', {
+            host,
+            project: projectMatch?.project || null
+          });
+        }
 
         if (result.healthy && caps) {
           const codexAvailable = !!(caps.codex && caps.codex.available);
@@ -2305,8 +2332,49 @@
         this.engineManager.updateAvailability(false, false);
         
         this.eventBus.emit('health-check:error', error);
+        this.stateManager.batch({
+          'projects.allowed': false,
+          'projects.current': null
+        });
       }
     }
+  }
+
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function hostMatches(pattern, host) {
+    if (!pattern || !host) return false;
+    const normalizedPattern = pattern.trim().toLowerCase();
+    const normalizedHost = host.trim().toLowerCase();
+    if (!normalizedPattern.includes('*')) {
+      return normalizedPattern === normalizedHost;
+    }
+    const regex = new RegExp('^' + normalizedPattern.split('*').map(escapeRegex).join('.*') + '$');
+    return regex.test(normalizedHost);
+  }
+
+  function resolveProject(projects, pageUrl) {
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return { project: null };
+    }
+
+    try {
+      const url = new URL(pageUrl);
+      const host = url.host;
+      for (const project of projects) {
+        if (!project || project.enabled === false) continue;
+        const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+        if (hosts.some((pattern) => hostMatches(pattern, host))) {
+          return { project };
+        }
+      }
+    } catch (error) {
+      return { project: null };
+    }
+
+    return { project: null };
   }
 
   /**
@@ -2817,11 +2885,19 @@
         const intent = bubbleUI.getInputValue();
         const elements = stateManager.get('selection.elements');
         const screenshot = stateManager.get('selection.screenshot');
+        const projectAllowed = stateManager.get('projects.allowed');
 
-      if (!intent || (elements.length === 0 && !screenshot)) {
-        bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
-        return;
-      }
+        if (!intent || (elements.length === 0 && !screenshot)) {
+          bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
+          return;
+        }
+
+        if (projectAllowed === false) {
+          const message = 'LUMI is not configured for this site. Open Settings to map it to a project before submitting.';
+          bubbleUI.showStatus(message, 'error');
+          eventBus.emit('notify:error', message);
+          return;
+        }
 
       const engine = engineManager.getCurrentEngine();
       if (!engineManager.isEngineAvailable(engine)) {
@@ -2898,6 +2974,18 @@
           contextTags.render();
         }
         highlightManager.clearAll();
+      });
+
+      eventBus.on('projects:blocked', ({ host }) => {
+        if (stateManager.get('ui.bubbleVisible')) {
+          topBanner.update('LUMI is not configured for this page. Open Settings to map it to a project.');
+        }
+        bubbleUI.updateSendButtonState();
+      });
+
+      eventBus.on('projects:allowed', () => {
+        topBanner.hide();
+        bubbleUI.updateSendButtonState();
       });
 
       // Top banner notifications

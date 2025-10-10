@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMI Settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <span class="sidebar-logo">LUMI</span>
+          <span class="sidebar-subtitle">Settings</span>
+        </div>
+        <nav class="sidebar-nav">
+          <button class="nav-link active" data-target="connection-panel">Connection</button>
+          <button class="nav-link" data-target="projects-panel">Projects</button>
+          <button class="nav-link" data-target="codex-panel">Codex</button>
+          <button class="nav-link" data-target="claude-panel">Claude</button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="content-header">
+          <div>
+            <h1>Configure LUMI</h1>
+            <p class="subtitle">Adjust bridge, projects, and engines when needed.</p>
+          </div>
+          <button id="testConnection" class="ghost">Test</button>
+        </header>
+
+        <div class="status-banner" id="statusCard" hidden>
+          <span id="statusMessage"></span>
+        </div>
+
+        <section class="panel active" id="connection-panel">
+          <header class="panel-header">
+            <h2>Connection</h2>
+          </header>
+          <div class="panel-body">
+            <div class="field">
+              <label for="serverUrl">Server URL</label>
+              <input id="serverUrl" type="url" placeholder="http://127.0.0.1:3456" required>
+            </div>
+            <div class="field">
+              <label>Default Engine</label>
+              <div class="radio-group">
+                <label><input type="radio" name="defaultEngine" value="codex"> Codex</label>
+                <label><input type="radio" name="defaultEngine" value="claude"> Claude Code</label>
+              </div>
+            </div>
+          </div>
+          <footer class="panel-actions">
+            <button class="ghost section-reset" data-section="connection">Reset</button>
+            <button class="primary section-save" data-section="connection">Save</button>
+          </footer>
+        </section>
+
+        <section class="panel" id="projects-panel">
+          <header class="panel-header">
+            <div>
+              <h2>Projects</h2>
+              <p class="helper">Map hosts to local working directories.</p>
+            </div>
+            <button id="addProject" class="ghost">Add</button>
+          </header>
+          <div class="panel-body">
+            <div id="projectsEmpty" class="empty-state" hidden>
+              <p>No projects yet. Requests fall back to the default working directory.</p>
+            </div>
+            <div id="projectsList" class="projects-list"></div>
+          </div>
+          <footer class="panel-actions">
+            <button class="ghost section-reset" data-section="projects">Reset</button>
+            <button class="primary section-save" data-section="projects">Save</button>
+          </footer>
+        </section>
+
+        <section class="panel" id="codex-panel">
+          <header class="panel-header">
+            <h2>Codex</h2>
+          </header>
+          <div class="panel-body">
+            <div class="grid">
+              <div class="field">
+                <label for="codexModel">Model</label>
+                <input id="codexModel" list="codexModels" placeholder="gpt-5-codex-high">
+                <datalist id="codexModels">
+                  <option value="gpt-5-codex-high"></option>
+                  <option value="gpt-5-codex"></option>
+                  <option value="o3"></option>
+                  <option value="o4-mini"></option>
+                </datalist>
+              </div>
+              <div class="field">
+                <label for="codexSandbox">Sandbox</label>
+                <select id="codexSandbox">
+                  <option value="workspace-write">workspace-write</option>
+                  <option value="read-only">read-only</option>
+                  <option value="danger-full-access">danger-full-access</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="codexApprovals">Approvals</label>
+                <select id="codexApprovals">
+                  <option value="never">never</option>
+                  <option value="on-request">on-request</option>
+                  <option value="always">always</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="codexExtraArgs">Extra CLI Flags</label>
+              <input id="codexExtraArgs" type="text" placeholder="e.g. --max-tokens 2048">
+            </div>
+          </div>
+          <footer class="panel-actions">
+            <button class="ghost section-reset" data-section="codex">Reset</button>
+            <button class="primary section-save" data-section="codex">Save</button>
+          </footer>
+        </section>
+
+        <section class="panel" id="claude-panel">
+          <header class="panel-header">
+            <h2>Claude</h2>
+          </header>
+          <div class="panel-body">
+            <div class="grid">
+              <div class="field">
+                <label for="claudeModel">Model</label>
+                <input id="claudeModel" list="claudeModels" placeholder="claude-sonnet-4.5">
+                <datalist id="claudeModels">
+                  <option value="claude-sonnet-4.5"></option>
+                  <option value="claude-opus-4"></option>
+                  <option value="claude-haiku-3"></option>
+                </datalist>
+              </div>
+              <div class="field">
+                <label for="claudeOutputFormat">Output Format</label>
+                <select id="claudeOutputFormat">
+                  <option value="json">json</option>
+                  <option value="text">text</option>
+                  <option value="stream-json">stream-json</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="claudePermissionMode">Permission Mode</label>
+                <select id="claudePermissionMode">
+                  <option value="acceptEdits">acceptEdits</option>
+                  <option value="ask">ask</option>
+                </select>
+              </div>
+            </div>
+            <fieldset class="field">
+              <legend>Enabled Tools</legend>
+              <label><input type="checkbox" value="TextEditor" checked> TextEditor</label>
+              <label><input type="checkbox" value="Read" checked> Read</label>
+              <label><input type="checkbox" value="Search"> Search</label>
+              <label><input type="checkbox" value="Bash"> Bash</label>
+            </fieldset>
+            <div class="field">
+              <label for="claudeExtraArgs">Extra CLI Flags</label>
+              <input id="claudeExtraArgs" type="text" placeholder="e.g. --temperature 0.3">
+            </div>
+          </div>
+          <footer class="panel-actions">
+            <button class="ghost section-reset" data-section="claude">Reset</button>
+            <button class="primary section-save" data-section="claude">Save</button>
+          </footer>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

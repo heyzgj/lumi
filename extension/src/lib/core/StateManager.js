@@ -33,6 +33,11 @@ export default class StateManager {
       processing: {
         active: false,
         stage: null
+      },
+      projects: {
+        allowed: true,
+        current: null,
+        list: []
       }
     };
     
@@ -147,6 +152,11 @@ export default class StateManager {
       processing: {
         active: false,
         stage: null
+      },
+      projects: {
+        allowed: true,
+        current: null,
+        list: []
       }
     };
     
@@ -194,4 +204,3 @@ export default class StateManager {
     this.eventBus.emit(`state:${path}`, newValue, oldValue);
   }
 }
-

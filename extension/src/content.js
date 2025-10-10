@@ -238,11 +238,19 @@ function bootstrap() {
       const intent = bubbleUI.getInputValue();
       const elements = stateManager.get('selection.elements');
       const screenshot = stateManager.get('selection.screenshot');
+      const projectAllowed = stateManager.get('projects.allowed');
 
-    if (!intent || (elements.length === 0 && !screenshot)) {
-      bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
-      return;
-    }
+      if (!intent || (elements.length === 0 && !screenshot)) {
+        bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
+        return;
+      }
+
+      if (projectAllowed === false) {
+        const message = 'LUMI is not configured for this site. Open Settings to map it to a project before submitting.';
+        bubbleUI.showStatus(message, 'error');
+        eventBus.emit('notify:error', message);
+        return;
+      }
 
     const engine = engineManager.getCurrentEngine();
     if (!engineManager.isEngineAvailable(engine)) {
@@ -319,6 +327,18 @@ function bootstrap() {
         contextTags.render();
       }
       highlightManager.clearAll();
+    });
+
+    eventBus.on('projects:blocked', ({ host }) => {
+      if (stateManager.get('ui.bubbleVisible')) {
+        topBanner.update('LUMI is not configured for this page. Open Settings to map it to a project.');
+      }
+      bubbleUI.updateSendButtonState();
+    });
+
+    eventBus.on('projects:allowed', () => {
+      topBanner.hide();
+      bubbleUI.updateSendButtonState();
     });
 
     // Top banner notifications

@@ -44,16 +44,6 @@ export default class HealthChecker {
 
   async checkOnce() {
     try {
-      // Only ping server from allowed project origins to reduce noise
-      const host = window.location && window.location.host;
-      const allowed = host && (host.includes('localhost') || host.includes('127.0.0.1'));
-      if (!allowed) {
-        this.stateManager.set('engine.serverHealthy', false);
-        this.engineManager.updateAvailability(false, false);
-        this.eventBus.emit('health-check:skipped', { reason: 'outside-allowed-origin', host });
-        return;
-      }
-
       const result = await this.chromeBridge.checkServerHealth();
 
       this.stateManager.set('engine.serverHealthy', result.healthy);
@@ -64,6 +54,32 @@ export default class HealthChecker {
       const rawConfig = result?.config || null;
       const capsContainer = rawConfig?.cliCapabilities ? rawConfig : rawConfig?.config;
       const caps = capsContainer?.cliCapabilities || null;
+      const projects = Array.isArray(rawConfig?.projects)
+        ? rawConfig.projects
+        : Array.isArray(rawConfig?.config?.projects)
+          ? rawConfig.config.projects
+          : [];
+      const host = window.location?.host || '';
+      const projectMatch = resolveProject(projects, window.location?.href);
+      const projectAllowed = projects.length === 0 || !!projectMatch?.project;
+
+      this.stateManager.batch({
+        'projects.allowed': projectAllowed,
+        'projects.current': projectMatch?.project || null,
+        'projects.list': projects
+      });
+
+      if (!projectAllowed) {
+        this.eventBus.emit('projects:blocked', {
+          host,
+          projects
+        });
+      } else {
+        this.eventBus.emit('projects:allowed', {
+          host,
+          project: projectMatch?.project || null
+        });
+      }
 
       if (result.healthy && caps) {
         const codexAvailable = !!(caps.codex && caps.codex.available);
@@ -89,6 +105,47 @@ export default class HealthChecker {
       this.engineManager.updateAvailability(false, false);
       
       this.eventBus.emit('health-check:error', error);
+      this.stateManager.batch({
+        'projects.allowed': false,
+        'projects.current': null
+      });
     }
   }
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hostMatches(pattern, host) {
+  if (!pattern || !host) return false;
+  const normalizedPattern = pattern.trim().toLowerCase();
+  const normalizedHost = host.trim().toLowerCase();
+  if (!normalizedPattern.includes('*')) {
+    return normalizedPattern === normalizedHost;
+  }
+  const regex = new RegExp('^' + normalizedPattern.split('*').map(escapeRegex).join('.*') + '$');
+  return regex.test(normalizedHost);
+}
+
+function resolveProject(projects, pageUrl) {
+  if (!Array.isArray(projects) || projects.length === 0) {
+    return { project: null };
+  }
+
+  try {
+    const url = new URL(pageUrl);
+    const host = url.host;
+    for (const project of projects) {
+      if (!project || project.enabled === false) continue;
+      const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+      if (hosts.some((pattern) => hostMatches(pattern, host))) {
+        return { project };
+      }
+    }
+  } catch (error) {
+    return { project: null };
+  }
+
+  return { project: null };
 }
