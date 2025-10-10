@@ -23,7 +23,7 @@ export default class ElementSelector {
     this.isActive = true;
     this.stateManager.set('ui.mode', 'element');
     
-    this.topBanner.update('Click to select element • Shift+Click to add to context');
+    this.topBanner.update('Click to select element');
     
     document.addEventListener('mousemove', this.handleMouseMove, true);
     document.addEventListener('click', this.handleClick, true);
@@ -66,7 +66,7 @@ export default class ElementSelector {
     e.preventDefault();
     e.stopPropagation();
 
-    // UX: element mode is additive by default (no Shift required)
+    // UX: element mode is additive by default
     const element = e.target;
     this.addElement(element);
   }
