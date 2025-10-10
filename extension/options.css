@@ -129,6 +129,10 @@ body {
   gap: 24px;
 }
 
+.panel + .panel {
+  margin-top: 24px;
+}
+
 .panel.active {
   display: flex;
   flex-direction: column;

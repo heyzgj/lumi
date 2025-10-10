@@ -41,16 +41,18 @@ export default class BubbleUI {
       <style>${BUBBLE_STYLES}</style>
       
       <div class="bubble" id="bubble-main">
-        <!-- Top Bar (draggable) -->
-        <div class="top-bar drag-handle" id="drag-handle">
-          <div class="left-section">
-            <div class="logo">LUMI</div>
+        <div class="bubble-header" id="drag-handle">
+          <div class="header-left">
+            <div class="brand-mark">✶</div>
+            <span class="logo">LUMI</span>
+          </div>
+          <div class="header-right">
             <div class="engine-selector" id="engine-selector">
               <div class="status-indicator" id="status-indicator"></div>
               <span class="engine-name" id="engine-name">Codex</span>
-              <span class="dropdown-arrow">▼</span>
+              <span class="dropdown-arrow">⌄</span>
             </div>
-            <!-- Engine Dropdown Menu -->
+            <button class="close-btn" id="close-btn" title="Close (Esc)">×</button>
             <div class="engine-dropdown" id="engine-dropdown">
               <div class="engine-option selected" data-engine="codex">
                 <div class="engine-option-left">
@@ -68,37 +70,36 @@ export default class BubbleUI {
               </div>
             </div>
           </div>
-          <div class="right-section">
-            <button class="icon-btn" id="element-mode-btn" title="Element Mode (Cmd+E)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M3 9h18M9 3v18"/>
-              </svg>
-            </button>
-            <button class="icon-btn" id="screenshot-mode-btn" title="Screenshot Mode (Cmd+S)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-            <button class="icon-btn" id="close-btn" title="Close (Esc)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
         </div>
 
-        <!-- Input Container -->
-        <div class="input-container">
-          <!-- Context Tags (elements + screenshot) -->
-          <div class="context-tags" id="context-tags"></div>
+        <div class="context-zone">
+          <div class="control-strip">
+            <span class="strip-title">Modes</span>
+            <div class="control-group">
+              <button class="dock-btn" id="element-mode-btn" title="Element Mode (Cmd+E)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <path d="M3 9h18M9 3v18"/>
+                </svg>
+              </button>
+              <button class="dock-btn" id="screenshot-mode-btn" title="Screenshot Mode (Cmd+S)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="context-scroll" id="context-tags"></div>
+        </div>
+
+        <div class="input-shell">
           <div class="input-wrapper">
-            <div 
-              class="input-field" 
-              id="intent-input" 
+            <div
+              class="input-field"
+              id="intent-input"
               contenteditable="true"
-              data-placeholder="Type your instructions..."
+              data-placeholder="Describe the change. Tap tags to reference elements."
             ></div>
             <button class="send-btn" id="send-btn" disabled>
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -106,19 +107,18 @@ export default class BubbleUI {
               </svg>
             </button>
             <div class="loading-overlay" id="loading-overlay">
-              <div class="loading-content">
-                <div class="spinner"></div>
-                <div class="loading-text" id="loading-text">Processing...</div>
-              </div>
+              <span class="spinner"></span>
+              <span class="loading-text" id="loading-text">Processing…</span>
             </div>
           </div>
         </div>
 
-        <!-- Status Message -->
-        <div class="status-message" id="status-message">
-          <span class="status-icon" id="status-icon"></span>
-          <span id="status-text"></span>
-          <button class="status-close" id="status-close">×</button>
+        <div class="status-footer">
+          <div class="status-message" id="status-message">
+            <span class="status-icon" id="status-icon">✓</span>
+            <span id="status-text">Ready</span>
+            <button class="status-close" id="status-close">×</button>
+          </div>
         </div>
       </div>
     `;
@@ -394,15 +394,26 @@ export default class BubbleUI {
     const statusMessage = this.shadow.getElementById('status-message');
     const statusIcon = this.shadow.getElementById('status-icon');
     const statusText = this.shadow.getElementById('status-text');
-    
-    statusMessage.className = 'status-message active ' + type;
-    statusIcon.textContent = type === 'success' ? '✓' : '✕';
+
+    statusMessage.classList.remove('success', 'error', 'info');
+    statusMessage.classList.add('active');
+    if (type === 'info') {
+      statusMessage.classList.add('info');
+      statusIcon.textContent = '•';
+    } else if (type === 'error') {
+      statusMessage.classList.add('error');
+      statusIcon.textContent = '✕';
+    } else {
+      statusMessage.classList.add('success');
+      statusIcon.textContent = '✓';
+    }
+
     statusText.textContent = message;
   }
 
   hideStatus() {
     const statusMessage = this.shadow.getElementById('status-message');
-    statusMessage.classList.remove('active');
+    statusMessage.classList.remove('active', 'success', 'error', 'info');
   }
 
   getInputValue() {

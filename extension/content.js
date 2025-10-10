@@ -314,7 +314,7 @@
 
   /**
    * UI Styles - Centralized CSS definitions
-   * All Shadow DOM styles in one place
+   * Ethereal Minimalism inspired theme
    */
 
   const BUBBLE_STYLES = `
@@ -325,137 +325,222 @@
   }
 
   :host {
-    --bg-primary: rgba(15, 23, 42, 0.95);
-    --bg-secondary: rgba(30, 41, 59, 0.9);
-    --accent-blue: #3b82f6;
-    --accent-green: #10b981;
-    --text-primary: rgba(248, 250, 252, 0.95);
-    --text-secondary: rgba(226, 232, 240, 0.6);
-    --border: rgba(148, 163, 184, 0.2);
+    --surface-primary: rgba(255, 255, 255, 0.58);
+    --surface-elevated: rgba(255, 255, 255, 0.78);
+    --surface-muted: rgba(244, 246, 248, 0.65);
+    --surface-dark: rgba(26, 27, 28, 0.55);
+    --surface-border: rgba(227, 232, 239, 0.65);
+    --surface-border-strong: rgba(206, 213, 222, 0.9);
+    --shadow-color: rgba(15, 23, 42, 0.22);
+    --text-primary: #1f2933;
+    --text-secondary: #5d6774;
+    --text-muted: #95a3b3;
+    --accent-gradient: linear-gradient(135deg, #4EE6C1, #6EB8FF);
+    --accent-glow: rgba(78, 230, 193, 0.22);
+    --accent-active: #4EE6C1;
+    --danger: #f87171;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
 
   .bubble {
-    width: 420px;
-    background: var(--bg-primary);
-    backdrop-filter: blur(24px) saturate(180%);
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: var(--text-primary);
-    animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    width: 430px;
+    border-radius: 28px;
+    border: 1px solid var(--surface-border);
+    background: var(--surface-primary);
+    backdrop-filter: blur(28px) saturate(160%);
+    box-shadow: 0 32px 120px var(--shadow-color);
     overflow: hidden;
+    color: var(--text-primary);
+    animation: bubbleEnter 480ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  @keyframes slideInUp {
-    from {
+  .bubble::before {
+    content: '';
+    position: absolute;
+    top: -160px;
+    right: -140px;
+    width: 360px;
+    height: 320px;
+    background: var(--accent-gradient);
+    opacity: 0.38;
+    filter: blur(120px);
+    pointer-events: none;
+    transform: rotate(8deg);
+  }
+
+  .bubble::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 28px;
+    background: linear-gradient(155deg, rgba(255,255,255,0.55), rgba(255,255,255,0.1));
+    opacity: 0.28;
+    pointer-events: none;
+  }
+
+  @keyframes bubbleEnter {
+    0% {
       opacity: 0;
-      transform: translateY(20px);
+      transform: translateY(18px) scale(0.96);
     }
-    to {
+    100% {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateY(0) scale(1);
     }
   }
 
-  /* Top Bar */
-  .top-bar {
+  .bubble > * {
+    position: relative;
+    z-index: 2;
+  }
+
+  .bubble-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(15, 23, 42, 0.6);
+    padding: 20px 24px 6px;
+    cursor: grab;
   }
 
-  .left-section {
+  .bubble-header:active {
+    cursor: grabbing;
+  }
+
+  .header-left {
     display: flex;
     align-items: center;
     gap: 12px;
-    position: relative;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.55);
+    border: 1px solid rgba(227,232,239,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--text-muted);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
   }
 
   .logo {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .engine-selector {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.6);
+    background: linear-gradient(150deg, rgba(255,255,255,0.75), rgba(231,241,255,0.55));
+    box-shadow: 0 12px 28px rgba(110, 184, 255, 0.24);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
 
   .engine-selector:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(148, 163, 184, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 34px rgba(110, 184, 255, 0.28);
+  }
+
+  .engine-selector.open {
+    box-shadow: 0 18px 40px rgba(110, 184, 255, 0.32);
   }
 
   .status-indicator {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--accent-green);
-    animation: pulse 2s ease-in-out infinite;
+    background: var(--accent-active);
+    box-shadow: 0 0 0 4px rgba(78, 230, 193, 0.18);
+    animation: pulse 2.4s ease-in-out infinite;
   }
 
   .status-indicator.offline {
-    background: #ef4444;
+    background: var(--danger);
+    box-shadow: none;
     animation: none;
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.85); opacity: 0.6; }
   }
 
   .engine-name {
-    font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.04em;
   }
 
   .dropdown-arrow {
     font-size: 10px;
-    opacity: 0.6;
-    transition: transform 0.2s;
+    opacity: 0.5;
+    transition: transform 0.2s ease;
   }
 
   .engine-selector.open .dropdown-arrow {
     transform: rotate(180deg);
   }
 
-  /* Engine Dropdown */
-  .engine-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: 120px;
-    background: rgba(30, 41, 59, 0.98);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    display: none;
-    z-index: 100;
-    animation: dropdownSlideIn 0.2s ease-out;
+  .close-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 14px;
+    border: 1px solid var(--surface-border);
+    background: rgba(255,255,255,0.45);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.18s ease;
   }
 
-  @keyframes dropdownSlideIn {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .close-btn:hover {
+    color: var(--text-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(31, 41, 51, 0.18);
+  }
+
+  .engine-dropdown {
+    position: absolute;
+    margin-top: 12px;
+    right: 24px;
+    min-width: 160px;
+    border-radius: 18px;
+    background: rgba(247, 249, 251, 0.92);
+    border: 1px solid var(--surface-border-strong);
+    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.24);
+    backdrop-filter: blur(26px);
+    display: none;
+    overflow: hidden;
+    animation: dropdownSlide 200ms ease;
+    z-index: 11;
+  }
+
+  @keyframes dropdownSlide {
+    from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
   .engine-dropdown.open {
@@ -466,139 +551,119 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s;
-    font-size: 12px;
+    transition: background 0.2s ease;
+  }
+
+  .engine-option + .engine-option {
+    border-top: 1px solid rgba(227, 232, 239, 0.6);
   }
 
   .engine-option:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(110, 184, 255, 0.08);
   }
 
   .engine-option.disabled {
     cursor: not-allowed;
     opacity: 0.55;
-    pointer-events: auto;
   }
 
-  .engine-option:first-child {
-    border-radius: 6px 6px 0 0;
+  .engine-option-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
-  .engine-option:last-child {
-    border-radius: 0 0 6px 6px;
+  .engine-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.7);
   }
 
-  .engine-option-name {
-    font-weight: 500;
+  .engine-status-dot.available {
+    background: var(--accent-active);
   }
 
   .engine-check {
     opacity: 0;
-    color: var(--accent-green);
-    font-size: 14px;
+    color: var(--accent-active);
   }
 
   .engine-option.selected .engine-check {
     opacity: 1;
   }
 
-  .engine-option-left {
+  .context-zone {
+    padding: 0 24px 12px;
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .engine-status-dot {
-    width: 6px;
+  .control-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .strip-title {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .control-group {
+    display: flex;
+    gap: 10px;
+  }
+
+  .context-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .context-scroll::-webkit-scrollbar {
     height: 6px;
-    border-radius: 50%;
-    background: #6b7280;
   }
 
-  .engine-status-dot.available {
-    background: var(--accent-green);
-  }
-
-  .right-section {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .icon-btn {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid transparent;
-    background: transparent;
-    border-radius: 6px;
-    cursor: pointer;
-    color: var(--text-secondary);
-    transition: all 0.15s;
-  }
-
-  .icon-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
-    border-color: var(--border);
-  }
-
-  .icon-btn.active {
-    background: var(--accent-blue);
-    color: white;
-    border-color: var(--accent-blue);
-  }
-
-  .icon-btn svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  /* Context Tags */
-  .context-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 8px;
-  }
-
-  .context-tags:empty {
-    display: none;
+  .context-scroll::-webkit-scrollbar-thumb {
+    background: rgba(180, 190, 205, 0.4);
+    border-radius: 999px;
   }
 
   .context-tag {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 6px;
-    font-size: 11px;
+    gap: 8px;
+    min-width: 144px;
+    padding: 10px 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(206, 213, 222, 0.65);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 10px 22px rgba(31, 41, 51, 0.08);
+    font-size: 12px;
     font-weight: 500;
-    color: #93c5fd;
-    animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    color: var(--text-secondary);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
 
-  @keyframes scaleIn {
-    from {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+  .context-tag:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(31, 41, 51, 0.12);
   }
 
   .context-tag.screenshot {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
-    color: #6ee7b7;
+    background: rgba(78, 230, 193, 0.18);
+    border-color: rgba(78, 230, 193, 0.45);
+    color: #13715f;
   }
 
   .tag-label {
@@ -606,250 +671,258 @@
   }
 
   .tag-remove {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 3px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.25);
+    color: rgba(82, 95, 113, 0.9);
+    font-size: 11px;
     cursor: pointer;
-    font-size: 10px;
-    opacity: 0.6;
-    transition: all 0.15s;
+    transition: background 0.2s;
   }
 
   .tag-remove:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(148, 163, 184, 0.35);
   }
 
-  /* Inline Element Tags (inside contenteditable) */
+  .input-shell {
+    padding: 0 24px 24px;
+  }
+
+  .dock-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 18px;
+    border: 1px solid rgba(206, 213, 222, 0.75);
+    background: rgba(255,255,255,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: transform 0.18s, box-shadow 0.18s, color 0.18s;
+    box-shadow: 0 12px 24px rgba(31, 41, 51, 0.12);
+  }
+
+  .dock-btn:hover {
+    transform: translateY(-1px);
+    color: var(--text-primary);
+    box-shadow: 0 16px 32px rgba(31, 41, 51, 0.16);
+  }
+
+  .dock-btn.active {
+    background: var(--accent-gradient);
+    color: #0b1720;
+    border-color: transparent;
+    box-shadow: 0 16px 34px rgba(110, 184, 255, 0.28);
+  }
+
+  .dock-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .input-wrapper {
+    position: relative;
+    padding: 18px 70px 18px 18px;
+    border-radius: 22px;
+    border: 1px solid var(--surface-border-strong);
+    background: linear-gradient(165deg, rgba(255,255,255,0.92), rgba(241,245,250,0.78));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 22px 40px rgba(15, 23, 42, 0.12);
+    transition: border 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .input-wrapper:focus-within {
+    border-color: rgba(110, 184, 255, 0.7);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 24px 48px rgba(110, 184, 255, 0.18);
+  }
+
+  .input-field {
+    min-height: 96px;
+    max-height: 220px;
+    overflow-y: auto;
+    outline: none;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.66;
+    letter-spacing: 0.01em;
+  }
+
+  .input-field:empty:before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
   .inline-element-tag {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 6px;
-    background: rgba(59, 130, 246, 0.25);
-    border: 1px solid rgba(59, 130, 246, 0.4);
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    color: #93c5fd;
-    cursor: default;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(110, 184, 255, 0.6);
+    background: rgba(110, 184, 255, 0.25);
+    color: #0b2441;
+    font-size: 12px;
+    font-weight: 600;
     user-select: none;
-    margin: 0 2px;
-    vertical-align: middle;
+    margin: 0 3px;
   }
 
   .inline-tag-remove {
-    font-size: 9px;
+    font-size: 10px;
+    cursor: pointer;
     opacity: 0.7;
-    margin-left: 2px;
   }
 
   .inline-tag-remove:hover {
     opacity: 1;
   }
 
-  /* Input Container */
-  .input-container {
-    padding: 16px;
-    position: relative;
-  }
-
-  .input-wrapper {
-    position: relative;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    transition: all 0.15s;
-  }
-
-  .input-wrapper:focus-within {
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-
-  .input-field {
-    width: 100%;
-    min-height: 80px;
-    max-height: 200px;
-    padding: 12px 48px 12px 12px;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: inherit;
-    line-height: 1.5;
-    outline: none;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-
-  .input-field:empty:before {
-    content: attr(data-placeholder);
-    color: var(--text-secondary);
-    pointer-events: none;
-  }
-
   .send-btn {
     position: absolute;
-    right: 8px;
-    bottom: 8px;
-    width: 32px;
-    height: 32px;
+    right: 14px;
+    bottom: 14px;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--accent-blue);
-    border: none;
-    border-radius: 6px;
+    color: #0b1720;
     cursor: pointer;
-    transition: all 0.15s;
-    color: white;
+    background: var(--accent-gradient);
+    box-shadow: 0 18px 34px rgba(110, 184, 255, 0.35);
+    animation: breathe 4.2s ease-in-out infinite;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
 
   .send-btn:hover:not(:disabled) {
-    background: #2563eb;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-  }
-
-  .send-btn:active:not(:disabled) {
-    transform: translateY(0);
+    transform: translateY(-2px);
+    box-shadow: 0 22px 42px rgba(110, 184, 255, 0.4);
   }
 
   .send-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.5;
     cursor: not-allowed;
+    animation: none;
   }
 
-  .send-btn svg {
-    width: 16px;
-    height: 16px;
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
   }
 
-  /* Loading Overlay */
   .loading-overlay {
     position: absolute;
     inset: 0;
-    display: none;
+    border-radius: 22px;
+    background: rgba(247, 249, 251, 0.84);
+    backdrop-filter: blur(14px);
+    display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(15, 23, 42, 0.9);
-    backdrop-filter: blur(4px);
-    border-radius: 8px;
-    animation: fadeIn 0.2s;
+    gap: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
   }
 
   .loading-overlay.active {
-    display: flex;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  .loading-content {
-    text-align: center;
+    opacity: 1;
+    pointer-events: all;
   }
 
   .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(59, 130, 246, 0.2);
-    border-top-color: var(--accent-blue);
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
+    border: 3px solid rgba(110, 184, 255, 0.2);
+    border-top-color: rgba(110, 184, 255, 0.85);
     animation: spin 0.8s linear infinite;
-    margin: 0 auto 8px;
   }
 
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
 
-  .loading-text {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  /* Status Message */
-  .status-message {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
-    font-size: 12px;
-    display: none;
+  .status-footer {
+    padding: 0 24px 24px;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
-    animation: slideDown 0.2s;
-    position: relative;
   }
 
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .status-message {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(206, 213, 222, 0.7);
+    background: rgba(255,255,255,0.75);
+    color: var(--text-secondary);
+    font-size: 13px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
   }
 
   .status-message.active {
-    display: flex;
+    opacity: 1;
+    transform: translateY(0);
   }
 
   .status-message.success {
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--accent-green);
+    background: rgba(78, 230, 193, 0.18);
+    border-color: rgba(78, 230, 193, 0.45);
+    color: #13715f;
   }
 
   .status-message.error {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+    background: rgba(248, 113, 113, 0.18);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: #a52525;
   }
 
-  #status-text {
-    flex: 1;
+  .status-message.info {
+    background: rgba(237, 241, 247, 0.75);
+    border-color: rgba(206, 213, 222, 0.75);
+    color: var(--text-secondary);
+  }
+
+  .status-icon {
+    font-size: 12px;
   }
 
   .status-close {
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
     border: none;
-    border-radius: 4px;
+    background: transparent;
+    color: rgba(82, 95, 113, 0.6);
     cursor: pointer;
-    font-size: 16px;
-    color: inherit;
-    opacity: 0.6;
-    transition: all 0.15s;
+    font-size: 14px;
+    transition: color 0.2s ease;
   }
 
   .status-close:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
   }
 
-  /* Drag Handle */
-  .drag-handle {
-    cursor: move;
-    user-select: none;
-  }
+  /* Responsive */
+  @media (max-width: 520px) {
+    .bubble {
+      width: min(100vw - 32px, 420px);
+    }
 
-  .bubble.dragging {
-    transition: none !important;
-    pointer-events: none;
-  }
-
-  .bubble.dragging * {
-    pointer-events: none;
+    .control-dock {
+      right: 24px;
+    }
   }
 `;
 
@@ -858,27 +931,26 @@
     from { opacity: 0; }
     to { opacity: 1; }
   }
+
   @keyframes scaleIn {
-    from {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
   }
+
   @keyframes slideDown {
-    from {
-      transform: translateY(-100%);
-    }
-    to {
-      transform: translateY(0);
-    }
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
   }
-  /* Global cursor helpers for selection modes */
-  html.lumi-element-cursor, body.lumi-element-cursor { cursor: pointer !important; }
-  html.lumi-screenshot-cursor, body.lumi-screenshot-cursor { cursor: crosshair !important; }
+
+  html.lumi-element-cursor,
+  body.lumi-element-cursor {
+    cursor: pointer !important;
+  }
+
+  html.lumi-screenshot-cursor,
+  body.lumi-screenshot-cursor {
+    cursor: crosshair !important;
+  }
 `;
 
   /**
@@ -923,16 +995,18 @@
       <style>${BUBBLE_STYLES}</style>
       
       <div class="bubble" id="bubble-main">
-        <!-- Top Bar (draggable) -->
-        <div class="top-bar drag-handle" id="drag-handle">
-          <div class="left-section">
-            <div class="logo">LUMI</div>
+        <div class="bubble-header" id="drag-handle">
+          <div class="header-left">
+            <div class="brand-mark">✶</div>
+            <span class="logo">LUMI</span>
+          </div>
+          <div class="header-right">
             <div class="engine-selector" id="engine-selector">
               <div class="status-indicator" id="status-indicator"></div>
               <span class="engine-name" id="engine-name">Codex</span>
-              <span class="dropdown-arrow">▼</span>
+              <span class="dropdown-arrow">⌄</span>
             </div>
-            <!-- Engine Dropdown Menu -->
+            <button class="close-btn" id="close-btn" title="Close (Esc)">×</button>
             <div class="engine-dropdown" id="engine-dropdown">
               <div class="engine-option selected" data-engine="codex">
                 <div class="engine-option-left">
@@ -950,37 +1024,36 @@
               </div>
             </div>
           </div>
-          <div class="right-section">
-            <button class="icon-btn" id="element-mode-btn" title="Element Mode (Cmd+E)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M3 9h18M9 3v18"/>
-              </svg>
-            </button>
-            <button class="icon-btn" id="screenshot-mode-btn" title="Screenshot Mode (Cmd+S)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-            <button class="icon-btn" id="close-btn" title="Close (Esc)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
         </div>
 
-        <!-- Input Container -->
-        <div class="input-container">
-          <!-- Context Tags (elements + screenshot) -->
-          <div class="context-tags" id="context-tags"></div>
+        <div class="context-zone">
+          <div class="control-strip">
+            <span class="strip-title">Modes</span>
+            <div class="control-group">
+              <button class="dock-btn" id="element-mode-btn" title="Element Mode (Cmd+E)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <path d="M3 9h18M9 3v18"/>
+                </svg>
+              </button>
+              <button class="dock-btn" id="screenshot-mode-btn" title="Screenshot Mode (Cmd+S)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="context-scroll" id="context-tags"></div>
+        </div>
+
+        <div class="input-shell">
           <div class="input-wrapper">
-            <div 
-              class="input-field" 
-              id="intent-input" 
+            <div
+              class="input-field"
+              id="intent-input"
               contenteditable="true"
-              data-placeholder="Type your instructions..."
+              data-placeholder="Describe the change. Tap tags to reference elements."
             ></div>
             <button class="send-btn" id="send-btn" disabled>
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -988,19 +1061,18 @@
               </svg>
             </button>
             <div class="loading-overlay" id="loading-overlay">
-              <div class="loading-content">
-                <div class="spinner"></div>
-                <div class="loading-text" id="loading-text">Processing...</div>
-              </div>
+              <span class="spinner"></span>
+              <span class="loading-text" id="loading-text">Processing…</span>
             </div>
           </div>
         </div>
 
-        <!-- Status Message -->
-        <div class="status-message" id="status-message">
-          <span class="status-icon" id="status-icon"></span>
-          <span id="status-text"></span>
-          <button class="status-close" id="status-close">×</button>
+        <div class="status-footer">
+          <div class="status-message" id="status-message">
+            <span class="status-icon" id="status-icon">✓</span>
+            <span id="status-text">Ready</span>
+            <button class="status-close" id="status-close">×</button>
+          </div>
         </div>
       </div>
     `;
@@ -1276,15 +1348,26 @@
       const statusMessage = this.shadow.getElementById('status-message');
       const statusIcon = this.shadow.getElementById('status-icon');
       const statusText = this.shadow.getElementById('status-text');
-      
-      statusMessage.className = 'status-message active ' + type;
-      statusIcon.textContent = type === 'success' ? '✓' : '✕';
+
+      statusMessage.classList.remove('success', 'error', 'info');
+      statusMessage.classList.add('active');
+      if (type === 'info') {
+        statusMessage.classList.add('info');
+        statusIcon.textContent = '•';
+      } else if (type === 'error') {
+        statusMessage.classList.add('error');
+        statusIcon.textContent = '✕';
+      } else {
+        statusMessage.classList.add('success');
+        statusIcon.textContent = '✓';
+      }
+
       statusText.textContent = message;
     }
 
     hideStatus() {
       const statusMessage = this.shadow.getElementById('status-message');
-      statusMessage.classList.remove('active');
+      statusMessage.classList.remove('active', 'success', 'error', 'info');
     }
 
     getInputValue() {

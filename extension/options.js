@@ -449,6 +449,7 @@ async function saveSettings(section) {
 
 function resetSection(section) {
   const label = labelFor(section);
+  lastInvalidProjectCount = 0;
   switch (section) {
     case 'connection': {
       $('serverUrl').value = DEFAULT_SETTINGS.serverUrl;
@@ -458,8 +459,8 @@ function resetSection(section) {
       break;
     }
     case 'projects': {
-      currentProjects = [];
-      renderProjects();
+      currentProjects = sanitizeProjects(DEFAULT_SETTINGS.projects);
+      renderProjects(currentProjects);
       break;
     }
     case 'codex': {
