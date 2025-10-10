@@ -27,7 +27,7 @@ LUMI lets you describe a UI change directly inside the browser and run it throug
    Then load the `extension/` folder as an unpacked extension via `chrome://extensions`.
 
 ## Configure
-Open the extension Options Page. The sidebar shows four panels—only one is active at a time, each with its own **Save** and **Reset** buttons.
+Open the extension Options Page. 
 
 - **Connection**: server URL + default engine.
 - **Projects**: map host patterns (supports `*`) to absolute working directories. Pages that do not match any project cannot submit changes.
@@ -46,4 +46,4 @@ Open the extension Options Page. The sidebar shows four panels—only one is act
 - **CLI not found** → ensure `codex --version` / `claude --version` work in the same shell; delete `<configDir>/cli-capabilities.json` to refresh detection.
 - **“Not configured for this page”** → add the current host in the Projects panel and save.
 
-Happy building.
+Happy building ❤️

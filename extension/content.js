@@ -980,7 +980,7 @@
               class="input-field" 
               id="intent-input" 
               contenteditable="true"
-              data-placeholder="Type your instructions... Use inline tags to target specific elements"
+              data-placeholder="Type your instructions..."
             ></div>
             <button class="send-btn" id="send-btn" disabled>
               <svg viewBox="0 0 24 24" fill="currentColor">
