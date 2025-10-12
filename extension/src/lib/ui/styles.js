@@ -527,6 +527,7 @@ export const BUBBLE_STYLES = `
   .drag-handle {
     cursor: move;
     user-select: none;
+    touch-action: none;
   }
 
   .bubble.dragging {

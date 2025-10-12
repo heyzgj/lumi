@@ -232,66 +232,147 @@ export default class BubbleUI {
     this.stateManager.subscribe('engine.available', (available) => {
       this.updateEngineAvailability(available);
     });
+
+    // Sync initial UI with current state snapshot
+    this.updateModeButtons(this.stateManager.get('ui.mode'));
+    this.updateEngineSelector(this.stateManager.get('engine.current'));
+    this.updateServerStatus(this.stateManager.get('engine.serverHealthy'));
+    this.updateEngineAvailability(this.stateManager.get('engine.available'));
   }
 
   setupDrag() {
     const dragHandle = this.shadow.getElementById('drag-handle');
     const bubbleMain = this.shadow.getElementById('bubble-main');
+    if (!dragHandle || !bubbleMain) return;
+
     let isDragging = false;
-    let startX, startY, initialLeft, initialBottom;
-    
-    dragHandle.addEventListener('mousedown', (e) => {
-      // Ignore if clicking on buttons
-      if (e.target.closest('.icon-btn') || e.target.closest('.engine-selector')) {
-        return;
-      }
-      
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialBottom = 0;
+    let bubbleWidth = 0;
+    let bubbleHeight = 0;
+    let activePointerId = null;
+
+    const startDrag = (clientX, clientY) => {
       isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      
+      startX = clientX;
+      startY = clientY;
+
       const rect = this.container.getBoundingClientRect();
       initialLeft = rect.left;
       initialBottom = window.innerHeight - rect.bottom;
-      
+      bubbleWidth = rect.width;
+      bubbleHeight = rect.height;
+
       bubbleMain.classList.add('dragging');
-      
-      e.preventDefault();
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      
-      const deltaX = e.clientX - startX;
-      const deltaY = e.clientY - startY;
-      
-      let newLeft = initialLeft + deltaX;
-      let newBottom = initialBottom - deltaY;
-      
-      // Keep bubble within viewport
-      const maxLeft = window.innerWidth - 420; // bubble width
-      const maxBottom = window.innerHeight - 200; // min visible height
-      
-      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-      newBottom = Math.max(0, Math.min(newBottom, maxBottom));
-      
-      this.container.style.left = newLeft + 'px';
-      this.container.style.bottom = newBottom + 'px';
-    });
-    
-    const endDrag = () => {
-      if (isDragging) {
-        isDragging = false;
-        bubbleMain.classList.remove('dragging');
-      }
     };
 
-    document.addEventListener('mouseup', endDrag, true);
-    document.addEventListener('pointerup', endDrag, true);
-    document.addEventListener('mouseleave', endDrag, true);
-    window.addEventListener('blur', endDrag);
+    const updateDrag = (clientX, clientY) => {
+      if (!isDragging) return;
+
+      const deltaX = clientX - startX;
+      const deltaY = clientY - startY;
+
+      let newLeft = initialLeft + deltaX;
+      let newBottom = initialBottom - deltaY;
+
+      const maxLeft = Math.max(0, window.innerWidth - bubbleWidth);
+      const maxBottom = Math.max(0, window.innerHeight - bubbleHeight);
+
+      newLeft = Math.min(Math.max(0, newLeft), maxLeft);
+      newBottom = Math.min(Math.max(0, newBottom), maxBottom);
+
+      this.container.style.left = newLeft + 'px';
+      this.container.style.bottom = newBottom + 'px';
+    };
+
+    const releasePointerCapture = () => {
+      if (activePointerId === null) return;
+      if (typeof dragHandle.releasePointerCapture === 'function') {
+        try {
+          dragHandle.releasePointerCapture(activePointerId);
+        } catch (_) {}
+      }
+      activePointerId = null;
+    };
+
+    const stopDragging = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      releasePointerCapture();
+      bubbleMain.classList.remove('dragging');
+    };
+
+    const shouldIgnoreTarget = (target) => {
+      return target.closest('.icon-btn') || target.closest('.engine-selector');
+    };
+
+    const supportsPointerEvents = typeof window !== 'undefined' && window.PointerEvent;
+
+    if (supportsPointerEvents) {
+      dragHandle.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (shouldIgnoreTarget(e.target)) return;
+
+        activePointerId = e.pointerId;
+
+        if (typeof dragHandle.setPointerCapture === 'function') {
+          try {
+            dragHandle.setPointerCapture(activePointerId);
+          } catch (_) {}
+        }
+
+        startDrag(e.clientX, e.clientY);
+        e.preventDefault();
+      });
+
+      dragHandle.addEventListener('pointermove', (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
+        updateDrag(e.clientX, e.clientY);
+      });
+
+      const pointerEndHandler = (e) => {
+        if (e.pointerId !== activePointerId) return;
+        stopDragging();
+      };
+
+      dragHandle.addEventListener('pointerup', pointerEndHandler);
+      dragHandle.addEventListener('pointercancel', pointerEndHandler);
+      dragHandle.addEventListener('lostpointercapture', stopDragging);
+    } else {
+      const handleMouseMove = (e) => {
+        if (!isDragging) return;
+        updateDrag(e.clientX, e.clientY);
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove, true);
+        document.removeEventListener('mouseup', handleMouseUp, true);
+        stopDragging();
+      };
+
+      dragHandle.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        if (shouldIgnoreTarget(e.target)) return;
+
+        startDrag(e.clientX, e.clientY);
+
+        document.addEventListener('mousemove', handleMouseMove, true);
+        document.addEventListener('mouseup', handleMouseUp, true);
+        e.preventDefault();
+      });
+    }
+
+    const cancelOnLeave = () => {
+      if (!isDragging) return;
+      stopDragging();
+    };
+
+    document.addEventListener('mouseleave', cancelOnLeave, true);
+    window.addEventListener('blur', stopDragging);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') endDrag();
+      if (document.visibilityState !== 'visible') stopDragging();
     });
   }
 
