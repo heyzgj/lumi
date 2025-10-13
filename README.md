@@ -3,11 +3,9 @@
 <p align="center">
   <img src="assets/LUMI.png" alt="LUMI" width="500" />
 </p>
-
 <p align="center">
   <strong>🚀 See it. Click it. Fix it.</strong>
 </p>
-
 <br>
 <p align="center">
   <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="540" style="box-shadow:0 12px 32px 0 rgba(60,34,120,0.20), 0 2px 8px 0 rgba(60,34,120,0.08); border-radius:18px;" />
