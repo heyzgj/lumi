@@ -1,21 +1,17 @@
 <div align="center">
-
 <br>
-
 <p align="center">
-  <img src="assets/lumi-ascii.png" alt="LUMI" width="500" />
-</p>
-
-<br>
-
-<p align="center">
-  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="540" />
+  <img src="assets/LUMI_2.png" alt="LUMI" width="500" />
 </p>
 
 <p align="center">
   <strong>🚀 See it. Click it. Fix it.</strong>
 </p>
 
+<br>
+<p align="center">
+  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="540" />
+</p>
 </div>
 
 ---
