@@ -1,28 +1,38 @@
-<div align="center">
-<br>
-
-```
+<p align="center">
+  <br>
+  <pre style="
+    background: linear-gradient(180deg,#fafafa,#f0f0f0);
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    display: inline-block;
+    padding: 16px 24px;
+    font-weight: 600;
+    color: #222;
+  ">
 _|        _|    _|  _|      _|  _|_|_| 
 _|        _|    _|  _|_|  _|_|    _|   
 _|        _|    _|  _|  _|  _|    _|   
 _|        _|    _|  _|      _|    _|   
 _|_|_|_|    _|_|    _|      _|  _|_|_| 
-```
+  </pre>
 
-<br>
+  <br>
 
-[![LUMI in Action](assets/lumi_screenshot.png)](assets/lumi_screenshot.png)
+  <img src="assets/lumi_screenshot.png" width="640" alt="LUMI in Action" style="
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.1);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+  " />
 
-<br>
-
-*🚀 See it. Click it. Fix it.*
-
-</div>
+  <br><br>
+  <em>🚀 See it. Click it. Fix it.</em>
+</p>
 
 ---
 
-Lumi is a Chrome extension that lets you edit your web app directly in the browser.
+**Lumi** is a Chrome extension that lets you edit your web app directly in the browser.  
 No more typing long prompts or guessing element names — just click what you see, tell Lumi what you want, and your coding agent (like Codex or Claude Code) makes the change precisely.
+
 
 ## Requirements
 - Node.js 20+
