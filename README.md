@@ -2,7 +2,7 @@
   <img src="assets/LUMI.png" alt="LUMI" width="400" />
 </p>
 <p align="center">
-  <strong>🚀 See it. Click it. Fix it.</strong>
+  <strong>👀 See it. Click it. Fix it.</strong>
 </p>
 <p align="center">
   <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="600" />
