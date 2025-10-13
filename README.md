@@ -1,11 +1,33 @@
-# LUMI
+<div align="center">
+<br>
 
-LUMI lets you describe a UI change directly inside the browser and run it through local AI CLIs (Codex or Claude Code). The Chrome extension gathers context from the page; the local server turns that context into a prompt and executes the CLI inside your project workspace.
+```
+_|        _|    _|  _|      _|  _|_|_| 
+_|        _|    _|  _|_|  _|_|    _|   
+_|        _|    _|  _|  _|  _|    _|   
+_|        _|    _|  _|      _|    _|   
+_|_|_|_|    _|_|    _|      _|  _|_|_| 
+```
+
+<br>
+
+[![LUMI in Action](assets/lumi_screenshot.png)](assets/lumi_screenshot.png)
+
+<br>
+
+*🚀 See it. Click it. Fix it.*
+
+</div>
+
+---
+
+Lumi is a Chrome extension that lets you edit your web app directly in the browser.
+No more typing long prompts or guessing element names — just click what you see, tell Lumi what you want, and your coding agent (like Codex or Claude Code) makes the change precisely.
 
 ## Requirements
 - Node.js 20+
 - Chrome 115+
-- At least one CLI in `$PATH`: `codex` (OpenAI Codex CLI) and/or `claude` (Claude Code CLI)
+- At least one CLI: Codex and or Claude Code CLI
 
 ## Quick Start
 1. **Install & seed config**
