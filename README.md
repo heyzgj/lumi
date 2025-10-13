@@ -1,12 +1,8 @@
 <div align="center">
 
-```
-_|        _|    _|  _|      _|  _|_|_|
-_|        _|    _|  _|_|  _|_|    _|
-_|        _|    _|  _|  _|  _|    _|
-_|        _|    _|  _|      _|    _|
-_|_|_|_|    _|_|    _|      _|  _|_|_|
-```
+<p align="center">
+  <img src="assets/lumi-ascii.png" alt="LUMI" width="400" />
+</p>
 
 <p align="center">
   <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="640" />
