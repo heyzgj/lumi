@@ -5,7 +5,7 @@
   <strong>👀 See it. Click it. Fix it.</strong>
 </p>
 <p align="center">
-  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="600" />
+  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="700" />
 </p>
 
 ## Overview
