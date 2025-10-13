@@ -1,11 +1,15 @@
 <div align="center">
 
-<p align="center">
-  <img src="assets/lumi-ascii.png" alt="LUMI" width="400" />
-</p>
+<br>
 
 <p align="center">
-  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="640" />
+  <img src="assets/lumi-ascii.png" alt="LUMI" width="500" />
+</p>
+
+<br>
+
+<p align="center">
+  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="540" />
 </p>
 
 <p align="center">
