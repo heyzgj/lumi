@@ -1,32 +1,22 @@
+<div align="center">
+
+```
+_|        _|    _|  _|      _|  _|_|_|
+_|        _|    _|  _|_|  _|_|    _|
+_|        _|    _|  _|  _|  _|    _|
+_|        _|    _|  _|      _|    _|
+_|_|_|_|    _|_|    _|      _|  _|_|_|
+```
+
 <p align="center">
-  <br>
-  <pre style="
-    background: linear-gradient(180deg,#fafafa,#f0f0f0);
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-    display: inline-block;
-    padding: 16px 24px;
-    font-weight: 600;
-    color: #222;
-  ">
-_|        _|    _|  _|      _|  _|_|_| 
-_|        _|    _|  _|_|  _|_|    _|   
-_|        _|    _|  _|  _|  _|    _|   
-_|        _|    _|  _|      _|    _|   
-_|_|_|_|    _|_|    _|      _|  _|_|_| 
-  </pre>
-
-  <br>
-
-  <img src="assets/lumi_screenshot.png" width="640" alt="LUMI in Action" style="
-    border-radius: 12px;
-    border: 1px solid rgba(0,0,0,0.1);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
-  " />
-
-  <br><br>
-  <em>🚀 See it. Click it. Fix it.</em>
+  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="640" />
 </p>
+
+<p align="center">
+  <strong>🚀 See it. Click it. Fix it.</strong>
+</p>
+
+</div>
 
 ---
 
