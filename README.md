@@ -10,8 +10,13 @@
 
 ## Overview
 
-**Lumi** is a Chrome extension that lets you edit your web app directly in the browser.  
-No more typing long prompts or guessing element names — just click what you see, tell Lumi what you want, and your coding agent (like Codex or Claude Code) makes the change precisely.
+**Lumi lets your AI see.**  
+For the first time, you don’t have to describe what’s on your screen — you can *show* it.  
+Click what you see, say what you want, and Lumi turns your coding agent into a true visual collaborator.
+
+Lumi is a Chrome extension that connects directly to your coding agent (like **Codex** or **Claude Code**) to enable visual, in-browser editing for any web app.  
+No more guessing selectors or typing long prompts — just click, speak, and watch your app update instantly.
+
 
 
 ## Requirements
