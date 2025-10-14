@@ -44,12 +44,40 @@ No more guessing selectors or typing long prompts — just click, speak, and wat
    Then load the `extension/` folder as an unpacked extension via `chrome://extensions`.
 
 ## Configure
-Open the extension Options Page. 
 
-- **Connection**: server URL + default engine.
-- **Projects**: map host patterns (supports `*`) to absolute working directories. Pages that do not match any project cannot submit changes.
-- **Codex / Claude**: set models, sandbox/permissions, extra CLI flags, and tool checkboxes.
-- **Test** button in the header pings `/health`; the banner/toast will show success or failure in a few words.
+Open the extension Options Page. Here's what you need to know:
+
+### **🔴 Must Configure (Projects)**
+This is **the only section you need to change** for basic usage:
+
+**Projects** - Tell LUMI where your code lives and which sites to work with
+- Click "Add" and enter:
+  - **Name**: Friendly name (e.g., "My Website")
+  - **Working Directory**: Full path to your project folder
+  - **Hosts**: Your development server URL (e.g., `localhost:3000`)
+
+**Example for a typical React/Next.js project:**
+```
+Name: "My App"
+Working Directory: "/Users/john/Documents/my-react-app"
+Hosts: "localhost:3000"
+```
+
+### **🟢 Safe to Ignore (For Now)**
+These sections work fine with defaults for most users:
+
+**Connection**
+- Server URL: `http://127.0.0.1:3456` ✅ (leave as default)
+- Default Engine: Codex ✅ (or change to Claude if preferred)
+
+**Codex/Claude Settings**
+- Models, permissions, tools ✅ (defaults are good for beginners)
+- Only tweak these if you know what you're doing or your AI suggests changes
+
+### **Test Your Setup**
+Click the "Test" button - should show "Connected" in green.
+
+**Pro tip:** If you're unsure about any setting, ask your AI assistant! They can explain what each option does and help you find your working directory and host information.
 
 ## Daily Use
 1. Keep the server running (`npm run dev`).
