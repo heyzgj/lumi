@@ -125,7 +125,7 @@
         },
         selection: {
           elements: [],
-          screenshot: null,
+          screenshots: [],
           hoveredElement: null
         },
         engine: {
@@ -244,7 +244,7 @@
         },
         selection: {
           elements: [],
-          screenshot: null,
+          screenshots: [],
           hoveredElement: null
         },
         engine: {
@@ -595,11 +595,7 @@
     }
   }
 
-  .context-tag.screenshot {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
-    color: #6ee7b7;
-  }
+  /* Screenshot tags use same base styling as element tags; inserted state turns green */
 
   .tag-label {
     cursor: pointer;
@@ -621,6 +617,16 @@
   .tag-remove:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  .context-tag.inserted {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #86efac;
+  }
+
+  .context-tag.inserted .tag-label {
+    opacity: 0.7;
   }
 
   /* Inline Element Tags (inside contenteditable) */
@@ -880,6 +886,9 @@
   /* Global cursor helpers for selection modes */
   html.lumi-element-cursor, body.lumi-element-cursor { cursor: pointer !important; }
   html.lumi-screenshot-cursor, body.lumi-screenshot-cursor { cursor: crosshair !important; }
+  html.lumi-screenshot-cursor *, body.lumi-screenshot-cursor * {
+    cursor: crosshair !important;
+  }
 `;
 
   /**
@@ -1041,7 +1050,22 @@
           e.preventDefault();
           this.eventBus.emit('submit:requested');
         }
+        // Prevent host page shortcuts from intercepting while typing in bubble
+        e.stopPropagation();
       });
+
+      // Make sure page-level shortcuts don't override bubble when focused
+      try {
+        this.shadow.addEventListener('keydown', (e) => {
+          if (this.shadow.contains(e.target)) e.stopPropagation();
+        }, { capture: true });
+        this.shadow.addEventListener('keypress', (e) => {
+          if (this.shadow.contains(e.target)) e.stopPropagation();
+        }, { capture: true });
+        this.shadow.addEventListener('keyup', (e) => {
+          if (this.shadow.contains(e.target)) e.stopPropagation();
+        }, { capture: true });
+      } catch (_) {}
       
       sendBtn.addEventListener('click', () => {
         this.eventBus.emit('submit:requested');
@@ -1386,10 +1410,10 @@
       const sendBtn = this.shadow.getElementById('send-btn');
       const input = this.shadow.getElementById('intent-input');
       const elements = this.stateManager.get('selection.elements');
-      const screenshot = this.stateManager.get('selection.screenshot');
+      const screenshots = this.stateManager.get('selection.screenshots') || [];
       const projectAllowed = this.stateManager.get('projects.allowed');
       
-      const hasContext = elements.length > 0 || screenshot;
+      const hasContext = elements.length > 0 || screenshots.length > 0;
       const hasIntent = input && input.textContent.trim().length > 0;
       const isProcessing = this.stateManager.get('processing.active');
       
@@ -1598,6 +1622,9 @@
       this.eventBus = eventBus;
       this.stateManager = stateManager;
       this.container = null;
+      this.lastIntentRange = null; // persist caret position within intent input
+      this.CARET_MARK_ATTR = 'data-caret-marker';
+      this._pointerInserted = false;
     }
 
     mount() {
@@ -1605,40 +1632,112 @@
       if (!this.container) {
         console.error('[ContextTags] Container not found');
       }
+
+      // Track caret position inside the intent input so we can restore it
+      const input = this.shadowRoot.getElementById('intent-input');
+      if (input) {
+        const updateRange = (source) => {
+          const sel = this._getSelection();
+          if (sel && sel.rangeCount > 0 && input.contains(sel.anchorNode)) {
+            this.lastIntentRange = sel.getRangeAt(0).cloneRange();
+          }
+        };
+        // Capture on common user interactions that change caret (avoid 'focus' which may be [input,0])
+        ['keyup', 'mouseup', 'input'].forEach(evt => {
+          input.addEventListener(evt, () => updateRange());
+        });
+
+        // Global selection tracking covers keyboard-based caret moves and OS selection changes
+        document.addEventListener('selectionchange', () => updateRange());
+
+        input.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return; // left click only
+          try {
+            const x = e.clientX, y = e.clientY;
+            const hit = this._rangeFromPoint(x, y, input);
+            const shouldOverride = !!hit;
+            if (shouldOverride) e.preventDefault();
+            requestAnimationFrame(() => {
+              input.focus();
+              if (shouldOverride) {
+                const sel = this._getSelection();
+                sel.removeAllRanges();
+                sel.addRange(hit);
+                this.lastIntentRange = hit.cloneRange();
+              }
+            });
+          } catch (_) {}
+        });
+
+        // Capture selection just before any click inside the bubble changes it (capture phase)
+        const preClickSnapshot = () => {
+          const sel = this._getSelection();
+          if (sel && sel.rangeCount > 0 && input.contains(sel.anchorNode)) {
+            this.lastIntentRange = sel.getRangeAt(0).cloneRange();
+          }
+        };
+        try {
+          this.shadowRoot.addEventListener('pointerdown', preClickSnapshot, { capture: true });
+          this.shadowRoot.addEventListener('mousedown', preClickSnapshot, { capture: true });
+          this.shadowRoot.addEventListener('touchstart', preClickSnapshot, { capture: true, passive: true });
+        } catch (_) {
+          // Fallback for environments without options support
+          this.shadowRoot.addEventListener('pointerdown', preClickSnapshot, true);
+          this.shadowRoot.addEventListener('mousedown', preClickSnapshot, true);
+          this.shadowRoot.addEventListener('touchstart', preClickSnapshot, true);
+        }
+      }
     }
 
     render() {
       if (!this.container) return;
-      
+
       this.container.innerHTML = '';
-      
+
       const elements = this.stateManager.get('selection.elements');
-      const screenshot = this.stateManager.get('selection.screenshot');
-      
+      const screenshots = this.stateManager.get('selection.screenshots') || [];
+      const input = this.shadowRoot.getElementById('intent-input');
+
+      // Helper function to check if tag is already inserted
+      const isTagInserted = (type, index) => {
+        if (!input) return false;
+        if (type === 'screenshot') {
+          return input.querySelector(`.inline-element-tag[data-index="${String(index)}"]`) !== null;
+        } else {
+          return input.querySelector(`.inline-element-tag[data-index="${String(index)}"]`) !== null;
+        }
+      };
+
       // Render element tags
       elements.forEach((item, index) => {
         const tag = document.createElement('div');
-        tag.className = 'context-tag';
+        const isInserted = isTagInserted('element', index);
+
+        tag.className = `context-tag${isInserted ? ' inserted' : ''}`;
         tag.innerHTML = `
         <span class="tag-label" data-index="${index}" data-type="element">${readableElementName(item.element)}</span>
         <span class="tag-remove" data-type="element" data-index="${index}">×</span>
       `;
         this.container.appendChild(tag);
       });
-      
-      // Render screenshot tag
-      if (screenshot) {
+
+      // Render screenshot tags (multiple)
+      screenshots.forEach((shot, idx) => {
         const tag = document.createElement('div');
-        tag.className = 'context-tag screenshot';
+        const key = `ss-${shot.id}`;
+        const isInserted = isTagInserted('screenshot', key);
+
+        tag.className = `context-tag${isInserted ? ' inserted' : ''}`;
         tag.innerHTML = `
-        <span class="tag-label" data-type="screenshot">Screenshot</span>
-        <span class="tag-remove" data-type="screenshot">×</span>
+        <span class="tag-label" data-type="screenshot" data-index="${key}">Screenshot ${idx + 1}</span>
+        <span class="tag-remove" data-type="screenshot" data-id="${shot.id}">×</span>
       `;
         this.container.appendChild(tag);
-      }
-      
-      // Add event listeners
+      });
+
+      // Add event listeners and sync inserted state
       this.attachListeners();
+      this.updateInsertedStates();
     }
 
     attachListeners() {
@@ -1653,20 +1752,70 @@
           if (type === 'element') {
             this.removeElement(parseInt(index));
           } else if (type === 'screenshot') {
-            this.removeScreenshot();
+            const id = e.target.dataset.id ? parseInt(e.target.dataset.id) : null;
+            this.removeScreenshot(id);
           }
         });
       });
       
       // Label click to insert inline chip
       this.container.querySelectorAll('.tag-label').forEach(label => {
+        // Prevent focus change so the input caret stays intact
+        label.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Snapshot caret before input blurs (pointerdown fires before blur/click)
+          const input = this.shadowRoot.getElementById('intent-input');
+          if (!input) return;
+          const sel = this._getSelection();
+          if (sel && sel.rangeCount > 0 && input.contains(sel.anchorNode)) {
+            this.lastIntentRange = sel.getRangeAt(0).cloneRange();
+            // Also drop a temporary marker so we can recover exact spot even if focus shifts
+            this._placeCaretMarker(this.lastIntentRange);
+          }
+          // If no stored range and no live selection inside input, seed to end of input
+          if (!this.lastIntentRange) {
+            const seeded = document.createRange();
+            seeded.selectNodeContents(input);
+            seeded.collapse(false);
+            this.lastIntentRange = seeded.cloneRange();
+          }
+
+          // Perform insertion immediately on pointerdown to avoid any post-up focus/selection changes
+          const type = e.currentTarget.dataset.type;
+          if (type === 'screenshot') {
+            this._pointerInserted = true;
+            const key = e.currentTarget.dataset.index;
+            this.insertInlineTag(e.currentTarget.textContent, key);
+          } else {
+            const idx = parseInt(e.currentTarget.dataset.index);
+            const elements = this.stateManager.get('selection.elements');
+            if (elements[idx]) {
+              this._pointerInserted = true;
+              this.insertInlineTag(readableElementName(elements[idx].element), idx);
+            }
+          }
+        });
+        label.addEventListener('mousedown', (e) => {
+          // Some environments dispatch only mouse events; prevent default to avoid focus steal
+          e.preventDefault();
+        });
+
         label.addEventListener('click', (e) => {
-          const type = e.target.dataset.type;
+          // If we already handled pointerdown insertion, ignore the click
+          if (this._pointerInserted) {
+            this._pointerInserted = false;
+            e.preventDefault();
+            return;
+          }
+          e.preventDefault();
+          const type = e.currentTarget.dataset.type;
           
           if (type === 'screenshot') {
-            this.insertInlineTag('Screenshot', 'screenshot');
+            const key = e.currentTarget.dataset.index;
+            this.insertInlineTag(e.currentTarget.textContent, key);
           } else {
-            const idx = parseInt(e.target.dataset.index);
+            const idx = parseInt(e.currentTarget.dataset.index);
             const elements = this.stateManager.get('selection.elements');
             if (elements[idx]) {
               this.insertInlineTag(readableElementName(elements[idx].element), idx);
@@ -1679,26 +1828,80 @@
     insertInlineTag(label, index) {
       const input = this.shadowRoot.getElementById('intent-input');
       if (!input) return;
-      
-      input.focus();
-      
-      const selection = window.getSelection();
-      let range;
-      
-      if (selection && selection.rangeCount > 0 && input.contains(selection.anchorNode)) {
-        range = selection.getRangeAt(0);
-      } else {
-        range = document.createRange();
-        range.selectNodeContents(input);
-        range.collapse(false);
+
+      // Check if tag is already inserted (prevent duplicates)
+      const existingTag = input.querySelector(`.inline-element-tag[data-index="${String(index)}"]`);
+      if (existingTag) {
+        // Tag already exists, just focus it and scroll into view
+        existingTag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        input.focus();
+        return;
       }
+
+      // Choose the best available caret: prefer explicit marker, then live selection, then cached range
+      const selection = this._getSelection();
+      let workingRange = null;
+
+      // If input isn't focused or selection isn't in input, try to restore the last known caret first
+      const shadowActive = this.shadowRoot.activeElement;
+      if ((!shadowActive || shadowActive !== input) && this.lastIntentRange) {
+        try {
+          selection.removeAllRanges();
+          selection.addRange(this.lastIntentRange.cloneRange());
+        } catch (_) {}
+      }
+      const marker = input.querySelector(`[${this.CARET_MARK_ATTR}="1"]`);
+      if (marker) {
+        workingRange = document.createRange();
+        workingRange.setStartBefore(marker);
+        workingRange.collapse(true);
+        // Clean up marker immediately
+        marker.remove();
+      }
+      if (!workingRange && selection && selection.rangeCount > 0 && input.contains(selection.anchorNode)) {
+        workingRange = selection.getRangeAt(0).cloneRange();
+      } else if (!workingRange && this.lastIntentRange) {
+        workingRange = this.lastIntentRange.cloneRange();
+      }
+
+      input.focus();
+      if (workingRange) {
+        selection.removeAllRanges();
+        selection.addRange(workingRange);
+      }
+
+      const range = workingRange || (() => {
+        // Fallback: find better insertion point than just end of input
+        const fallbackRange = document.createRange();
+
+        // If there's existing content, find the logical insertion point
+        const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT, null);
+        let lastTextNode = null;
+        let textNode;
+
+        while (textNode = walker.nextNode()) {
+          lastTextNode = textNode;
+        }
+
+        if (lastTextNode && lastTextNode.textContent.trim()) {
+          // Insert at end of last meaningful text content
+          fallbackRange.setStart(lastTextNode, lastTextNode.textContent.length);
+          fallbackRange.setEnd(lastTextNode, lastTextNode.textContent.length);
+        } else {
+          // Empty or only tags - insert at end of input
+          fallbackRange.selectNodeContents(input);
+          fallbackRange.collapse(false);
+        }
+
+        return fallbackRange;
+      })();
       
       const tag = document.createElement('span');
       tag.className = 'inline-element-tag';
       tag.dataset.index = String(index);
       tag.textContent = label;
       tag.setAttribute('contenteditable', 'false');
-      
+
       const remove = document.createElement('span');
       remove.className = 'inline-tag-remove';
       remove.textContent = '×';
@@ -1706,58 +1909,152 @@
         e.stopPropagation();
         tag.remove();
         this.eventBus.emit('input:changed');
+        this.updateInsertedStates();
       });
       tag.appendChild(remove);
-      
+
       // Normalize whitespace: remove trailing spaces before insertion
       if (range.startContainer.nodeType === 3 && /\s$/.test(range.startContainer.textContent)) {
         range.startContainer.textContent = range.startContainer.textContent.replace(/\s+$/, ' ');
       }
-      
+
       range.deleteContents();
       range.insertNode(tag);
       range.setStartAfter(tag);
       range.collapse(true);
-      
-      // Insert trailing space for easier deletion
+
+      // Insert trailing space for easier deletion (simplified logic)
       const space = document.createTextNode(' ');
-      if (!range.startContainer || range.startContainer !== input) {
-        range.insertNode(space);
-        range.setStartAfter(space);
-        range.collapse(true);
-      }
-      
+      range.insertNode(space);
+      range.setStartAfter(space);
+      range.collapse(true);
+
       selection.removeAllRanges();
       selection.addRange(range);
-      
+      // Persist the latest caret position for the next interaction
+      this.lastIntentRange = range.cloneRange();
       this.eventBus.emit('input:changed');
+      this.updateInsertedStates();
+    }
+
+    _placeCaretMarker(range) {
+      try {
+        if (!range) return;
+        // Remove any existing markers first
+        const input = this.shadowRoot.getElementById('intent-input');
+        if (!input) return;
+        input.querySelectorAll(`[${this.CARET_MARK_ATTR}]`).forEach(n => n.remove());
+
+        const marker = document.createElement('span');
+        marker.setAttribute(this.CARET_MARK_ATTR, '1');
+        // Invisible, zero footprint
+        marker.style.cssText = 'display:inline-block;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;';
+        // Use a ZWSP to ensure the node positions correctly in text nodes
+        marker.textContent = '\u200b';
+        const collapsed = range.cloneRange();
+        collapsed.collapse(true);
+        collapsed.insertNode(marker);
+      } catch (_) {
+        // Best-effort; if marker fails we still rely on cached range
+      }
+    }
+
+    updateInsertedStates() {
+      if (!this.container) return;
+      const input = this.shadowRoot.getElementById('intent-input');
+      if (!input) return;
+
+      this.container.querySelectorAll('.context-tag').forEach(tag => {
+        const label = tag.querySelector('.tag-label');
+        if (!label) return;
+        const index = label.dataset.index;
+        const selector = `.inline-element-tag[data-index="${String(index)}"]`;
+        const inserted = !!input.querySelector(selector);
+        tag.classList.toggle('inserted', inserted);
+      });
+    }
+
+    _getSelection() {
+      try {
+        if (this.shadowRoot && typeof this.shadowRoot.getSelection === 'function') {
+          const sel = this.shadowRoot.getSelection();
+          if (sel) return sel;
+        }
+      } catch (_) {}
+      try {
+        return window.getSelection();
+      } catch (_) {
+        return null;
+      }
+    }
+
+    _rangeFromPoint(x, y, root) {
+      try {
+        let range = null;
+        // Prefer standard caretPositionFromPoint if available (gives node + offset)
+        const pos = (this.shadowRoot && typeof this.shadowRoot.caretPositionFromPoint === 'function')
+          ? this.shadowRoot.caretPositionFromPoint(x, y)
+          : (document.caretPositionFromPoint ? document.caretPositionFromPoint(x, y) : null);
+        if (pos && pos.offsetNode) {
+          range = document.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+        }
+        if (!range) {
+          const r2 = (this.shadowRoot && typeof this.shadowRoot.caretRangeFromPoint === 'function')
+            ? this.shadowRoot.caretRangeFromPoint(x, y)
+            : (document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null);
+          if (r2) {
+            range = r2;
+          }
+        }
+        if (range && root && !root.contains(range.startContainer)) {
+          // If the calculated range is not within the input, ignore it
+          return null;
+        }
+        return range;
+      } catch (_) {
+        return null;
+      }
     }
 
     removeElement(index) {
       const elements = this.stateManager.get('selection.elements');
       elements.splice(index, 1);
       this.stateManager.set('selection.elements', elements);
-      
-      // Remove corresponding inline chips
+
+      // Remove corresponding inline chips and update indices for remaining elements
       const input = this.shadowRoot.getElementById('intent-input');
       if (input) {
+        // Remove the specific inline tag for this element
         input.querySelectorAll(`.inline-element-tag[data-index="${String(index)}"]`).forEach(node => {
           this.cleanupWhitespaceAroundNode(node);
           node.remove();
         });
+
+        // Update indices for all subsequent inline tags (critical fix)
+        input.querySelectorAll('.inline-element-tag').forEach(tag => {
+          const currentIndex = parseInt(tag.dataset.index);
+          if (currentIndex > index) {
+            tag.dataset.index = String(currentIndex - 1);
+          }
+        });
       }
-      
+
       this.eventBus.emit('element:removed', index);
       this.render();
     }
 
-    removeScreenshot() {
-      this.stateManager.set('selection.screenshot', null);
+    removeScreenshot(id) {
+      const list = (this.stateManager.get('selection.screenshots') || []).slice();
+      const idx = list.findIndex(s => s.id === id);
+      if (idx >= 0) list.splice(idx, 1);
+      this.stateManager.set('selection.screenshots', list);
       
       // Remove corresponding inline chips
       const input = this.shadowRoot.getElementById('intent-input');
       if (input) {
-        input.querySelectorAll('.inline-element-tag[data-index="screenshot"]').forEach(node => {
+        input.querySelectorAll(`.inline-element-tag[data-index="ss-${id}"]`).forEach(node => {
           this.cleanupWhitespaceAroundNode(node);
           node.remove();
         });
@@ -1781,14 +2078,18 @@
     clear() {
       this.stateManager.batch({
         'selection.elements': [],
-        'selection.screenshot': null
+        'selection.screenshots': []
       });
-      
+
       const input = this.shadowRoot.getElementById('intent-input');
       if (input) {
+        // Remove all inline tags and clear the input
+        input.querySelectorAll('.inline-element-tag').forEach(tag => {
+          tag.remove();
+        });
         input.textContent = '';
       }
-      
+
       this.render();
     }
   }
@@ -2075,7 +2376,6 @@
    * ScreenshotSelector - Handle screenshot selection mode
    */
 
-
   class ScreenshotSelector {
     constructor(eventBus, stateManager, highlightManager, topBanner, chromeBridge) {
       this.eventBus = eventBus;
@@ -2085,6 +2385,7 @@
       this.chromeBridge = chromeBridge;
       this.isActive = false;
       this.screenshotStart = null;
+      this.overlay = null;
       
       // Bind methods
       this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -2100,7 +2401,13 @@
       
       this.topBanner.update('Drag to select area for screenshot');
       
-      document.addEventListener('mousedown', this.handleMouseDown, true);
+      this._createOverlay();
+      if (this.overlay) {
+        this.overlay.addEventListener('mousedown', this.handleMouseDown, true);
+      } else {
+        // Fallback: keep old behavior if overlay creation fails
+        document.addEventListener('mousedown', this.handleMouseDown, true);
+      }
       document.documentElement.classList.add('lumi-screenshot-cursor');
       document.body.classList.add('lumi-screenshot-cursor');
       
@@ -2116,7 +2423,13 @@
       this.topBanner.hide();
       this.highlightManager.hideScreenshotOverlay();
       
-      document.removeEventListener('mousedown', this.handleMouseDown, true);
+      if (this.overlay) {
+        this.overlay.removeEventListener('mousedown', this.handleMouseDown, true);
+        this.overlay.remove();
+        this.overlay = null;
+      } else {
+        document.removeEventListener('mousedown', this.handleMouseDown, true);
+      }
       document.removeEventListener('mousemove', this.handleMouseMove, true);
       document.removeEventListener('mouseup', this.handleMouseUp, true);
       document.documentElement.classList.remove('lumi-screenshot-cursor');
@@ -2127,15 +2440,8 @@
 
     handleMouseDown(e) {
       if (!this.isActive) return;
-
-      const tag = e.target?.tagName && e.target.tagName.toLowerCase();
-      const isPageBackground = tag === 'html' || tag === 'body';
-
-      if (!isPageBackground && shouldIgnoreElement(e.target)) {
-        return;
-      }
-
       e.preventDefault();
+      e.stopPropagation();
 
       this.screenshotStart = {
         x: e.clientX,
@@ -2166,7 +2472,10 @@
 
     handleMouseUp(e) {
       if (!this.screenshotStart) return;
-      
+
+      e.preventDefault();
+      e.stopPropagation();
+
       const end = {
         x: e.clientX,
         y: e.clientY
@@ -2197,15 +2506,42 @@
       try {
         const dataUrl = await this.chromeBridge.captureScreenshot();
         
-        this.stateManager.set('selection.screenshot', {
-          dataUrl,
-          bbox
-        });
+        // Support accumulating screenshots; prefer array if present
+        const existing = this.stateManager.get('selection.screenshots');
+        const next = Array.isArray(existing) ? existing.slice() : [];
+        next.push({ dataUrl, bbox, id: Date.now() });
+        this.stateManager.set('selection.screenshots', next);
         
         this.eventBus.emit('screenshot:captured', { dataUrl, bbox });
       } catch (error) {
         console.error('[ScreenshotSelector] Failed to capture:', error);
         this.eventBus.emit('screenshot:error', error);
+      }
+    }
+
+    _createOverlay() {
+      try {
+        const overlay = document.createElement('div');
+        overlay.className = 'lumi-screenshot-mask';
+        overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 2147483645;
+        cursor: crosshair;
+        background: transparent;
+      `;
+        const suppress = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        };
+        ['click', 'contextmenu', 'auxclick'].forEach(evt => {
+          overlay.addEventListener(evt, suppress, true);
+        });
+        document.body.appendChild(overlay);
+        this.overlay = overlay;
+      } catch (error) {
+        console.error('[ScreenshotSelector] Failed to create overlay:', error);
+        this.overlay = null;
       }
     }
   }
@@ -2676,8 +3012,8 @@
       this.chromeBridge = chromeBridge;
     }
 
-    async execute(engine, intent, elements, screenshot, pageInfo) {
-      const context = this.buildContext(intent, elements, screenshot, pageInfo);
+    async execute(engine, intent, elements, screenshot, pageInfo, screenshots = []) {
+      const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots);
       
       try {
         const result = await this.chromeBridge.executeOnServer(
@@ -2693,7 +3029,7 @@
       }
     }
 
-    buildContext(intent, elements, screenshot, pageInfo) {
+    buildContext(intent, elements, screenshot, pageInfo, screenshots = []) {
       const context = {
         intent,
         pageUrl: pageInfo.url,
@@ -2732,7 +3068,10 @@
         }
       }
       
-      // Add screenshot context
+      // Add screenshot context (single + multiple)
+      if (screenshots && screenshots.length > 0) {
+        context.screenshots = screenshots.map((s, i) => ({ index: i + 1, bbox: s.bbox }));
+      }
       if (screenshot) {
         context.screenshot = screenshot;
       }
@@ -2960,16 +3299,17 @@
       // Input events
       eventBus.on('input:changed', () => {
         bubbleUI.updateSendButtonState();
+        if (contextTags) contextTags.updateInsertedStates();
       });
 
       // Submit event
       eventBus.on('submit:requested', async () => {
         const intent = bubbleUI.getInputValue();
         const elements = stateManager.get('selection.elements');
-        const screenshot = stateManager.get('selection.screenshot');
+        const screenshots = stateManager.get('selection.screenshots') || [];
         const projectAllowed = stateManager.get('projects.allowed');
 
-        if (!intent || (elements.length === 0 && !screenshot)) {
+        if (!intent || (elements.length === 0 && screenshots.length === 0)) {
           bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
           return;
         }
@@ -3001,12 +3341,14 @@
             title: document.title
           };
 
+          const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
           const result = await serverClient.execute(
             engine,
             intent,
             elements,
-            screenshot,
-            pageInfo
+            lastScreenshot,
+            pageInfo,
+            screenshots
           );
 
           if (result.success) {
@@ -3016,7 +3358,7 @@
             // Clear selections after successful submission
             stateManager.batch({
               'selection.elements': [],
-              'selection.screenshot': null
+              'selection.screenshots': []
             });
             if (contextTags) {
               contextTags.render();
@@ -3049,7 +3391,7 @@
       eventBus.on('context:clear', () => {
         stateManager.batch({
           'selection.elements': [],
-          'selection.screenshot': null
+          'selection.screenshots': []
         });
         bubbleUI.updateSendButtonState();
         if (contextTags) {

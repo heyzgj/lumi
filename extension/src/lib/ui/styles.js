@@ -281,11 +281,7 @@ export const BUBBLE_STYLES = `
     }
   }
 
-  .context-tag.screenshot {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
-    color: #6ee7b7;
-  }
+  /* Screenshot tags use same base styling as element tags; inserted state turns green */
 
   .tag-label {
     cursor: pointer;
@@ -307,6 +303,16 @@ export const BUBBLE_STYLES = `
   .tag-remove:hover {
     opacity: 1;
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  .context-tag.inserted {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #86efac;
+  }
+
+  .context-tag.inserted .tag-label {
+    opacity: 0.7;
   }
 
   /* Inline Element Tags (inside contenteditable) */
@@ -566,4 +572,7 @@ export const GLOBAL_STYLES = `
   /* Global cursor helpers for selection modes */
   html.lumi-element-cursor, body.lumi-element-cursor { cursor: pointer !important; }
   html.lumi-screenshot-cursor, body.lumi-screenshot-cursor { cursor: crosshair !important; }
+  html.lumi-screenshot-cursor *, body.lumi-screenshot-cursor * {
+    cursor: crosshair !important;
+  }
 `;

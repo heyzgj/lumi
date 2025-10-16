@@ -18,7 +18,7 @@ export default class StateManager {
       },
       selection: {
         elements: [],
-        screenshot: null,
+        screenshots: [],
         hoveredElement: null
       },
       engine: {
@@ -137,7 +137,7 @@ export default class StateManager {
       },
       selection: {
         elements: [],
-        screenshot: null,
+        screenshots: [],
         hoveredElement: null
       },
       engine: {

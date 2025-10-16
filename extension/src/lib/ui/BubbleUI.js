@@ -158,7 +158,22 @@ export default class BubbleUI {
         e.preventDefault();
         this.eventBus.emit('submit:requested');
       }
+      // Prevent host page shortcuts from intercepting while typing in bubble
+      e.stopPropagation();
     });
+
+    // Make sure page-level shortcuts don't override bubble when focused
+    try {
+      this.shadow.addEventListener('keydown', (e) => {
+        if (this.shadow.contains(e.target)) e.stopPropagation();
+      }, { capture: true });
+      this.shadow.addEventListener('keypress', (e) => {
+        if (this.shadow.contains(e.target)) e.stopPropagation();
+      }, { capture: true });
+      this.shadow.addEventListener('keyup', (e) => {
+        if (this.shadow.contains(e.target)) e.stopPropagation();
+      }, { capture: true });
+    } catch (_) {}
     
     sendBtn.addEventListener('click', () => {
       this.eventBus.emit('submit:requested');
@@ -503,10 +518,10 @@ export default class BubbleUI {
     const sendBtn = this.shadow.getElementById('send-btn');
     const input = this.shadow.getElementById('intent-input');
     const elements = this.stateManager.get('selection.elements');
-    const screenshot = this.stateManager.get('selection.screenshot');
+    const screenshots = this.stateManager.get('selection.screenshots') || [];
     const projectAllowed = this.stateManager.get('projects.allowed');
     
-    const hasContext = elements.length > 0 || screenshot;
+    const hasContext = elements.length > 0 || screenshots.length > 0;
     const hasIntent = input && input.textContent.trim().length > 0;
     const isProcessing = this.stateManager.get('processing.active');
     

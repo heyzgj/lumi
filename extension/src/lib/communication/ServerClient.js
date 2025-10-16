@@ -9,8 +9,8 @@ export default class ServerClient {
     this.chromeBridge = chromeBridge;
   }
 
-  async execute(engine, intent, elements, screenshot, pageInfo) {
-    const context = this.buildContext(intent, elements, screenshot, pageInfo);
+  async execute(engine, intent, elements, screenshot, pageInfo, screenshots = []) {
+    const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots);
     
     try {
       const result = await this.chromeBridge.executeOnServer(
@@ -26,7 +26,7 @@ export default class ServerClient {
     }
   }
 
-  buildContext(intent, elements, screenshot, pageInfo) {
+  buildContext(intent, elements, screenshot, pageInfo, screenshots = []) {
     const context = {
       intent,
       pageUrl: pageInfo.url,
@@ -65,7 +65,10 @@ export default class ServerClient {
       }
     }
     
-    // Add screenshot context
+    // Add screenshot context (single + multiple)
+    if (screenshots && screenshots.length > 0) {
+      context.screenshots = screenshots.map((s, i) => ({ index: i + 1, bbox: s.bbox }));
+    }
     if (screenshot) {
       context.screenshot = screenshot;
     }

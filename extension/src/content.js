@@ -231,16 +231,17 @@ function bootstrap() {
     // Input events
     eventBus.on('input:changed', () => {
       bubbleUI.updateSendButtonState();
+      if (contextTags) contextTags.updateInsertedStates();
     });
 
     // Submit event
     eventBus.on('submit:requested', async () => {
       const intent = bubbleUI.getInputValue();
       const elements = stateManager.get('selection.elements');
-      const screenshot = stateManager.get('selection.screenshot');
+      const screenshots = stateManager.get('selection.screenshots') || [];
       const projectAllowed = stateManager.get('projects.allowed');
 
-      if (!intent || (elements.length === 0 && !screenshot)) {
+      if (!intent || (elements.length === 0 && screenshots.length === 0)) {
         bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
         return;
       }
@@ -272,12 +273,14 @@ function bootstrap() {
           title: document.title
         };
 
+        const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
         const result = await serverClient.execute(
           engine,
           intent,
           elements,
-          screenshot,
-          pageInfo
+          lastScreenshot,
+          pageInfo,
+          screenshots
         );
 
         if (result.success) {
@@ -287,7 +290,7 @@ function bootstrap() {
           // Clear selections after successful submission
           stateManager.batch({
             'selection.elements': [],
-            'selection.screenshot': null
+            'selection.screenshots': []
           });
           if (contextTags) {
             contextTags.render();
@@ -320,7 +323,7 @@ function bootstrap() {
     eventBus.on('context:clear', () => {
       stateManager.batch({
         'selection.elements': [],
-        'selection.screenshot': null
+        'selection.screenshots': []
       });
       bubbleUI.updateSendButtonState();
       if (contextTags) {

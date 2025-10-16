@@ -2,8 +2,6 @@
  * ScreenshotSelector - Handle screenshot selection mode
  */
 
-import { shouldIgnoreElement } from '../utils/dom.js';
-
 export default class ScreenshotSelector {
   constructor(eventBus, stateManager, highlightManager, topBanner, chromeBridge) {
     this.eventBus = eventBus;
@@ -13,6 +11,7 @@ export default class ScreenshotSelector {
     this.chromeBridge = chromeBridge;
     this.isActive = false;
     this.screenshotStart = null;
+    this.overlay = null;
     
     // Bind methods
     this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -28,7 +27,13 @@ export default class ScreenshotSelector {
     
     this.topBanner.update('Drag to select area for screenshot');
     
-    document.addEventListener('mousedown', this.handleMouseDown, true);
+    this._createOverlay();
+    if (this.overlay) {
+      this.overlay.addEventListener('mousedown', this.handleMouseDown, true);
+    } else {
+      // Fallback: keep old behavior if overlay creation fails
+      document.addEventListener('mousedown', this.handleMouseDown, true);
+    }
     document.documentElement.classList.add('lumi-screenshot-cursor');
     document.body.classList.add('lumi-screenshot-cursor');
     
@@ -44,7 +49,13 @@ export default class ScreenshotSelector {
     this.topBanner.hide();
     this.highlightManager.hideScreenshotOverlay();
     
-    document.removeEventListener('mousedown', this.handleMouseDown, true);
+    if (this.overlay) {
+      this.overlay.removeEventListener('mousedown', this.handleMouseDown, true);
+      this.overlay.remove();
+      this.overlay = null;
+    } else {
+      document.removeEventListener('mousedown', this.handleMouseDown, true);
+    }
     document.removeEventListener('mousemove', this.handleMouseMove, true);
     document.removeEventListener('mouseup', this.handleMouseUp, true);
     document.documentElement.classList.remove('lumi-screenshot-cursor');
@@ -55,15 +66,8 @@ export default class ScreenshotSelector {
 
   handleMouseDown(e) {
     if (!this.isActive) return;
-
-    const tag = e.target?.tagName && e.target.tagName.toLowerCase();
-    const isPageBackground = tag === 'html' || tag === 'body';
-
-    if (!isPageBackground && shouldIgnoreElement(e.target)) {
-      return;
-    }
-
     e.preventDefault();
+    e.stopPropagation();
 
     this.screenshotStart = {
       x: e.clientX,
@@ -94,7 +98,10 @@ export default class ScreenshotSelector {
 
   handleMouseUp(e) {
     if (!this.screenshotStart) return;
-    
+
+    e.preventDefault();
+    e.stopPropagation();
+
     const end = {
       x: e.clientX,
       y: e.clientY
@@ -125,15 +132,42 @@ export default class ScreenshotSelector {
     try {
       const dataUrl = await this.chromeBridge.captureScreenshot();
       
-      this.stateManager.set('selection.screenshot', {
-        dataUrl,
-        bbox
-      });
+      // Support accumulating screenshots; prefer array if present
+      const existing = this.stateManager.get('selection.screenshots');
+      const next = Array.isArray(existing) ? existing.slice() : [];
+      next.push({ dataUrl, bbox, id: Date.now() });
+      this.stateManager.set('selection.screenshots', next);
       
       this.eventBus.emit('screenshot:captured', { dataUrl, bbox });
     } catch (error) {
       console.error('[ScreenshotSelector] Failed to capture:', error);
       this.eventBus.emit('screenshot:error', error);
+    }
+  }
+
+  _createOverlay() {
+    try {
+      const overlay = document.createElement('div');
+      overlay.className = 'lumi-screenshot-mask';
+      overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 2147483645;
+        cursor: crosshair;
+        background: transparent;
+      `;
+      const suppress = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      ['click', 'contextmenu', 'auxclick'].forEach(evt => {
+        overlay.addEventListener(evt, suppress, true);
+      });
+      document.body.appendChild(overlay);
+      this.overlay = overlay;
+    } catch (error) {
+      console.error('[ScreenshotSelector] Failed to create overlay:', error);
+      this.overlay = null;
     }
   }
 }
