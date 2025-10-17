@@ -2780,19 +2780,29 @@
 
     try {
       const url = new URL(pageUrl);
-      const host = url.host;
+      const host = url.host.toLowerCase();
+      let best = null;
+      let bestScore = -Infinity;
       for (const project of projects) {
         if (!project || project.enabled === false) continue;
         const hosts = Array.isArray(project.hosts) ? project.hosts : [];
-        if (hosts.some((pattern) => hostMatches(pattern, host))) {
-          return { project };
+        for (const pattern of hosts) {
+          if (!hostMatches(pattern, host)) continue;
+          const normalized = String(pattern).trim().toLowerCase();
+          const wildcards = (normalized.match(/\*/g) || []).length;
+          const nonWildcardLen = normalized.replace(/\*/g, '').length;
+          const exact = normalized === host ? 1 : 0;
+          const score = exact * 10000 + nonWildcardLen - wildcards * 10;
+          if (score > bestScore) {
+            bestScore = score;
+            best = project;
+          }
         }
       }
+      return { project: best };
     } catch (error) {
       return { project: null };
     }
-
-    return { project: null };
   }
 
   /**

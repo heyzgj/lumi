@@ -239,20 +239,32 @@ function resolveProjectForUrl(pageUrl) {
   const host = parsed.host;
   const projects = Array.isArray(config.projects) ? config.projects : [];
 
+  // Choose the most specific matching project (prefer exact host matches,
+  // then fewer wildcards, then longer non-wildcard length)
+  let best = null;
+  let bestScore = -Infinity;
+
   for (const project of projects) {
     if (!project || project.enabled === false) continue;
     const hosts = Array.isArray(project.hosts) ? project.hosts : [];
     if (hosts.length === 0) continue;
-    const matched = hosts.some((pattern) => hostMatches(pattern, host));
-    if (!matched) continue;
-
-    const cwd = project.workingDirectory || config.workingDirectory;
-    if (!cwd) continue;
-
-    return { project, cwd };
+    for (const pattern of hosts) {
+      if (!hostMatches(pattern, host)) continue;
+      const normalized = normalizeHostPattern(pattern);
+      const wildcards = (normalized.match(/\*/g) || []).length;
+      const nonWildcardLen = normalized.replace(/\*/g, '').length;
+      const exact = normalized === host.toLowerCase() ? 1 : 0;
+      const score = exact * 10000 + nonWildcardLen - wildcards * 10;
+      if (score > bestScore) {
+        const cwd = project.workingDirectory || config.workingDirectory;
+        if (!cwd) continue;
+        bestScore = score;
+        best = { project, cwd };
+      }
+    }
   }
 
-  return { project: null, cwd: config.workingDirectory };
+  return best || { project: null, cwd: config.workingDirectory };
 }
 
 function normalizeHostPattern(value) {
@@ -337,7 +349,8 @@ app.get('/health', (req, res) => {
       workingDirectory: config.workingDirectory,
       cliCapabilities,
       codex: config.codex,
-      claude: config.claude
+      claude: config.claude,
+      projects: publicConfig().projects
     }
   });
 });

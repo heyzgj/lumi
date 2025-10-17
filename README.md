@@ -25,19 +25,25 @@ No more guessing selectors or typing long prompts — just click, speak, and wat
 - At least one CLI: Codex and or Claude Code CLI
 
 ## Quick Start
-1. **Install & seed config**
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/heyzgj/lumi
+   cd lumi
+   ```
+
+2. **Install & seed config**
    ```bash
    npm run setup
    ```
    Installs dependencies for `extension/` and `server/`, asks where to store `config.json`, and checks that the CLIs are visible on your `$PATH`.
 
-2. **Run the bridge**
+3. **Run the bridge**
    ```bash
    npm run dev
    ```
    The server listens on `http://127.0.0.1:3456` (use `LUMI_PORT=4567 npm run dev` if you need another port).
 
-3. **Build & load the extension**
+4. **Build & load the extension**
    ```bash
    npm run build
    ```
@@ -80,7 +86,7 @@ Click the "Test" button - should show "Connected" in green.
 **Pro tip:** If you're unsure about any setting, ask your AI assistant! They can explain what each option does and help you find your working directory and host information.
 
 ## Daily Use
-1. Keep the server running (`npm run dev`).
+1. Keep the server running (from the project directory: `npm run dev`).
 2. Visit a mapped host and click the LUMI icon to inject the bubble.
 3. Select DOM nodes or grab a screenshot, type your instruction, choose an engine, and send.
    - If you capture a screenshot, the server saves it and (for Claude) appends the local path to the prompt so Claude can inspect it.

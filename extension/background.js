@@ -57,39 +57,15 @@ function normalizeHostPattern(value) {
 function sanitizeProjects(projects = []) {
   if (!Array.isArray(projects)) return [];
   return projects
-    .map((project, index) => {
-      if (!project || typeof project !== 'object') return null;
-      const id = typeof project.id === 'string' && project.id.trim().length
-        ? project.id.trim()
-        : `project-${index + 1}`;
-      const name = typeof project.name === 'string' ? project.name : '';
-      const workingDirectory = typeof project.workingDirectory === 'string'
-        ? project.workingDirectory.trim()
-        : '';
-      const hosts = Array.isArray(project.hosts)
-        ? project.hosts.map((host) => normalizeHostPattern(host)).filter(Boolean)
-        : [];
-      const enabled = project.enabled !== false;
-
-      if (!workingDirectory || hosts.length === 0) return null;
-
-      return { id, name, workingDirectory, hosts, enabled };
-    })
-    .filter(Boolean);
-}
-
-function sanitizeProjects(projects = []) {
-  if (!Array.isArray(projects)) return [];
-  return projects
     .map((project) => {
       if (!project || typeof project !== 'object') return null;
-      const id = typeof project.id === 'string' ? project.id : undefined;
+      const id = typeof project.id === 'string' && project.id.trim().length ? project.id.trim() : undefined;
       const name = typeof project.name === 'string' ? project.name : '';
       const workingDirectory = typeof project.workingDirectory === 'string'
         ? project.workingDirectory.trim()
         : '';
       const hosts = Array.isArray(project.hosts)
-        ? project.hosts.map((host) => String(host).trim()).filter(Boolean)
+        ? project.hosts.map((host) => normalizeHostPattern(String(host))).filter(Boolean)
         : [];
       const enabled = project.enabled !== false;
 
