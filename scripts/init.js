@@ -108,7 +108,15 @@ async function recordLocation(configDir) {
 }
 
 async function copySampleConfig() {
-  const samplePath = path.join(repoRoot, 'docs', 'config.sample.json');
+  const docsDir = path.join(repoRoot, 'docs');
+  try {
+    await fs.promises.mkdir(docsDir, { recursive: true });
+  } catch (e) {
+    // If creating docs directory fails, skip without crashing setup.
+    console.warn('⚠️  Unable to ensure docs directory, skipping sample config.');
+    return;
+  }
+  const samplePath = path.join(docsDir, 'config.sample.json');
   if (fs.existsSync(samplePath)) return;
   await fs.promises.writeFile(samplePath, JSON.stringify(defaultConfig, null, 2));
   console.log('🪄 Added docs/config.sample.json for reference.');
