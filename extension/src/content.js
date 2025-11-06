@@ -10,6 +10,7 @@ import StateManager from './lib/core/StateManager.js';
 // UI
 import TopBanner from './lib/ui/TopBanner.js';
 import { GLOBAL_STYLES } from './lib/ui/styles.js';
+import { TOKENS_CSS } from '../shared/tokens.js';
 import { readableElementName } from './lib/utils/dom.js';
 
 // Selection
@@ -150,9 +151,12 @@ function bootstrap() {
 
   // Inject global styles
   function injectGlobalStyles() {
-    const style = document.createElement('style');
-    style.textContent = GLOBAL_STYLES;
-    document.head.appendChild(style);
+    const s1 = document.createElement('style');
+    s1.textContent = TOKENS_CSS;
+    document.head.appendChild(s1);
+    const s2 = document.createElement('style');
+    s2.textContent = GLOBAL_STYLES;
+    document.head.appendChild(s2);
   }
 
   // Event bindings

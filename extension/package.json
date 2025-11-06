@@ -3,6 +3,7 @@
   "version": "3.1.0",
   "type": "module",
   "scripts": {
+    "prebuild": "node ../scripts/build-tokens.cjs",
     "build": "rollup -c",
     "test": "jest",
     "test:watch": "jest --watch",

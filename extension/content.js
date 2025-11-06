@@ -401,37 +401,6 @@
    */
 
   const GLOBAL_STYLES = `
-  /* Dock design tokens at document root for cross-surface components */
-  :root {
-    --dock-bg: rgba(255,255,255,0.88);
-    --dock-stroke: rgba(0,0,0,0.08);
-    --dock-fg: #111111;
-    --dock-fg-2: #5F6368;
-    --icon-opacity: 0.9;
-    --success: #10B981;
-    --accent: #3B82F6;
-    --error: #EF4444;
-    --on-accent: #ffffff;
-    --on-strong: #ffffff;
-    --shadow: 0 4px 12px rgba(0,0,0,0.05);
-    --radius-panel: 18px;
-    --radius-chip: 12px;
-  }
-  :root.dark-dock {
-    --dock-bg: rgba(22,22,24,0.88);
-    --dock-stroke: rgba(255,255,255,0.12);
-    --dock-fg: #F5F5F7;
-    --dock-fg-2: #B0B3B8;
-    --icon-opacity: 1;
-    --success: #34D399;
-    --accent: #60A5FA;
-    --error: #F87171;
-    --on-accent: #ffffff;
-    --on-strong: #ffffff;
-    --shadow: 0 6px 16px rgba(0,0,0,0.35);
-    --radius-panel: 18px;
-    --radius-chip: 12px;
-  }
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -467,6 +436,8 @@
     overflow: hidden !important;
   }
 `;
+
+  const TOKENS_CSS = ":root {\n  --dock-bg: rgba(255,255,255,0.88);\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 4px 12px rgba(0,0,0,0.05);\n  --radius-panel: 18px;\n  --radius-chip: 12px;\n}\n:root.dark-dock {\n  --dock-bg: rgba(22,22,24,0.88);\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 6px 16px rgba(0,0,0,0.35);\n  --radius-panel: 18px;\n  --radius-chip: 12px;\n}\n";
 
   /**
    * DOM Utilities
@@ -4070,9 +4041,12 @@
 
     // Inject global styles
     function injectGlobalStyles() {
-      const style = document.createElement('style');
-      style.textContent = GLOBAL_STYLES;
-      document.head.appendChild(style);
+      const s1 = document.createElement('style');
+      s1.textContent = TOKENS_CSS;
+      document.head.appendChild(s1);
+      const s2 = document.createElement('style');
+      s2.textContent = GLOBAL_STYLES;
+      document.head.appendChild(s2);
     }
 
     // Event bindings
