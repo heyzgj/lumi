@@ -1,13 +1,13 @@
 :root {
-  color-scheme: dark;
-  --bg-primary: rgba(15, 23, 42, 0.96);
-  --bg-secondary: rgba(30, 41, 59, 0.88);
-  --border: rgba(255, 255, 255, 0.06);
+  color-scheme: light;
+  --bg-primary: #ffffff;
+  --bg-secondary: rgba(255, 255, 255, 0.92);
+  --border: rgba(0, 0, 0, 0.1);
   --accent-blue: #3b82f6;
   --accent-green: #10b981;
-  --text-primary: rgba(248, 250, 252, 0.96);
-  --text-secondary: rgba(226, 232, 240, 0.72);
-  --shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+  --text-primary: #111111;
+  --text-secondary: #5F6368;
+  --shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
@@ -18,9 +18,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(120% 120% at 50% 0%, rgba(59, 130, 246, 0.12), transparent 55%),
-              radial-gradient(140% 140% at 90% 10%, rgba(16, 185, 129, 0.1), transparent 60%),
-              #0f172a;
+  background: #f6f7f9;
   color: var(--text-primary);
 }
 
@@ -31,9 +29,9 @@ body {
 }
 
 .sidebar {
-  backdrop-filter: blur(24px);
-  background: rgba(15, 23, 42, 0.88);
-  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  backdrop-filter: blur(18px);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
   padding: 36px 24px;
   display: flex;
   flex-direction: column;
@@ -74,16 +72,9 @@ body {
   transition: background 160ms ease, transform 160ms ease;
 }
 
-.nav-link:hover {
-  transform: translateX(2px);
-  background: rgba(59, 130, 246, 0.22);
-}
+.nav-link:hover { transform: translateX(2px); background: rgba(59, 130, 246, 0.18); }
 
-.nav-link.active {
-  background: rgba(59, 130, 246, 0.32);
-  color: white;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
-}
+.nav-link.active { background: rgba(59, 130, 246, 0.28); color: #fff; box-shadow: var(--shadow); }
 
 .sidebar-actions {
   margin-top: auto;
@@ -125,7 +116,7 @@ body {
   border-radius: 24px;
   padding: 32px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(28px);
+  backdrop-filter: blur(18px);
   gap: 24px;
 }
 
@@ -182,8 +173,8 @@ label {
 input[type="text"],
 input[type="url"],
 select {
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 14px;
   color: var(--text-primary);
@@ -192,11 +183,7 @@ select {
 }
 
 input:focus,
-select:focus {
-  outline: none;
-  border-color: rgba(59, 130, 246, 0.6);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
-}
+select:focus { outline: none; border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2); }
 
 small {
   color: var(--text-secondary);

@@ -117,16 +117,26 @@
       // Initial state structure
       this.state = {
         ui: {
-          bubbleVisible: false,
-          bubblePosition: { left: 24, bottom: 24 },
           mode: 'idle', // 'idle' | 'element' | 'screenshot'
-          loading: false,
-          loadingText: 'Processing...'
+          dockOpen: false,
+          dockWidth: 420,
+          dockTab: 'chat',
+          dockState: 'normal' // 'normal' | 'compact' | 'expanded'
         },
         selection: {
           elements: [],
           screenshots: [],
           hoveredElement: null
+        },
+        sessions: {
+          currentId: null,
+          list: []
+        },
+        wysiwyg: {
+          active: false,
+          pending: null, // { index, changes }
+          edits: [], // [{ index, selector, changes, summary? }]
+          hasDiffs: false
         },
         engine: {
           current: 'codex',
@@ -154,7 +164,7 @@
 
     /**
      * Get current state or specific path
-     * @param {string} [path] - Dot-separated path (e.g., 'ui.bubbleVisible')
+     * @param {string} [path] - Dot-separated path (e.g., 'ui.dockOpen')
      * @returns {any} State value
      */
     get(path) {
@@ -236,16 +246,26 @@
       
       this.state = {
         ui: {
-          bubbleVisible: false,
-          bubblePosition: { left: 24, bottom: 24 },
           mode: 'idle',
-          loading: false,
-          loadingText: 'Processing...'
+          dockOpen: false,
+          dockWidth: 420,
+          dockTab: 'chat',
+          dockState: 'normal'
         },
         selection: {
           elements: [],
           screenshots: [],
           hoveredElement: null
+        },
+        sessions: {
+          currentId: null,
+          list: []
+        },
+        wysiwyg: {
+          active: false,
+          pending: null,
+          edits: [],
+          hasDiffs: false
         },
         engine: {
           current: 'codex',
@@ -313,1127 +333,6 @@
   }
 
   /**
-   * UI Styles - Centralized CSS definitions
-   * All Shadow DOM styles in one place
-   */
-
-  const BUBBLE_STYLES = `
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  :host {
-    --bg-primary: rgba(15, 23, 42, 0.95);
-    --bg-secondary: rgba(30, 41, 59, 0.9);
-    --accent-blue: #3b82f6;
-    --accent-green: #10b981;
-    --text-primary: rgba(248, 250, 252, 0.95);
-    --text-secondary: rgba(226, 232, 240, 0.6);
-    --border: rgba(148, 163, 184, 0.2);
-  }
-
-  .bubble {
-    width: 420px;
-    background: var(--bg-primary);
-    backdrop-filter: blur(24px) saturate(180%);
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: var(--text-primary);
-    animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    overflow: hidden;
-  }
-
-  @keyframes slideInUp {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* Top Bar */
-  .top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(15, 23, 42, 0.6);
-  }
-
-  .left-section {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    position: relative;
-  }
-
-  .logo {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-  }
-
-  .engine-selector {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .engine-selector:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(148, 163, 184, 0.3);
-  }
-
-  .status-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent-green);
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  .status-indicator.offline {
-    background: #ef4444;
-    animation: none;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  .engine-name {
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .dropdown-arrow {
-    font-size: 10px;
-    opacity: 0.6;
-    transition: transform 0.2s;
-  }
-
-  .engine-selector.open .dropdown-arrow {
-    transform: rotate(180deg);
-  }
-
-  /* Engine Dropdown */
-  .engine-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: 120px;
-    background: rgba(30, 41, 59, 0.98);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    display: none;
-    z-index: 100;
-    animation: dropdownSlideIn 0.2s ease-out;
-  }
-
-  @keyframes dropdownSlideIn {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .engine-dropdown.open {
-    display: block;
-  }
-
-  .engine-option {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: background 0.15s;
-    font-size: 12px;
-  }
-
-  .engine-option:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .engine-option.disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-    pointer-events: auto;
-  }
-
-  .engine-option:first-child {
-    border-radius: 6px 6px 0 0;
-  }
-
-  .engine-option:last-child {
-    border-radius: 0 0 6px 6px;
-  }
-
-  .engine-option-name {
-    font-weight: 500;
-  }
-
-  .engine-check {
-    opacity: 0;
-    color: var(--accent-green);
-    font-size: 14px;
-  }
-
-  .engine-option.selected .engine-check {
-    opacity: 1;
-  }
-
-  .engine-option-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .engine-status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #6b7280;
-  }
-
-  .engine-status-dot.available {
-    background: var(--accent-green);
-  }
-
-  .right-section {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .icon-btn {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid transparent;
-    background: transparent;
-    border-radius: 6px;
-    cursor: pointer;
-    color: var(--text-secondary);
-    transition: all 0.15s;
-  }
-
-  .icon-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
-    border-color: var(--border);
-  }
-
-  .icon-btn.active {
-    background: var(--accent-blue);
-    color: white;
-    border-color: var(--accent-blue);
-  }
-
-  .icon-btn svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  /* Context Tags */
-  .context-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 8px;
-  }
-
-  .context-tags:empty {
-    display: none;
-  }
-
-  .context-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 500;
-    color: #93c5fd;
-    animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes scaleIn {
-    from {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  /* Screenshot tags use same base styling as element tags; inserted state turns green */
-
-  .tag-label {
-    cursor: pointer;
-  }
-
-  .tag-remove {
-    width: 14px;
-    height: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 10px;
-    opacity: 0.6;
-    transition: all 0.15s;
-  }
-
-  .tag-remove:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  .context-tag.inserted {
-    background: rgba(34, 197, 94, 0.15);
-    border-color: rgba(34, 197, 94, 0.3);
-    color: #86efac;
-  }
-
-  .context-tag.inserted .tag-label {
-    opacity: 0.7;
-  }
-
-  /* Inline Element Tags (inside contenteditable) */
-  .inline-element-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 6px;
-    background: rgba(59, 130, 246, 0.25);
-    border: 1px solid rgba(59, 130, 246, 0.4);
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    color: #93c5fd;
-    cursor: default;
-    user-select: none;
-    margin: 0 2px;
-    vertical-align: middle;
-  }
-
-  .inline-tag-remove {
-    font-size: 9px;
-    opacity: 0.7;
-    margin-left: 2px;
-  }
-
-  .inline-tag-remove:hover {
-    opacity: 1;
-  }
-
-  /* Input Container */
-  .input-container {
-    padding: 16px;
-    position: relative;
-  }
-
-  .input-wrapper {
-    position: relative;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    transition: all 0.15s;
-  }
-
-  .input-wrapper:focus-within {
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-
-  .input-field {
-    width: 100%;
-    min-height: 80px;
-    max-height: 200px;
-    padding: 12px 48px 12px 12px;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: inherit;
-    line-height: 1.5;
-    outline: none;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-
-  .input-field:empty:before {
-    content: attr(data-placeholder);
-    color: var(--text-secondary);
-    pointer-events: none;
-  }
-
-  .send-btn {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--accent-blue);
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-    color: white;
-  }
-
-  .send-btn:hover:not(:disabled) {
-    background: #2563eb;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-  }
-
-  .send-btn:active:not(:disabled) {
-    transform: translateY(0);
-  }
-
-  .send-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .send-btn svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  /* Loading Overlay */
-  .loading-overlay {
-    position: absolute;
-    inset: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(15, 23, 42, 0.9);
-    backdrop-filter: blur(4px);
-    border-radius: 8px;
-    animation: fadeIn 0.2s;
-  }
-
-  .loading-overlay.active {
-    display: flex;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  .loading-content {
-    text-align: center;
-  }
-
-  .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(59, 130, 246, 0.2);
-    border-top-color: var(--accent-blue);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 8px;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .loading-text {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  /* Status Message */
-  .status-message {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
-    font-size: 12px;
-    display: none;
-    align-items: center;
-    gap: 8px;
-    animation: slideDown 0.2s;
-    position: relative;
-  }
-
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .status-message.active {
-    display: flex;
-  }
-
-  .status-message.success {
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--accent-green);
-  }
-
-  .status-message.error {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-  }
-
-  #status-text {
-    flex: 1;
-  }
-
-  .status-close {
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    color: inherit;
-    opacity: 0.6;
-    transition: all 0.15s;
-  }
-
-  .status-close:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  /* Drag Handle */
-  .drag-handle {
-    cursor: move;
-    user-select: none;
-    touch-action: none;
-  }
-
-  .bubble.dragging {
-    transition: none !important;
-    pointer-events: none;
-  }
-
-  .bubble.dragging * {
-    pointer-events: none;
-  }
-`;
-
-  const GLOBAL_STYLES = `
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes scaleIn {
-    from {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-  @keyframes slideDown {
-    from {
-      transform: translateY(-100%);
-    }
-    to {
-      transform: translateY(0);
-    }
-  }
-  /* Global cursor helpers for selection modes */
-  html.lumi-element-cursor, body.lumi-element-cursor { cursor: pointer !important; }
-  html.lumi-screenshot-cursor, body.lumi-screenshot-cursor { cursor: crosshair !important; }
-  html.lumi-screenshot-cursor *, body.lumi-screenshot-cursor * {
-    cursor: crosshair !important;
-  }
-`;
-
-  /**
-   * BubbleUI - Main Bubble interface with Shadow DOM
-   */
-
-
-  class BubbleUI {
-    constructor(eventBus, stateManager) {
-      this.eventBus = eventBus;
-      this.stateManager = stateManager;
-      this.container = null;
-      this.shadow = null;
-    }
-
-    mount() {
-      if (this.container) return;
-      
-      // Create container
-      this.container = document.createElement('div');
-      this.container.id = 'lumi-bubble-container';
-      this.container.style.cssText = `
-      position: fixed;
-      left: 24px;
-      bottom: 24px;
-      z-index: 2147483647;
-      display: none;
-    `;
-      
-      // Create Shadow DOM
-      this.shadow = this.container.attachShadow({ mode: 'open' });
-      this.shadow.innerHTML = this.getHTML();
-      
-      document.body.appendChild(this.container);
-      
-      // Setup event listeners
-      this.setupListeners();
-    }
-
-    getHTML() {
-      return `
-      <style>${BUBBLE_STYLES}</style>
-      
-      <div class="bubble" id="bubble-main">
-        <!-- Top Bar (draggable) -->
-        <div class="top-bar drag-handle" id="drag-handle">
-          <div class="left-section">
-            <div class="logo">LUMI</div>
-            <div class="engine-selector" id="engine-selector">
-              <div class="status-indicator" id="status-indicator"></div>
-              <span class="engine-name" id="engine-name">Codex</span>
-              <span class="dropdown-arrow">▼</span>
-            </div>
-            <!-- Engine Dropdown Menu -->
-            <div class="engine-dropdown" id="engine-dropdown">
-              <div class="engine-option selected" data-engine="codex">
-                <div class="engine-option-left">
-                  <span class="engine-status-dot" id="engine-status-codex"></span>
-                  <span class="engine-option-name">Codex</span>
-                </div>
-                <span class="engine-check">✓</span>
-              </div>
-              <div class="engine-option" data-engine="claude">
-                <div class="engine-option-left">
-                  <span class="engine-status-dot" id="engine-status-claude"></span>
-                  <span class="engine-option-name">Claude</span>
-                </div>
-                <span class="engine-check">✓</span>
-              </div>
-            </div>
-          </div>
-          <div class="right-section">
-            <button class="icon-btn" id="element-mode-btn" title="Element Mode (Cmd+E)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M3 9h18M9 3v18"/>
-              </svg>
-            </button>
-            <button class="icon-btn" id="screenshot-mode-btn" title="Screenshot Mode (Cmd+S)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-            <button class="icon-btn" id="close-btn" title="Close (Esc)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Input Container -->
-        <div class="input-container">
-          <!-- Context Tags (elements + screenshot) -->
-          <div class="context-tags" id="context-tags"></div>
-          <div class="input-wrapper">
-            <div 
-              class="input-field" 
-              id="intent-input" 
-              contenteditable="true"
-              data-placeholder="Type your instructions..."
-            ></div>
-            <button class="send-btn" id="send-btn" disabled>
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-              </svg>
-            </button>
-            <div class="loading-overlay" id="loading-overlay">
-              <div class="loading-content">
-                <div class="spinner"></div>
-                <div class="loading-text" id="loading-text">Processing...</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Status Message -->
-        <div class="status-message" id="status-message">
-          <span class="status-icon" id="status-icon"></span>
-          <span id="status-text"></span>
-          <button class="status-close" id="status-close">×</button>
-        </div>
-      </div>
-    `;
-    }
-
-    setupListeners() {
-      try { console.log('[BubbleUI] setupListeners invoked'); } catch (_) {}
-      // Close button
-      const closeBtn = this.shadow.getElementById('close-btn');
-      closeBtn.addEventListener('click', () => {
-        this.eventBus.emit('bubble:close');
-      });
-      
-      // Mode buttons
-      const elementModeBtn = this.shadow.getElementById('element-mode-btn');
-      const screenshotModeBtn = this.shadow.getElementById('screenshot-mode-btn');
-      
-      elementModeBtn.addEventListener('click', () => {
-        this.eventBus.emit('mode:toggle-element');
-      });
-      
-      screenshotModeBtn.addEventListener('click', () => {
-        this.eventBus.emit('mode:toggle-screenshot');
-      });
-      
-      // Input field
-      const inputField = this.shadow.getElementById('intent-input');
-      const sendBtn = this.shadow.getElementById('send-btn');
-      
-      inputField.addEventListener('input', () => {
-        this.eventBus.emit('input:changed');
-        this.updateSendButtonState();
-      });
-      
-      inputField.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-          e.preventDefault();
-          this.eventBus.emit('submit:requested');
-        }
-        // Prevent host page shortcuts from intercepting while typing in bubble
-        e.stopPropagation();
-      });
-
-      // Make sure page-level shortcuts don't override bubble when focused
-      try {
-        this.shadow.addEventListener('keydown', (e) => {
-          if (this.shadow.contains(e.target)) e.stopPropagation();
-        }, { capture: true });
-        this.shadow.addEventListener('keypress', (e) => {
-          if (this.shadow.contains(e.target)) e.stopPropagation();
-        }, { capture: true });
-        this.shadow.addEventListener('keyup', (e) => {
-          if (this.shadow.contains(e.target)) e.stopPropagation();
-        }, { capture: true });
-      } catch (_) {}
-      
-      sendBtn.addEventListener('click', () => {
-        this.eventBus.emit('submit:requested');
-      });
-      
-      // Engine selector dropdown
-      const engineSelector = this.shadow.getElementById('engine-selector');
-      engineSelector.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Defensive: ensure we are not in dragging state so dropdown is clickable
-        const bubbleMain = this.shadow.getElementById('bubble-main');
-        if (bubbleMain) bubbleMain.classList.remove('dragging');
-        this.toggleEngineDropdown();
-      });
-      
-      // Engine options (event delegation for reliability)
-      const engineDropdown = this.shadow.getElementById('engine-dropdown');
-      if (!engineDropdown) {
-        try { console.warn('[BubbleUI] engine-dropdown not found'); } catch (_) {}
-      }
-      engineDropdown.addEventListener('pointerdown', (e) => {
-        const option = e.target.closest('.engine-option');
-        if (!option) return;
-        e.stopPropagation();
-        e.preventDefault();
-        const bubbleMain = this.shadow.getElementById('bubble-main');
-        if (bubbleMain) bubbleMain.classList.remove('dragging');
-        const engine = option.dataset.engine;
-        try { console.log('[BubbleUI] pointerdown on option:', engine); } catch (_) {}
-        if (option.classList.contains('disabled')) {
-          const message = engine === 'claude'
-            ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
-            : 'Codex CLI not detected. Please install Codex CLI to enable.';
-          this.showStatus(message, 'error');
-          this.eventBus.emit('notify:error', message);
-          this.closeEngineDropdown();
-          return;
-        }
-        this.eventBus.emit('engine:select', engine);
-        try { console.log('[BubbleUI] Emitted engine:select', engine); } catch (_) {}
-        this.closeEngineDropdown();
-      });
-      
-      // Close dropdown when clicking outside
-      document.addEventListener('click', () => {
-        this.closeEngineDropdown();
-      });
-      
-      // Status close button
-      const statusClose = this.shadow.getElementById('status-close');
-      statusClose.addEventListener('click', () => {
-        this.hideStatus();
-      });
-      
-      // Drag functionality
-      this.setupDrag();
-      
-      // State subscriptions
-      this.stateManager.subscribe('ui.mode', (mode) => {
-        this.updateModeButtons(mode);
-      });
-      
-      this.stateManager.subscribe('engine.current', (engine) => {
-        this.updateEngineSelector(engine);
-      });
-      
-      this.stateManager.subscribe('engine.serverHealthy', (healthy) => {
-        this.updateServerStatus(healthy);
-      });
-      
-      this.stateManager.subscribe('engine.available', (available) => {
-        this.updateEngineAvailability(available);
-      });
-
-      // Sync initial UI with current state snapshot
-      this.updateModeButtons(this.stateManager.get('ui.mode'));
-      this.updateEngineSelector(this.stateManager.get('engine.current'));
-      this.updateServerStatus(this.stateManager.get('engine.serverHealthy'));
-      this.updateEngineAvailability(this.stateManager.get('engine.available'));
-    }
-
-    setupDrag() {
-      const dragHandle = this.shadow.getElementById('drag-handle');
-      const bubbleMain = this.shadow.getElementById('bubble-main');
-      if (!dragHandle || !bubbleMain) return;
-
-      let isDragging = false;
-      let startX = 0;
-      let startY = 0;
-      let initialLeft = 0;
-      let initialBottom = 0;
-      let bubbleWidth = 0;
-      let bubbleHeight = 0;
-      let activePointerId = null;
-
-      const startDrag = (clientX, clientY) => {
-        isDragging = true;
-        startX = clientX;
-        startY = clientY;
-
-        const rect = this.container.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialBottom = window.innerHeight - rect.bottom;
-        bubbleWidth = rect.width;
-        bubbleHeight = rect.height;
-
-        bubbleMain.classList.add('dragging');
-      };
-
-      const updateDrag = (clientX, clientY) => {
-        if (!isDragging) return;
-
-        const deltaX = clientX - startX;
-        const deltaY = clientY - startY;
-
-        let newLeft = initialLeft + deltaX;
-        let newBottom = initialBottom - deltaY;
-
-        const maxLeft = Math.max(0, window.innerWidth - bubbleWidth);
-        const maxBottom = Math.max(0, window.innerHeight - bubbleHeight);
-
-        newLeft = Math.min(Math.max(0, newLeft), maxLeft);
-        newBottom = Math.min(Math.max(0, newBottom), maxBottom);
-
-        this.container.style.left = newLeft + 'px';
-        this.container.style.bottom = newBottom + 'px';
-      };
-
-      const releasePointerCapture = () => {
-        if (activePointerId === null) return;
-        if (typeof dragHandle.releasePointerCapture === 'function') {
-          try {
-            dragHandle.releasePointerCapture(activePointerId);
-          } catch (_) {}
-        }
-        activePointerId = null;
-      };
-
-      const stopDragging = () => {
-        if (!isDragging) return;
-        isDragging = false;
-        releasePointerCapture();
-        bubbleMain.classList.remove('dragging');
-      };
-
-      const shouldIgnoreTarget = (target) => {
-        return target.closest('.icon-btn') || target.closest('.engine-selector');
-      };
-
-      const supportsPointerEvents = typeof window !== 'undefined' && window.PointerEvent;
-
-      if (supportsPointerEvents) {
-        dragHandle.addEventListener('pointerdown', (e) => {
-          if (e.pointerType === 'mouse' && e.button !== 0) return;
-          if (shouldIgnoreTarget(e.target)) return;
-
-          activePointerId = e.pointerId;
-
-          if (typeof dragHandle.setPointerCapture === 'function') {
-            try {
-              dragHandle.setPointerCapture(activePointerId);
-            } catch (_) {}
-          }
-
-          startDrag(e.clientX, e.clientY);
-          e.preventDefault();
-        });
-
-        dragHandle.addEventListener('pointermove', (e) => {
-          if (!isDragging || e.pointerId !== activePointerId) return;
-          updateDrag(e.clientX, e.clientY);
-        });
-
-        const pointerEndHandler = (e) => {
-          if (e.pointerId !== activePointerId) return;
-          stopDragging();
-        };
-
-        dragHandle.addEventListener('pointerup', pointerEndHandler);
-        dragHandle.addEventListener('pointercancel', pointerEndHandler);
-        dragHandle.addEventListener('lostpointercapture', stopDragging);
-      } else {
-        const handleMouseMove = (e) => {
-          if (!isDragging) return;
-          updateDrag(e.clientX, e.clientY);
-        };
-
-        const handleMouseUp = () => {
-          document.removeEventListener('mousemove', handleMouseMove, true);
-          document.removeEventListener('mouseup', handleMouseUp, true);
-          stopDragging();
-        };
-
-        dragHandle.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return;
-          if (shouldIgnoreTarget(e.target)) return;
-
-          startDrag(e.clientX, e.clientY);
-
-          document.addEventListener('mousemove', handleMouseMove, true);
-          document.addEventListener('mouseup', handleMouseUp, true);
-          e.preventDefault();
-        });
-      }
-
-      const cancelOnLeave = () => {
-        if (!isDragging) return;
-        stopDragging();
-      };
-
-      document.addEventListener('mouseleave', cancelOnLeave, true);
-      window.addEventListener('blur', stopDragging);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState !== 'visible') stopDragging();
-      });
-    }
-
-    show() {
-      if (this.container) {
-        this.container.style.display = 'block';
-        this.stateManager.set('ui.bubbleVisible', true);
-      }
-    }
-
-    hide() {
-      if (this.container) {
-        this.container.style.display = 'none';
-        this.stateManager.set('ui.bubbleVisible', false);
-      }
-    }
-
-    updateModeButtons(mode) {
-      const elementBtn = this.shadow.getElementById('element-mode-btn');
-      const screenshotBtn = this.shadow.getElementById('screenshot-mode-btn');
-      
-      elementBtn.classList.toggle('active', mode === 'element');
-      screenshotBtn.classList.toggle('active', mode === 'screenshot');
-    }
-
-    updateEngineSelector(engine) {
-      const engineName = this.shadow.getElementById('engine-name');
-      try {
-        console.log('[BubbleUI] updateEngineSelector called with', engine, 'current label:', engineName?.textContent);
-      } catch (_) {}
-      engineName.textContent = engine === 'codex' ? 'Codex' : 'Claude';
-      try {
-        console.log('[BubbleUI] engine-name updated to', engineName.textContent);
-      } catch (_) {}
-      
-      this.shadow.querySelectorAll('.engine-option').forEach(opt => {
-        opt.classList.toggle('selected', opt.dataset.engine === engine);
-        try {
-          console.log('[BubbleUI] option', opt.dataset.engine, 'selected?', opt.classList.contains('selected'));
-        } catch (_) {}
-      });
-    }
-
-    updateServerStatus(healthy) {
-      const indicator = this.shadow.getElementById('status-indicator');
-      indicator.classList.toggle('offline', !healthy);
-    }
-
-    updateEngineAvailability(available) {
-      const codexDot = this.shadow.getElementById('engine-status-codex');
-      const claudeDot = this.shadow.getElementById('engine-status-claude');
-      const codexOption = this.shadow.querySelector('.engine-option[data-engine="codex"]');
-      const claudeOption = this.shadow.querySelector('.engine-option[data-engine="claude"]');
-      
-      codexDot.classList.toggle('available', !!available.codex);
-      claudeDot.classList.toggle('available', !!available.claude);
-      
-      if (codexOption) {
-        codexOption.classList.toggle('disabled', !available.codex);
-        codexOption.setAttribute('title', available.codex ? '' : 'Codex CLI not detected');
-      }
-      if (claudeOption) {
-        claudeOption.classList.toggle('disabled', !available.claude);
-        claudeOption.setAttribute('title', available.claude ? '' : 'Claude Code CLI not detected');
-      }
-    }
-
-    toggleEngineDropdown() {
-      const dropdown = this.shadow.getElementById('engine-dropdown');
-      const selector = this.shadow.getElementById('engine-selector');
-      
-      const isOpen = dropdown.classList.contains('open');
-      dropdown.classList.toggle('open', !isOpen);
-      selector.classList.toggle('open', !isOpen);
-    }
-
-    closeEngineDropdown() {
-      const dropdown = this.shadow.getElementById('engine-dropdown');
-      const selector = this.shadow.getElementById('engine-selector');
-      
-      dropdown.classList.remove('open');
-      selector.classList.remove('open');
-    }
-
-    setLoading(isLoading, text = 'Processing...') {
-      const loadingOverlay = this.shadow.getElementById('loading-overlay');
-      const loadingText = this.shadow.getElementById('loading-text');
-      
-      if (isLoading) {
-        loadingOverlay.classList.add('active');
-        loadingText.textContent = text;
-        this.stateManager.set('ui.loading', true);
-      } else {
-        loadingOverlay.classList.remove('active');
-        this.stateManager.set('ui.loading', false);
-      }
-    }
-
-    showStatus(message, type = 'success') {
-      const statusMessage = this.shadow.getElementById('status-message');
-      const statusIcon = this.shadow.getElementById('status-icon');
-      const statusText = this.shadow.getElementById('status-text');
-      
-      statusMessage.className = 'status-message active ' + type;
-      statusIcon.textContent = type === 'success' ? '✓' : '✕';
-      statusText.textContent = message;
-    }
-
-    hideStatus() {
-      const statusMessage = this.shadow.getElementById('status-message');
-      statusMessage.classList.remove('active');
-    }
-
-    getInputValue() {
-      const input = this.shadow.getElementById('intent-input');
-      return input ? input.textContent.trim() : '';
-    }
-
-    clearInput() {
-      const input = this.shadow.getElementById('intent-input');
-      if (input) {
-        input.textContent = '';
-        this.updateSendButtonState();
-      }
-    }
-
-    updateSendButtonState() {
-      const sendBtn = this.shadow.getElementById('send-btn');
-      const input = this.shadow.getElementById('intent-input');
-      const elements = this.stateManager.get('selection.elements');
-      const screenshots = this.stateManager.get('selection.screenshots') || [];
-      const projectAllowed = this.stateManager.get('projects.allowed');
-      
-      const hasContext = elements.length > 0 || screenshots.length > 0;
-      const hasIntent = input && input.textContent.trim().length > 0;
-      const isProcessing = this.stateManager.get('processing.active');
-      
-      sendBtn.disabled = !hasContext || !hasIntent || isProcessing || projectAllowed === false;
-    }
-
-    getShadowRoot() {
-      return this.shadow;
-    }
-
-    destroy() {
-      if (this.container) {
-        this.container.remove();
-        this.container = null;
-        this.shadow = null;
-      }
-    }
-  }
-
-  /**
    * TopBanner - Top notification banner for mode hints
    */
 
@@ -1454,14 +353,14 @@
       right: 0;
       z-index: 2147483646;
       padding: 12px 24px;
-      background: rgba(59, 130, 246, 0.95);
+      background: var(--accent);
       backdrop-filter: blur(12px);
-      color: white;
+      color: var(--on-accent);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 13px;
       font-weight: 500;
       text-align: center;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+      box-shadow: var(--shadow);
       display: none;
       animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     `;
@@ -1496,6 +395,78 @@
       }
     }
   }
+
+  /**
+   * UI Styles - Global CSS definitions
+   */
+
+  const GLOBAL_STYLES = `
+  /* Dock design tokens at document root for cross-surface components */
+  :root {
+    --dock-bg: rgba(255,255,255,0.88);
+    --dock-stroke: rgba(0,0,0,0.08);
+    --dock-fg: #111111;
+    --dock-fg-2: #5F6368;
+    --icon-opacity: 0.9;
+    --success: #10B981;
+    --accent: #3B82F6;
+    --error: #EF4444;
+    --on-accent: #ffffff;
+    --on-strong: #ffffff;
+    --shadow: 0 4px 12px rgba(0,0,0,0.05);
+    --radius-panel: 18px;
+    --radius-chip: 12px;
+  }
+  :root.dark-dock {
+    --dock-bg: rgba(22,22,24,0.88);
+    --dock-stroke: rgba(255,255,255,0.12);
+    --dock-fg: #F5F5F7;
+    --dock-fg-2: #B0B3B8;
+    --icon-opacity: 1;
+    --success: #34D399;
+    --accent: #60A5FA;
+    --error: #F87171;
+    --on-accent: #ffffff;
+    --on-strong: #ffffff;
+    --shadow: 0 6px 16px rgba(0,0,0,0.35);
+    --radius-panel: 18px;
+    --radius-chip: 12px;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes slideDown {
+    from {
+      transform: translateY(-100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  /* Global cursor helpers for selection modes */
+  html.lumi-element-cursor, body.lumi-element-cursor { cursor: pointer !important; }
+  html.lumi-screenshot-cursor, body.lumi-screenshot-cursor { cursor: crosshair !important; }
+  html.lumi-screenshot-cursor *, body.lumi-screenshot-cursor * {
+    cursor: crosshair !important;
+  }
+  html.lumi-overlay-dragging, body.lumi-overlay-dragging {
+    user-select: none !important;
+  }
+  body.lumi-scroll-lock {
+    overflow: hidden !important;
+  }
+`;
 
   /**
    * DOM Utilities
@@ -1583,10 +554,23 @@
       backgroundColor: computed.backgroundColor,
       color: computed.color,
       fontSize: computed.fontSize,
+      fontWeight: computed.fontWeight,
+      lineHeight: computed.lineHeight,
       fontFamily: computed.fontFamily,
       padding: computed.padding,
       margin: computed.margin,
-      border: computed.border
+      border: computed.border,
+      borderRadius: computed.borderRadius,
+      boxShadow: computed.boxShadow,
+      paddingTop: computed.paddingTop,
+      paddingRight: computed.paddingRight,
+      paddingBottom: computed.paddingBottom,
+      paddingLeft: computed.paddingLeft,
+      marginTop: computed.marginTop,
+      marginRight: computed.marginRight,
+      marginBottom: computed.marginBottom,
+      marginLeft: computed.marginLeft,
+      cssVars: collectCSSVariables(computed)
     };
   }
 
@@ -1599,10 +583,22 @@
     // Ignore LUMI's own elements
     if (element.closest('#lumi-bubble-container') || 
         element.closest('#lumi-top-banner') ||
+        element.closest('#lumi-dock-root') ||
+        element.closest('#lumi-interaction-bubble') ||
+        element.closest('#dock-edit-modal') ||
+        element.id === 'dock-edit-overlay' ||
+        element.id === 'lumi-dock-launcher' ||
+        element.closest('#lumi-controls-overlay') ||
         element.classList?.contains('lumi-highlight') ||
-        element.classList?.contains('lumi-screenshot-overlay')) {
+        element.classList?.contains('lumi-screenshot-overlay') ||
+        element.classList?.contains('lumi-highlight-pen')) {
       return true;
     }
+    // Ignore clicks inside Shadow DOM hosted by the dock
+    try {
+      const root = element.getRootNode && element.getRootNode();
+      if (root && root.host && root.host.id === 'lumi-dock-root') return true;
+    } catch (_) {}
     
     const tag = element.tagName && element.tagName.toLowerCase();
     if (tag === 'html' || tag === 'body') return true;
@@ -1610,531 +606,126 @@
     return false;
   }
 
-  /**
-   * ContextTags - Manage context tags (elements and screenshot)
-   * Handles tag display, deletion, and inline chip insertion
-   */
+  function getElementClassList(element) {
+    if (!element || !element.classList) return [];
+    return Array.from(element.classList);
+  }
 
+  function getElementDataset(element) {
+    if (!element || !element.dataset) return {};
+    return { ...element.dataset };
+  }
 
-  class ContextTags {
-    constructor(shadowRoot, eventBus, stateManager) {
-      this.shadowRoot = shadowRoot;
-      this.eventBus = eventBus;
-      this.stateManager = stateManager;
-      this.container = null;
-      this.lastIntentRange = null; // persist caret position within intent input
-      this.CARET_MARK_ATTR = 'data-caret-marker';
-      this._pointerInserted = false;
+  function getAncestorTrail(element, limit = 4) {
+    const trail = [];
+    let current = element?.parentElement || null;
+    while (current && trail.length < limit) {
+      const tag = current.tagName ? current.tagName.toLowerCase() : 'unknown';
+      const item = { tag };
+      if (current.id) item.id = current.id;
+      const firstClass = current.classList?.[0];
+      if (firstClass) item.class = firstClass;
+      const nth = getNthOfType(current);
+      item.nth = nth;
+      trail.push(item);
+      current = current.parentElement;
     }
+    return trail;
+  }
 
-    mount() {
-      this.container = this.shadowRoot.getElementById('context-tags');
-      if (!this.container) {
-        console.error('[ContextTags] Container not found');
-      }
+  function detectFrameworkSignatures() {
+    const frameworks = {
+      react: !!window.__REACT_DEVTOOLS_GLOBAL_HOOK__ || !!document.querySelector('[data-reactroot], [data-reactid]'),
+      vue: !!window.__VUE_DEVTOOLS_GLOBAL_HOOK__ || !!document.querySelector('[data-v-app], [data-v-]'),
+      tailwind: detectTailwind(),
+      cssModules: detectCssModules(),
+      cssInJs: detectCssInJs()
+    };
 
-      // Track caret position inside the intent input so we can restore it
-      const input = this.shadowRoot.getElementById('intent-input');
-      if (input) {
-        const updateRange = (source) => {
-          const sel = this._getSelection();
-          if (sel && sel.rangeCount > 0 && input.contains(sel.anchorNode)) {
-            this.lastIntentRange = sel.getRangeAt(0).cloneRange();
-          }
-        };
-        // Capture on common user interactions that change caret (avoid 'focus' which may be [input,0])
-        ['keyup', 'mouseup', 'input'].forEach(evt => {
-          input.addEventListener(evt, () => updateRange());
-        });
+    const styleStrategy = determineStyleStrategy(frameworks);
 
-        // Global selection tracking covers keyboard-based caret moves and OS selection changes
-        document.addEventListener('selectionchange', () => updateRange());
+    return { frameworks, styleStrategy };
+  }
 
-        input.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return; // left click only
-          try {
-            const x = e.clientX, y = e.clientY;
-            const hit = this._rangeFromPoint(x, y, input);
-            const shouldOverride = !!hit;
-            if (shouldOverride) e.preventDefault();
-            requestAnimationFrame(() => {
-              input.focus();
-              if (shouldOverride) {
-                const sel = this._getSelection();
-                sel.removeAllRanges();
-                sel.addRange(hit);
-                this.lastIntentRange = hit.cloneRange();
-              }
-            });
-          } catch (_) {}
-        });
+  function detectTailwind() {
+    if (document.querySelector('link[href*="tailwind"], script[src*="tailwind"]')) return true;
+    if (document.querySelector('style[data-tailwind]')) return true;
+    const candidates = ['bg-', 'text-', 'px-', 'py-', 'mx-', 'my-', 'rounded-', 'shadow-', 'grid-cols-'];
+    return candidates.some(prefix => document.querySelector(`[class*="${prefix}"]`));
+  }
 
-        // Capture selection just before any click inside the bubble changes it (capture phase)
-        const preClickSnapshot = () => {
-          const sel = this._getSelection();
-          if (sel && sel.rangeCount > 0 && input.contains(sel.anchorNode)) {
-            this.lastIntentRange = sel.getRangeAt(0).cloneRange();
-          }
-        };
-        try {
-          this.shadowRoot.addEventListener('pointerdown', preClickSnapshot, { capture: true });
-          this.shadowRoot.addEventListener('mousedown', preClickSnapshot, { capture: true });
-          this.shadowRoot.addEventListener('touchstart', preClickSnapshot, { capture: true, passive: true });
-        } catch (_) {
-          // Fallback for environments without options support
-          this.shadowRoot.addEventListener('pointerdown', preClickSnapshot, true);
-          this.shadowRoot.addEventListener('mousedown', preClickSnapshot, true);
-          this.shadowRoot.addEventListener('touchstart', preClickSnapshot, true);
-        }
-      }
-    }
-
-    render() {
-      if (!this.container) return;
-
-      this.container.innerHTML = '';
-
-      const elements = this.stateManager.get('selection.elements');
-      const screenshots = this.stateManager.get('selection.screenshots') || [];
-      const input = this.shadowRoot.getElementById('intent-input');
-
-      // Helper function to check if tag is already inserted
-      const isTagInserted = (type, index) => {
-        if (!input) return false;
-        if (type === 'screenshot') {
-          return input.querySelector(`.inline-element-tag[data-index="${String(index)}"]`) !== null;
-        } else {
-          return input.querySelector(`.inline-element-tag[data-index="${String(index)}"]`) !== null;
-        }
-      };
-
-      // Render element tags
-      elements.forEach((item, index) => {
-        const tag = document.createElement('div');
-        const isInserted = isTagInserted('element', index);
-
-        tag.className = `context-tag${isInserted ? ' inserted' : ''}`;
-        tag.innerHTML = `
-        <span class="tag-label" data-index="${index}" data-type="element">${readableElementName(item.element)}</span>
-        <span class="tag-remove" data-type="element" data-index="${index}">×</span>
-      `;
-        this.container.appendChild(tag);
-      });
-
-      // Render screenshot tags (multiple)
-      screenshots.forEach((shot, idx) => {
-        const tag = document.createElement('div');
-        const key = `ss-${shot.id}`;
-        const isInserted = isTagInserted('screenshot', key);
-
-        tag.className = `context-tag${isInserted ? ' inserted' : ''}`;
-        tag.innerHTML = `
-        <span class="tag-label" data-type="screenshot" data-index="${key}">Screenshot ${idx + 1}</span>
-        <span class="tag-remove" data-type="screenshot" data-id="${shot.id}">×</span>
-      `;
-        this.container.appendChild(tag);
-      });
-
-      // Add event listeners and sync inserted state
-      this.attachListeners();
-      this.updateInsertedStates();
-    }
-
-    attachListeners() {
-      if (!this.container) return;
-      
-      // Remove buttons
-      this.container.querySelectorAll('.tag-remove').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const type = e.target.dataset.type;
-          const index = e.target.dataset.index;
-          
-          if (type === 'element') {
-            this.removeElement(parseInt(index));
-          } else if (type === 'screenshot') {
-            const id = e.target.dataset.id ? parseInt(e.target.dataset.id) : null;
-            this.removeScreenshot(id);
-          }
-        });
-      });
-      
-      // Label click to insert inline chip
-      this.container.querySelectorAll('.tag-label').forEach(label => {
-        // Prevent focus change so the input caret stays intact
-        label.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          // Snapshot caret before input blurs (pointerdown fires before blur/click)
-          const input = this.shadowRoot.getElementById('intent-input');
-          if (!input) return;
-          const sel = this._getSelection();
-          if (sel && sel.rangeCount > 0 && input.contains(sel.anchorNode)) {
-            this.lastIntentRange = sel.getRangeAt(0).cloneRange();
-            // Also drop a temporary marker so we can recover exact spot even if focus shifts
-            this._placeCaretMarker(this.lastIntentRange);
-          }
-          // If no stored range and no live selection inside input, seed to end of input
-          if (!this.lastIntentRange) {
-            const seeded = document.createRange();
-            seeded.selectNodeContents(input);
-            seeded.collapse(false);
-            this.lastIntentRange = seeded.cloneRange();
-          }
-
-          // Perform insertion immediately on pointerdown to avoid any post-up focus/selection changes
-          const type = e.currentTarget.dataset.type;
-          if (type === 'screenshot') {
-            this._pointerInserted = true;
-            const key = e.currentTarget.dataset.index;
-            this.insertInlineTag(e.currentTarget.textContent, key);
-          } else {
-            const idx = parseInt(e.currentTarget.dataset.index);
-            const elements = this.stateManager.get('selection.elements');
-            if (elements[idx]) {
-              this._pointerInserted = true;
-              this.insertInlineTag(readableElementName(elements[idx].element), idx);
-            }
-          }
-        });
-        label.addEventListener('mousedown', (e) => {
-          // Some environments dispatch only mouse events; prevent default to avoid focus steal
-          e.preventDefault();
-        });
-
-        label.addEventListener('click', (e) => {
-          // If we already handled pointerdown insertion, ignore the click
-          if (this._pointerInserted) {
-            this._pointerInserted = false;
-            e.preventDefault();
-            return;
-          }
-          e.preventDefault();
-          const type = e.currentTarget.dataset.type;
-          
-          if (type === 'screenshot') {
-            const key = e.currentTarget.dataset.index;
-            this.insertInlineTag(e.currentTarget.textContent, key);
-          } else {
-            const idx = parseInt(e.currentTarget.dataset.index);
-            const elements = this.stateManager.get('selection.elements');
-            if (elements[idx]) {
-              this.insertInlineTag(readableElementName(elements[idx].element), idx);
-            }
-          }
-        });
-      });
-    }
-
-    insertInlineTag(label, index) {
-      const input = this.shadowRoot.getElementById('intent-input');
-      if (!input) return;
-
-      // Check if tag is already inserted (prevent duplicates)
-      const existingTag = input.querySelector(`.inline-element-tag[data-index="${String(index)}"]`);
-      if (existingTag) {
-        // Tag already exists, just focus it and scroll into view
-        existingTag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        input.focus();
-        return;
-      }
-
-      // Choose the best available caret: prefer explicit marker, then live selection, then cached range
-      const selection = this._getSelection();
-      let workingRange = null;
-
-      // If input isn't focused or selection isn't in input, try to restore the last known caret first
-      const shadowActive = this.shadowRoot.activeElement;
-      if ((!shadowActive || shadowActive !== input) && this.lastIntentRange) {
-        try {
-          selection.removeAllRanges();
-          selection.addRange(this.lastIntentRange.cloneRange());
-        } catch (_) {}
-      }
-      const marker = input.querySelector(`[${this.CARET_MARK_ATTR}="1"]`);
-      if (marker) {
-        workingRange = document.createRange();
-        workingRange.setStartBefore(marker);
-        workingRange.collapse(true);
-        // Clean up marker immediately
-        marker.remove();
-      }
-      if (!workingRange && selection && selection.rangeCount > 0 && input.contains(selection.anchorNode)) {
-        workingRange = selection.getRangeAt(0).cloneRange();
-      } else if (!workingRange && this.lastIntentRange) {
-        workingRange = this.lastIntentRange.cloneRange();
-      }
-
-      input.focus();
-      if (workingRange) {
-        selection.removeAllRanges();
-        selection.addRange(workingRange);
-      }
-
-      const range = workingRange || (() => {
-        // Fallback: find better insertion point than just end of input
-        const fallbackRange = document.createRange();
-
-        // If there's existing content, find the logical insertion point
-        const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT, null);
-        let lastTextNode = null;
-        let textNode;
-
-        while (textNode = walker.nextNode()) {
-          lastTextNode = textNode;
-        }
-
-        if (lastTextNode && lastTextNode.textContent.trim()) {
-          // Insert at end of last meaningful text content
-          fallbackRange.setStart(lastTextNode, lastTextNode.textContent.length);
-          fallbackRange.setEnd(lastTextNode, lastTextNode.textContent.length);
-        } else {
-          // Empty or only tags - insert at end of input
-          fallbackRange.selectNodeContents(input);
-          fallbackRange.collapse(false);
-        }
-
-        return fallbackRange;
-      })();
-      
-      const tag = document.createElement('span');
-      tag.className = 'inline-element-tag';
-      tag.dataset.index = String(index);
-      tag.textContent = label;
-      tag.setAttribute('contenteditable', 'false');
-
-      const remove = document.createElement('span');
-      remove.className = 'inline-tag-remove';
-      remove.textContent = '×';
-      remove.addEventListener('click', (e) => {
-        e.stopPropagation();
-        tag.remove();
-        this.eventBus.emit('input:changed');
-        this.updateInsertedStates();
-      });
-      tag.appendChild(remove);
-
-      // Normalize whitespace: remove trailing spaces before insertion
-      if (range.startContainer.nodeType === 3 && /\s$/.test(range.startContainer.textContent)) {
-        range.startContainer.textContent = range.startContainer.textContent.replace(/\s+$/, ' ');
-      }
-
-      range.deleteContents();
-      range.insertNode(tag);
-      range.setStartAfter(tag);
-      range.collapse(true);
-
-      // Insert trailing space for easier deletion (simplified logic)
-      const space = document.createTextNode(' ');
-      range.insertNode(space);
-      range.setStartAfter(space);
-      range.collapse(true);
-
-      selection.removeAllRanges();
-      selection.addRange(range);
-      // Persist the latest caret position for the next interaction
-      this.lastIntentRange = range.cloneRange();
-      this.eventBus.emit('input:changed');
-      this.updateInsertedStates();
-    }
-
-    _placeCaretMarker(range) {
-      try {
-        if (!range) return;
-        // Remove any existing markers first
-        const input = this.shadowRoot.getElementById('intent-input');
-        if (!input) return;
-        input.querySelectorAll(`[${this.CARET_MARK_ATTR}]`).forEach(n => n.remove());
-
-        const marker = document.createElement('span');
-        marker.setAttribute(this.CARET_MARK_ATTR, '1');
-        // Invisible, zero footprint
-        marker.style.cssText = 'display:inline-block;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;';
-        // Use a ZWSP to ensure the node positions correctly in text nodes
-        marker.textContent = '\u200b';
-        const collapsed = range.cloneRange();
-        collapsed.collapse(true);
-        collapsed.insertNode(marker);
-      } catch (_) {
-        // Best-effort; if marker fails we still rely on cached range
-      }
-    }
-
-    updateInsertedStates() {
-      if (!this.container) return;
-      const input = this.shadowRoot.getElementById('intent-input');
-      if (!input) return;
-
-      this.container.querySelectorAll('.context-tag').forEach(tag => {
-        const label = tag.querySelector('.tag-label');
-        if (!label) return;
-        const index = label.dataset.index;
-        const selector = `.inline-element-tag[data-index="${String(index)}"]`;
-        const inserted = !!input.querySelector(selector);
-        tag.classList.toggle('inserted', inserted);
-      });
-    }
-
-    _getSelection() {
-      try {
-        if (this.shadowRoot && typeof this.shadowRoot.getSelection === 'function') {
-          const sel = this.shadowRoot.getSelection();
-          if (sel) return sel;
-        }
-      } catch (_) {}
-      try {
-        return window.getSelection();
-      } catch (_) {
-        return null;
-      }
-    }
-
-    _rangeFromPoint(x, y, root) {
-      try {
-        let range = null;
-        // Prefer standard caretPositionFromPoint if available (gives node + offset)
-        const pos = (this.shadowRoot && typeof this.shadowRoot.caretPositionFromPoint === 'function')
-          ? this.shadowRoot.caretPositionFromPoint(x, y)
-          : (document.caretPositionFromPoint ? document.caretPositionFromPoint(x, y) : null);
-        if (pos && pos.offsetNode) {
-          range = document.createRange();
-          range.setStart(pos.offsetNode, pos.offset);
-          range.collapse(true);
-        }
-        if (!range) {
-          const r2 = (this.shadowRoot && typeof this.shadowRoot.caretRangeFromPoint === 'function')
-            ? this.shadowRoot.caretRangeFromPoint(x, y)
-            : (document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null);
-          if (r2) {
-            range = r2;
+  function detectCssModules() {
+    const elements = document.querySelectorAll('[class]');
+    const pattern = /_[a-z0-9]{4,}$/i;
+    let matches = 0;
+    let inspected = 0;
+    for (const el of elements) {
+      inspected += 1;
+      for (const cls of el.classList) {
+        if (pattern.test(cls)) {
+          matches += 1;
+          if (matches >= 3) {
+            return true;
           }
         }
-        if (range && root && !root.contains(range.startContainer)) {
-          // If the calculated range is not within the input, ignore it
-          return null;
-        }
-        return range;
-      } catch (_) {
-        return null;
+      }
+      if (matches >= 3 || inspected >= 400) break;
+    }
+    return false;
+  }
+
+  function detectCssInJs() {
+    if (document.querySelector('style[data-styled]')) return true;
+    if (document.querySelector('style[data-emotion]')) return true;
+    if (document.querySelector('style[data-css]')) return true;
+    return false;
+  }
+
+  function determineStyleStrategy(frameworks) {
+    if (frameworks.tailwind) return 'tailwind';
+    if (frameworks.cssModules) return 'css-modules';
+    if (frameworks.cssInJs) return 'css-in-js';
+    return 'css';
+  }
+
+  function collectCSSVariables(computed) {
+    const vars = [];
+    if (!computed) return vars;
+    for (let i = 0; i < computed.length; i += 1) {
+      const prop = computed[i];
+      if (prop && prop.startsWith('--')) {
+        vars.push({ name: prop, value: computed.getPropertyValue(prop) });
       }
     }
-
-    removeElement(index) {
-      const elements = this.stateManager.get('selection.elements');
-      elements.splice(index, 1);
-      this.stateManager.set('selection.elements', elements);
-
-      // Remove corresponding inline chips and update indices for remaining elements
-      const input = this.shadowRoot.getElementById('intent-input');
-      if (input) {
-        // Remove the specific inline tag for this element
-        input.querySelectorAll(`.inline-element-tag[data-index="${String(index)}"]`).forEach(node => {
-          this.cleanupWhitespaceAroundNode(node);
-          node.remove();
-        });
-
-        // Update indices for all subsequent inline tags (critical fix)
-        input.querySelectorAll('.inline-element-tag').forEach(tag => {
-          const currentIndex = parseInt(tag.dataset.index);
-          if (currentIndex > index) {
-            tag.dataset.index = String(currentIndex - 1);
-          }
-        });
-      }
-
-      this.eventBus.emit('element:removed', index);
-      this.render();
-    }
-
-    removeScreenshot(id) {
-      const list = (this.stateManager.get('selection.screenshots') || []).slice();
-      const idx = list.findIndex(s => s.id === id);
-      if (idx >= 0) list.splice(idx, 1);
-      this.stateManager.set('selection.screenshots', list);
-      
-      // Remove corresponding inline chips
-      const input = this.shadowRoot.getElementById('intent-input');
-      if (input) {
-        input.querySelectorAll(`.inline-element-tag[data-index="ss-${id}"]`).forEach(node => {
-          this.cleanupWhitespaceAroundNode(node);
-          node.remove();
-        });
-      }
-      
-      this.eventBus.emit('screenshot:removed');
-      this.render();
-    }
-
-    cleanupWhitespaceAroundNode(node) {
-      const prev = node.previousSibling;
-      const next = node.nextSibling;
-      
-      if (next && next.nodeType === 3 && next.textContent.startsWith(' ')) {
-        next.textContent = next.textContent.slice(1);
-      } else if (prev && prev.nodeType === 3 && /\s$/.test(prev.textContent)) {
-        prev.textContent = prev.textContent.replace(/\s$/, '');
-      }
-    }
-
-    clear() {
-      this.stateManager.batch({
-        'selection.elements': [],
-        'selection.screenshots': []
-      });
-
-      const input = this.shadowRoot.getElementById('intent-input');
-      if (input) {
-        // Remove all inline tags and clear the input
-        input.querySelectorAll('.inline-element-tag').forEach(tag => {
-          tag.remove();
-        });
-        input.textContent = '';
-      }
-
-      this.render();
-    }
+    return vars;
   }
 
   /**
-   * HighlightManager - Unified management of all page highlights
+   * HighlightManager - Manage hover/selection halos and screenshot overlays
    */
 
   class HighlightManager {
-    constructor() {
+    constructor(eventBus = null) {
+      this.eventBus = eventBus;
       this.hoverHighlight = null;
       this.selectionHighlights = [];
+      this.selectionElements = [];
+      this.selectionListeners = new Map();
       this.screenshotOverlay = null;
     }
 
-    /**
-     * Show hover highlight for element
-     */
     showHover(element) {
       this.hideHover();
-      
       const bbox = element.getBoundingClientRect();
-      const highlight = document.createElement('div');
-      highlight.className = 'lumi-highlight lumi-hover';
-      highlight.style.cssText = `
-      position: absolute;
-      top: ${bbox.top + window.scrollY}px;
-      left: ${bbox.left + window.scrollX}px;
-      width: ${bbox.width}px;
-      height: ${bbox.height}px;
-      background: rgba(59, 130, 246, 0.1);
-      border: 2px solid #3b82f6;
-      pointer-events: none;
-      z-index: 2147483645;
-      border-radius: 2px;
-      animation: fadeIn 0.15s;
-    `;
-      
-      document.body.appendChild(highlight);
-      this.hoverHighlight = highlight;
+      const halo = document.createElement('div');
+      halo.className = 'lumi-highlight lumi-hover';
+      halo.style.cssText = this.buildHaloStyle(bbox, element);
+      // Hover halo must never intercept pointer events; clicks should go to the page element
+      halo.style.pointerEvents = 'none';
+      document.body.appendChild(halo);
+      this.hoverHighlight = halo;
     }
 
-    /**
-     * Hide hover highlight
-     */
     hideHover() {
       if (this.hoverHighlight) {
         this.hoverHighlight.remove();
@@ -2142,75 +733,90 @@
       }
     }
 
-    /**
-     * Add selection highlight for element
-     */
-    addSelection(element) {
+    addSelection(element, index = null) {
       const bbox = element.getBoundingClientRect();
-      const highlight = document.createElement('div');
-      highlight.className = 'lumi-highlight lumi-selected';
-      highlight.style.cssText = `
-      position: absolute;
-      top: ${bbox.top + window.scrollY}px;
-      left: ${bbox.left + window.scrollX}px;
-      width: ${bbox.width}px;
-      height: ${bbox.height}px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 2px solid #10b981;
-      pointer-events: none;
-      z-index: 2147483645;
-      border-radius: 2px;
-      animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    `;
-      
-      // Add label
-      const label = document.createElement('div');
-      label.style.cssText = `
-      position: absolute;
-      top: -24px;
-      left: 0;
-      padding: 4px 8px;
-      background: #10b981;
-      color: white;
-      font-size: 11px;
-      font-weight: 500;
-      border-radius: 4px;
-      white-space: nowrap;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-      label.textContent = element.tagName.toLowerCase() + (element.className ? '.' + element.className.split(' ')[0] : '');
-      highlight.appendChild(label);
-      
-      document.body.appendChild(highlight);
-      this.selectionHighlights.push(highlight);
-      
-      return this.selectionHighlights.length - 1;
+      const halo = document.createElement('div');
+      halo.className = 'lumi-highlight lumi-selected';
+      halo.style.cssText = this.buildHaloStyle(bbox, element);
+
+      const resolveIndex = () => {
+        const current = this.selectionElements.indexOf(element);
+        if (current >= 0) return current;
+        return typeof index === 'number' ? index : 0;
+      };
+
+      halo.addEventListener('mouseenter', () => {
+        if (this.eventBus) {
+          this.eventBus.emit('interaction:hover', { element, index: resolveIndex() });
+        }
+      });
+      halo.addEventListener('mouseleave', () => {
+        if (this.eventBus) {
+          this.eventBus.emit('interaction:leave', { element, index: resolveIndex() });
+        }
+      });
+
+      document.body.appendChild(halo);
+      const nextIndex = this.selectionHighlights.push(halo) - 1;
+      this.selectionElements.push(element);
+
+      const onEnter = () => {
+        if (this.eventBus) {
+          this.eventBus.emit('interaction:hover', { element, index: resolveIndex() });
+        }
+      };
+      const onLeave = () => {
+        if (this.eventBus) {
+          this.eventBus.emit('interaction:leave', { element, index: resolveIndex() });
+        }
+      };
+      element.addEventListener('mouseenter', onEnter);
+      element.addEventListener('mouseleave', onLeave);
+      this.selectionListeners.set(element, { onEnter, onLeave });
+
+      halo.dataset.index = String(nextIndex);
+      return nextIndex;
     }
 
-    /**
-     * Remove selection highlight by index
-     */
     removeSelection(index) {
-      if (this.selectionHighlights[index]) {
-        this.selectionHighlights[index].remove();
-        this.selectionHighlights.splice(index, 1);
+      const highlight = this.selectionHighlights[index];
+      if (highlight) {
+        highlight.remove();
       }
+      this.selectionHighlights.splice(index, 1);
+
+      const element = this.selectionElements[index];
+      if (element) {
+        const handlers = this.selectionListeners.get(element);
+        if (handlers) {
+          element.removeEventListener('mouseenter', handlers.onEnter);
+          element.removeEventListener('mouseleave', handlers.onLeave);
+          this.selectionListeners.delete(element);
+        }
+      }
+      this.selectionElements.splice(index, 1);
+
+      this.selectionHighlights.forEach((halo, idx) => {
+        halo.dataset.index = String(idx);
+      });
     }
 
-    /**
-     * Clear all selection highlights
-     */
     clearAllSelections() {
       this.selectionHighlights.forEach(h => h.remove());
       this.selectionHighlights = [];
+      this.selectionElements.forEach((element) => {
+        const handlers = this.selectionListeners.get(element);
+        if (handlers) {
+          element.removeEventListener('mouseenter', handlers.onEnter);
+          element.removeEventListener('mouseleave', handlers.onLeave);
+        }
+      });
+      this.selectionElements = [];
+      this.selectionListeners.clear();
     }
 
-    /**
-     * Show screenshot overlay
-     */
     showScreenshotOverlay(bbox) {
       this.hideScreenshotOverlay();
-      
       const overlay = document.createElement('div');
       overlay.className = 'lumi-screenshot-overlay';
       overlay.style.cssText = `
@@ -2219,34 +825,26 @@
       top: ${bbox.top}px;
       width: ${bbox.width}px;
       height: ${bbox.height}px;
-      border: 2px dashed #3b82f6;
-      background: rgba(59, 130, 246, 0.1);
+      border: 2px dashed var(--accent);
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
       pointer-events: none;
       z-index: 2147483645;
     `;
-      
       document.body.appendChild(overlay);
       this.screenshotOverlay = overlay;
     }
 
-    /**
-     * Update screenshot overlay dimensions
-     */
     updateScreenshotOverlay(bbox) {
       if (!this.screenshotOverlay) {
         this.showScreenshotOverlay(bbox);
         return;
       }
-      
-      this.screenshotOverlay.style.left = bbox.left + 'px';
-      this.screenshotOverlay.style.top = bbox.top + 'px';
-      this.screenshotOverlay.style.width = bbox.width + 'px';
-      this.screenshotOverlay.style.height = bbox.height + 'px';
+      this.screenshotOverlay.style.left = `${bbox.left}px`;
+      this.screenshotOverlay.style.top = `${bbox.top}px`;
+      this.screenshotOverlay.style.width = `${bbox.width}px`;
+      this.screenshotOverlay.style.height = `${bbox.height}px`;
     }
 
-    /**
-     * Hide screenshot overlay
-     */
     hideScreenshotOverlay() {
       if (this.screenshotOverlay) {
         this.screenshotOverlay.remove();
@@ -2254,14 +852,32 @@
       }
     }
 
-    /**
-     * Clear all highlights
-     */
     clearAll() {
       this.hideHover();
       this.clearAllSelections();
       this.hideScreenshotOverlay();
     }
+
+    buildHaloStyle(bbox, element) {
+      const computed = window.getComputedStyle(element);
+      const radius = computed.borderRadius || '14px';
+      return `
+      position: absolute;
+      top: ${bbox.top + window.scrollY}px;
+      left: ${bbox.left + window.scrollX}px;
+      width: ${bbox.width}px;
+      height: ${bbox.height}px;
+      pointer-events: none;
+      z-index: 2147483645;
+      border-radius: ${radius};
+      box-shadow: 0 0 0 2px var(--dock-stroke);
+      background: transparent;
+      cursor: default;
+      transition: box-shadow 0.15s ease;
+    `;
+    }
+
+    penSVG() { return ''; }
   }
 
   /**
@@ -2303,6 +919,7 @@
       
       this.isActive = false;
       this.stateManager.set('ui.mode', 'idle');
+      this.stateManager.set('ui.dockState', 'normal');
       
       this.topBanner.hide();
       this.highlightManager.hideHover();
@@ -2361,8 +978,11 @@
       const updated = [...elements, item];
       this.stateManager.set('selection.elements', updated);
 
-      this.highlightManager.addSelection(element);
+      this.highlightManager.addSelection(element, updated.length - 1);
       this.eventBus.emit('element:selected', item);
+
+      // Exit element mode after each selection for clarity
+      this.deactivate();
     }
 
     clearSelections() {
@@ -2419,6 +1039,7 @@
       
       this.isActive = false;
       this.stateManager.set('ui.mode', 'idle');
+      this.stateManager.set('ui.dockState', 'normal');
       
       this.topBanner.hide();
       this.highlightManager.hideScreenshotOverlay();
@@ -3022,8 +1643,8 @@
       this.chromeBridge = chromeBridge;
     }
 
-    async execute(engine, intent, elements, screenshot, pageInfo, screenshots = []) {
-      const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots);
+    async execute(engine, intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
+      const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots, edits);
       
       try {
         const result = await this.chromeBridge.executeOnServer(
@@ -3039,12 +1660,22 @@
       }
     }
 
-    buildContext(intent, elements, screenshot, pageInfo, screenshots = []) {
+    buildContext(intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
       const context = {
         intent,
         pageUrl: pageInfo.url,
         pageTitle: pageInfo.title,
-        selectionMode: elements.length > 0 ? 'element' : 'screenshot'
+        selectionMode: elements.length > 0 ? 'element' : 'screenshot',
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
+      };
+
+      const { frameworks, styleStrategy } = detectFrameworkSignatures();
+      context.meta = {
+        frameworks,
+        styleStrategy
       };
       
       // Add element context - support multiple elements
@@ -3055,6 +1686,9 @@
             tagName: elements[0].element.tagName,
             selector: elements[0].selector,
             className: elements[0].element.className,
+            classList: getElementClassList(elements[0].element),
+            dataset: getElementDataset(elements[0].element),
+            ancestors: getAncestorTrail(elements[0].element),
             id: elements[0].element.id,
             outerHTML: elements[0].element.outerHTML,
             textContent: getElementText(elements[0].element),
@@ -3068,6 +1702,9 @@
             tagName: item.element.tagName,
             selector: item.selector,
             className: item.element.className,
+            classList: getElementClassList(item.element),
+            dataset: getElementDataset(item.element),
+            ancestors: getAncestorTrail(item.element),
             id: item.element.id,
             outerHTML: item.element.outerHTML,
             textContent: getElementText(item.element),
@@ -3085,6 +1722,16 @@
       if (screenshot) {
         context.screenshot = screenshot;
       }
+
+      // Include WYSIWYG edits if present
+      if (edits && edits.length) {
+        context.edits = edits.map(e => ({
+          index: e.index,
+          selector: e.selector,
+          changes: e.changes,
+          summary: e.summary
+        }));
+      }
       
       return context;
     }
@@ -3094,6 +1741,2205 @@
     if (!element) return '';
     const text = (element.textContent || '').trim();
     return text.length > 400 ? text.slice(0, 400) + '…' : text;
+  }
+
+  const DOCK_STYLES = `
+  * { box-sizing: border-box; }
+  /* Design tokens (light) mapped to legacy variables for minimal churn */
+  .dock {
+    /* New tokens */
+    --dock-bg: rgba(255,255,255,0.88);
+    --dock-stroke: rgba(0,0,0,0.08);
+    --dock-fg: #111111;
+    --dock-fg-2: #5F6368;
+    --icon-opacity: 0.9;
+    --success: #10B981;
+    --shadow: 0 4px 12px rgba(0,0,0,0.05);
+    --radius-panel: 18px;
+    --radius-chip: 12px;
+
+    /* Bridge to existing variable names used below */
+    --glass-bg: var(--dock-bg);
+    --glass-border: var(--dock-stroke);
+    --surface: color-mix(in srgb, var(--dock-bg) 96%, transparent);
+    --surface-hover: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    --text: var(--dock-fg);
+    --text-secondary: var(--dock-fg-2);
+    --text-tertiary: var(--dock-fg-2);
+    --border: var(--dock-stroke);
+    --shadow: var(--shadow);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+  }
+
+  .dock.dark {
+    --dock-bg: rgba(22,22,24,0.88);
+    --dock-stroke: rgba(255,255,255,0.12);
+    --dock-fg: #F5F5F7;
+    --dock-fg-2: #B0B3B8;
+    --icon-opacity: 1;
+    --success: #34D399;
+    --shadow: 0 6px 16px rgba(0,0,0,0.35);
+    --radius-panel: 18px;
+    --radius-chip: 12px;
+
+    /* Bridge overrides */
+    --glass-bg: var(--dock-bg);
+    --glass-border: var(--dock-stroke);
+    --surface: color-mix(in srgb, var(--dock-bg) 96%, transparent);
+    --surface-hover: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    --text: var(--dock-fg);
+    --text-secondary: var(--dock-fg-2);
+    --text-tertiary: var(--dock-fg-2);
+    --border: var(--dock-stroke);
+    --shadow: var(--shadow);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  }
+
+  .dock {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 420px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    text-align: left;
+    border-left: 1px solid var(--glass-border);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    z-index: 2147483646;
+    transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1), backdrop-filter 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .dock.compact { width: 56px; backdrop-filter: blur(12px); }
+  .dock.compact .project { display: none; }
+  .dock.compact .tabs,
+  .dock.compact .body,
+  .dock.compact .composer-top,
+  .dock.compact .engine,
+  .dock.compact .send { display: none !important; }
+  .dock.compact .header { justify-content: center; padding: 8px; }
+  .dock.compact .toolbar { justify-content: center; }
+  .dock.compact .actions { flex-direction: column; gap: 8px; }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  .project {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text);
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .header-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .header-btn.header-toggle svg.collapsed {
+    transform: scaleX(-1);
+  }
+  .header-btn:hover { 
+    color: var(--text); 
+    background: var(--surface-hover); 
+    transform: scale(1.05);
+  }
+  .header-btn.header-close {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 18px;
+  }
+  .header-btn.header-close:hover { 
+    color: var(--text); 
+    background: var(--surface-hover);
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+  }
+  .tab:hover { 
+    color: var(--text); 
+    background: var(--surface-hover);
+  }
+  .tab.active { 
+    color: var(--primary); 
+    background: var(--glass-bg);
+    box-shadow: var(--shadow);
+    font-weight: 600;
+  }
+
+  .body {
+    flex: 1;
+    padding: 18px 22px;
+    overflow-y: auto;
+  }
+  .placeholder { color: var(--hint); font-size: 13px; text-align: center; padding: 32px 0; }
+
+  #chat-pane.view-hidden,
+  #history-pane.view-hidden { display: none; }
+  #chat-pane.view-active,
+  #history-pane.view-active { display: block; }
+
+  /* Chat */
+  .chat-list { display: flex; flex-direction: column; gap: 20px; }
+  .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
+
+  .chat-item { display: flex; gap: 12px; }
+  .chat-item.assistant { align-items: flex-start; color: var(--text-secondary); }
+  .chat-item.assistant .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
+  }
+  .chat-item.assistant .bubble {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+  }
+  .chat-item.assistant .summary {
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .chat-item.assistant .details {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--hint);
+  }
+
+  .chat-item.user { justify-content: flex-end; }
+  .chat-item.user .bubble {
+    max-width: 70%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 10px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+
+  /* History */
+  .history-list { display: flex; flex-direction: column; gap: 14px; }
+  .history-new {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-bottom: 6px;
+  }
+  .history-new:hover { color: var(--text); }
+
+  .history-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    backdrop-filter: blur(18px);
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .history-row.active { border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); box-shadow: var(--shadow-lg); }
+  .history-row:hover .history-actions { opacity: 1; }
+
+  .history-main { min-width: 0; }
+  .history-title { font-size: 13px; font-weight: 500; color: var(--text); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--dock-stroke); }
+  .status-dot.ok { background: var(--success); }
+
+  .history-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s ease; }
+  .history-actions button {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .history-actions button:hover { color: var(--text); }
+  .history-row.renaming .history-actions { opacity: 1; }
+  .history-rename {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+  }
+  .history-rename:focus { border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); }
+  .history-row.renaming .history-meta {
+    opacity: 0.6;
+  }
+
+  /* Composer */
+  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  .composer-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 10px 14px;
+    cursor: text;
+  }
+  .composer-top .editor {
+    flex: 1;
+    min-height: 24px;
+    outline: none;
+    font-size: 13px;
+    line-height: 1.6;
+    cursor: text;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+  }
+  .composer-top .editor:empty:before {
+    content: attr(data-placeholder);
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-chip);
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .chip.edited::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dock-bg) 90%, transparent);
+  }
+  .chip button { border: none; background: transparent; padding: 0; cursor: pointer; color: inherit; }
+  .chip .x { margin-left: 4px; opacity: 0.7; }
+  .chip .x:hover { opacity: 1; }
+
+  .input { flex: 1; min-width: 160px; outline: none; font-size: 13px; line-height: 1.6; }
+  .input:empty:before { content: attr(data-placeholder); color: var(--hint); }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; }
+  .engine {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--dock-bg) 92%, transparent);
+  }
+  .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
+  .engine.available .dot { background: var(--success); }
+  .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
+
+  .actions { display: flex; gap: 10px; align-items: center; }
+  .icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: background 0.15s ease, border 0.15s ease;
+  }
+  .icon:hover { background: color-mix(in srgb, var(--dock-bg) 88%, transparent); }
+  .send {
+    padding: 6px 18px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--dock-fg) 92%, transparent);
+    color: var(--on-strong);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .send:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+  function applyDockThemeAuto() {
+    try {
+      const parseRGB = (str) => {
+        if (!str) return null;
+        const m = String(str).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+      };
+      const luminance = ([r, g, b]) => {
+        const s = [r, g, b]
+          .map((v) => v / 255)
+          .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+        return 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
+      };
+      const bodyBg = getComputedStyle(document.body).backgroundColor;
+      const rgb = parseRGB(bodyBg);
+      const preferDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const isDark = rgb ? luminance(rgb) < 0.5 : preferDark;
+      document.documentElement.classList.toggle('dark-dock', !!isDark);
+    } catch (_) {
+      // best effort only
+    }
+  }
+
+  function watchDockTheme() {
+    try {
+      if (window.matchMedia) {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        if (typeof mq.addEventListener === 'function') {
+          mq.addEventListener('change', applyDockThemeAuto);
+        } else if (typeof mq.addListener === 'function') {
+          mq.addListener(applyDockThemeAuto);
+        }
+      }
+      const ro = new MutationObserver(() => applyDockThemeAuto());
+      ro.observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: false });
+      // Also watch body style changes that could flip background dramatically
+      const bo = new MutationObserver(() => applyDockThemeAuto());
+      bo.observe(document.body, { attributes: true, attributeFilter: ['style', 'class'] });
+    } catch (_) {}
+  }
+
+  function escapeHtml(str = '') {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  class DockRoot {
+    constructor(eventBus, stateManager) {
+      this.eventBus = eventBus;
+      this.stateManager = stateManager;
+      this.host = null;
+      this.shadow = null;
+      this.activeTab = 'chat';
+      this.chatMessages = [];
+      this.renameState = null;
+      this.handle = null;
+      this.handleDragState = null;
+      this.editorEl = null;
+      this.toggleBtn = null;
+      this.toggleIcon = null;
+      this.launcher = null;
+      this.savedRange = null;
+      this.captureSelection = this.captureSelection.bind(this);
+    }
+
+    mount() {
+      if (this.host) return;
+      this.host = document.createElement('div');
+      this.host.id = 'lumi-dock-root';
+      this.host.style.cssText = 'position: fixed; top: 0; right: 0; height: 100vh; width: 420px; z-index: 2147483646; display: none;';
+      this.shadow = this.host.attachShadow({ mode: 'open' });
+      this.shadow.innerHTML = this.renderHTML();
+      document.body.appendChild(this.host);
+      
+      // Apply squeeze mode to document.documentElement
+      this.applySqueeze(false);
+      
+      this.createHandle();
+      this.createLauncher();
+      this.bind();
+      this.renderChips(this.stateManager.get('selection.elements') || []);
+      this.renderBody();
+      this.updateSendState();
+    }
+
+    renderHTML() {
+      return `
+      <style>${DOCK_STYLES}</style>
+      <div class="dock" id="dock">
+        <div class="header">
+          <div class="project" id="project-name">Lumi — Demo Project</div>
+          <div class="header-actions">
+            <button class="header-btn header-toggle" id="dock-toggle" title="Collapse Dock" aria-label="Collapse Dock">
+              <svg id="icon-collapse" viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="14" height="16" rx="2"></rect>
+                <path d="M19 4v16"></path>
+                <path d="M12 12l-3-3m3 3l-3 3"></path>
+              </svg>
+              <svg id="icon-expand" style="display:none" viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="7" y="4" width="14" height="16" rx="2"></rect>
+                <path d="M5 4v16"></path>
+                <path d="M12 12l3-3m-3 3l3 3"></path>
+              </svg>
+            </button>
+            <button class="header-btn header-settings" id="gear" title="Open Settings" aria-label="Open Settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3.5"></circle>
+                <path d="M4.8 9.5l-1.5 2.6a1 1 0 0 0 .4 1.4l1.6.9a8 8 0 0 0 0 1.2l-1.6.9a1 1 0 0 0-.4 1.4l1.5 2.6a1 1 0 0 0 1.3.4l1.6-.9c.4.3.8.6 1.2.8l.1 1.8a1 1 0 0 0 1 .9h3a1 1 0 0 0 1-.9l.1-1.8c.4-.2.8-.5 1.2-.8l1.6.9a1 1 0 0 0 1.3-.4l1.5-2.6a1 1 0 0 0-.4-1.4l-1.6-.9c.1-.4.1-.8 0-1.2l1.6-.9a1 1 0 0 0 .4-1.4l-1.5-2.6a1 1 0 0 0-1.3-.4l-1.6.9c-.4-.3-.8-.6-1.2-.8L13 4.1a1 1 0 0 0-1-.9h-3a1 1 0 0 0-1 .9l-.1 1.8c-.4.2-.8.5-1.2.8l-1.6-.9a1 1 0 0 0-1.3.4z"></path>
+              </svg>
+            </button>
+            <button class="header-btn header-close" id="dock-close" title="Close Dock" aria-label="Close Dock">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 6l12 12M18 6l-12 12"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <nav class="tabs" id="tabs">
+          <button class="tab" data-tab="chat">Chat</button>
+          <button class="tab" data-tab="history">History</button>
+        </nav>
+        <div class="body">
+          <div id="chat-pane" class="chat-list view-active"></div>
+          <div id="history-pane" class="history-list view-hidden"></div>
+        </div>
+        <div class="footer">
+          <div class="composer-top" id="composer">
+            <div class="editor" id="composer-editor" contenteditable="true" data-placeholder="Describe anything you want"></div>
+          </div>
+          <div class="toolbar">
+            <div class="engine" id="engine">
+              <span class="dot" id="engine-light"></span>
+              <select id="engine-select">
+                <option value="codex">Codex</option>
+                <option value="claude">Claude Code</option>
+              </select>
+            </div>
+            <div class="actions">
+              <button class="icon" id="select-btn" title="Element Select" aria-label="Element Select">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 3l8 18 2-7 7-2z"></path>
+                </svg>
+              </button>
+              <button class="icon" id="shot-btn" title="Screenshot" aria-label="Screenshot">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                  <path d="M7 13l3-3 5 6 3-4"></path>
+                  <circle cx="9" cy="9" r="1.5"></circle>
+                </svg>
+              </button>
+              <button class="icon" id="new-session-btn" title="New Session" aria-label="New Session">＋</button>
+              <button class="send" id="send-btn" title="Send" aria-label="Send" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M22 2L11 13"></path>
+                  <path d="M22 2L15 22l-4-9-9-4z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    }
+
+    bind() {
+      this.chatPane = this.shadow.getElementById('chat-pane');
+      this.historyPane = this.shadow.getElementById('history-pane');
+      this.tabsEl = this.shadow.getElementById('tabs');
+      this.editorEl = this.shadow.getElementById('composer-editor');
+      this.inputEl = this.editorEl;
+      this.sendBtn = this.shadow.getElementById('send-btn');
+      this.engineSelect = this.shadow.getElementById('engine-select');
+      this.engineShell = this.shadow.getElementById('engine');
+      this.projectLabel = this.shadow.getElementById('project-name');
+      this.toggleCollapse = this.shadow.getElementById('icon-collapse');
+      this.toggleExpand = this.shadow.getElementById('icon-expand');
+
+      const settingsBtn = this.shadow.getElementById('gear');
+      this.toggleBtn = this.shadow.getElementById('dock-toggle');
+      settingsBtn.addEventListener('click', () => this.eventBus.emit('settings:open'));
+      this.toggleBtn.addEventListener('click', () => {
+        const state = this.stateManager.get('ui.dockState');
+        const next = state === 'compact' ? 'normal' : 'compact';
+        this.stateManager.set('ui.dockState', next);
+      });
+
+      const closeBtn = this.shadow.getElementById('dock-close');
+      closeBtn.addEventListener('click', () => {
+        this.stateManager.set('ui.dockOpen', false);
+        this.setVisible(false);
+      });
+
+      this.tabsEl.addEventListener('click', (e) => {
+        const tab = e.target.closest('.tab');
+        if (!tab) return;
+        this.setTab(tab.dataset.tab);
+      });
+
+      this.shadow.getElementById('select-btn').addEventListener('click', () => this.eventBus.emit('mode:toggle-element'));
+      this.shadow.getElementById('shot-btn').addEventListener('click', () => this.eventBus.emit('mode:toggle-screenshot'));
+      this.shadow.getElementById('new-session-btn').addEventListener('click', () => this.eventBus.emit('session:create'));
+
+      this.engineSelect.addEventListener('change', () => {
+        const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
+        this.eventBus.emit('engine:select', value);
+      });
+
+      this.editorEl.addEventListener('input', () => {
+        this.updatePlaceholder();
+        this.eventBus.emit('input:changed');
+        this.updateSendState();
+        this.captureSelection();
+      });
+      this.editorEl.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          this.eventBus.emit('submit:requested');
+        }
+      });
+      this.editorEl.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        document.execCommand('insertText', false, text);
+        this.captureSelection();
+      });
+      this.editorEl.addEventListener('mouseup', this.captureSelection);
+      this.editorEl.addEventListener('keyup', this.captureSelection);
+      this.editorEl.addEventListener('focus', this.captureSelection);
+      this.editorEl.addEventListener('blur', () => {
+        this.sanitizeEditor();
+        this.captureSelection();
+      });
+
+      this.sendBtn.addEventListener('click', () => this.eventBus.emit('submit:requested'));
+
+      this.historyPane.addEventListener('click', (event) => this.handleHistoryClick(event));
+
+      // State subscriptions
+      this.stateManager.subscribe('engine.current', (engine) => this.updateEngine(engine));
+      this.stateManager.subscribe('engine.available', () => this.updateEngineAvailability());
+      this.stateManager.subscribe('selection.elements', (elements) => this.renderChips(elements || []));
+      this.stateManager.subscribe('sessions.list', () => this.renderBody());
+      this.stateManager.subscribe('sessions.currentId', () => this.renderBody());
+      this.stateManager.subscribe('ui.dockTab', (tab) => this.setTab(tab, true));
+      this.stateManager.subscribe('ui.dockOpen', (open) => this.setVisible(open !== false));
+      this.stateManager.subscribe('ui.dockState', (state) => this.updateDockState(state));
+      this.stateManager.subscribe('processing.active', () => this.updateSendState());
+      this.stateManager.subscribe('wysiwyg.hasDiffs', () => this.updateSendState());
+      this.stateManager.subscribe('projects.allowed', () => this.updateSendState());
+      this.stateManager.subscribe('projects.current', (project) => this.updateProjectName(project));
+
+      this.updateEngine(this.stateManager.get('engine.current'));
+      this.updateEngineAvailability();
+      this.activeTab = this.stateManager.get('ui.dockTab') || 'chat';
+      this.setTab(this.activeTab, true);
+      this.setVisible(this.stateManager.get('ui.dockOpen') !== false);
+      this.updateDockState(this.stateManager.get('ui.dockState') || 'normal');
+      this.updateProjectName(this.stateManager.get('projects.current'));
+      this.updatePlaceholder();
+      this.applyTheme();
+
+      // Live updates for session changes (ensure History/UI refresh immediately)
+      this.stateManager.subscribe('sessions.list', () => {
+        const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
+        if (tab === 'history') this.renderHistory(); else this.renderChat();
+      });
+      this.stateManager.subscribe('sessions.currentId', () => {
+        const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
+        if (tab === 'history') this.renderHistory(); else this.renderChat();
+      });
+    }
+
+    applyTheme() {
+      try {
+        applyDockThemeAuto();
+        const dock = this.shadow.getElementById('dock');
+        if (!dock) return;
+        const isDark = document.documentElement.classList.contains('dark-dock');
+        dock.classList.toggle('dark', isDark);
+      } catch (_) {}
+    }
+
+    applySqueeze(isOpen) {
+      const html = document.documentElement;
+      const body = document.body;
+      
+      if (isOpen) {
+        // Squeeze mode: reduce viewport width
+        html.style.transition = 'margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
+        html.style.marginRight = '420px';
+        html.style.overflow = 'hidden';
+        body.style.overflow = 'auto';
+      } else {
+        // Normal: restore full width
+        html.style.transition = 'margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
+        html.style.marginRight = '0';
+        setTimeout(() => {
+          html.style.overflow = '';
+        }, 250);
+      }
+    }
+
+    updateDockState(state) {
+      const dock = this.shadow.getElementById('dock');
+      if (!dock) return;
+      dock.classList.toggle('compact', state === 'compact');
+      
+      const isCompact = state === 'compact';
+      const dockWidth = isCompact ? '56px' : '420px';
+      
+      if (this.host) {
+        this.host.style.pointerEvents = isCompact ? 'none' : 'auto';
+        this.host.style.transition = 'width 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
+        this.host.style.width = dockWidth;
+      }
+      
+      // Update squeeze based on compact state
+      const isOpen = this.stateManager.get('ui.dockOpen') !== false;
+      if (isOpen) {
+        const html = document.documentElement;
+        html.style.transition = 'margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
+        html.style.marginRight = isCompact ? '56px' : '420px';
+      }
+      
+      // Hide toggle button when compact (use handle instead)
+      if (this.toggleBtn) {
+        this.toggleBtn.style.display = 'flex';
+        const label = isCompact ? 'Expand Dock' : 'Collapse Dock';
+        this.toggleBtn.title = label;
+        this.toggleBtn.setAttribute('aria-label', label);
+      }
+      if (this.toggleCollapse && this.toggleExpand) {
+        this.toggleCollapse.style.display = isCompact ? 'none' : 'block';
+        this.toggleExpand.style.display = isCompact ? 'block' : 'none';
+      }
+      if (this.handle) {
+        this.handle.style.display = isOpen && isCompact ? 'flex' : 'none';
+        if (isCompact) {
+          const currentTop = parseFloat(this.handle.style.top || `${window.innerHeight / 2 - 26}`);
+          this.positionHandle(currentTop);
+        }
+      }
+    }
+
+    setVisible(isOpen) {
+      if (!this.host) return;
+      this.host.style.display = isOpen ? 'block' : 'none';
+      
+      // Apply or remove squeeze
+      this.applySqueeze(isOpen);
+      
+      if (this.handle) {
+        const state = this.stateManager.get('ui.dockState');
+        this.handle.style.display = isOpen && state === 'compact' ? 'flex' : 'none';
+      }
+      if (this.launcher) {
+        this.launcher.style.display = isOpen ? 'none' : 'flex';
+      }
+    }
+
+    setTab(name, fromState = false) {
+      if (!name) return;
+      this.activeTab = name;
+      Array.from(this.tabsEl.querySelectorAll('.tab')).forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === name);
+      });
+      if (!fromState) {
+        this.stateManager.set('ui.dockTab', name);
+      }
+      this.renderBody();
+    }
+
+    renderBody() {
+      const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
+      if (tab === 'history') {
+        this.chatPane.classList.add('view-hidden');
+        this.chatPane.classList.remove('view-active');
+        this.historyPane.classList.remove('view-hidden');
+        this.historyPane.classList.add('view-active');
+        this.renderHistory();
+      } else {
+        this.historyPane.classList.add('view-hidden');
+        this.historyPane.classList.remove('view-active');
+        this.chatPane.classList.remove('view-hidden');
+        this.chatPane.classList.add('view-active');
+        this.renderChat();
+      }
+    }
+
+    renderChat() {
+      if (!this.chatPane) return;
+      const pane = this.chatPane;
+      pane.innerHTML = '';
+      const sessions = this.stateManager.get('sessions.list') || [];
+      const currentId = this.stateManager.get('sessions.currentId');
+      const session = sessions.find(s => s.id === currentId) || sessions[0];
+      if (!session || session.transcript.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'chat-empty';
+        empty.textContent = 'Start by selecting elements or typing a message.';
+        pane.appendChild(empty);
+        return;
+      }
+      session.transcript.forEach(msg => {
+        pane.appendChild(this.renderChatMessage(msg));
+      });
+    }
+
+    renderChatMessage(msg) {
+      if (msg.role === 'assistant') {
+        const item = document.createElement('div');
+        item.className = 'chat-item assistant';
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        const body = document.createElement('div');
+        body.className = 'bubble';
+        const summary = document.createElement('div');
+        summary.className = 'summary';
+        summary.textContent = msg.summary || (msg.applied ? 'Applied ✓' : (msg.text || 'Response'));
+        body.appendChild(summary);
+        if (msg.details && msg.details.length) {
+          const details = document.createElement('div');
+          details.className = 'details';
+          details.textContent = msg.details.join(' ; ');
+          body.appendChild(details);
+        }
+        item.appendChild(avatar);
+        item.appendChild(body);
+        return item;
+      }
+      const item = document.createElement('div');
+      item.className = 'chat-item user';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = msg.text;
+      item.appendChild(bubble);
+      return item;
+    }
+
+    renderHistory() {
+      const pane = this.historyPane;
+      if (!pane) return;
+      pane.innerHTML = '';
+      this.renameState = null;
+
+      const newBtn = document.createElement('div');
+      newBtn.className = 'history-new';
+      newBtn.textContent = '＋ New Session';
+      newBtn.addEventListener('click', () => this.eventBus.emit('session:create'));
+      pane.appendChild(newBtn);
+
+      const sessions = this.stateManager.get('sessions.list') || [];
+      const currentId = this.stateManager.get('sessions.currentId');
+      if (!sessions.length) {
+        const empty = document.createElement('div');
+        empty.className = 'placeholder';
+        empty.textContent = 'History remembers your conversations.';
+        pane.appendChild(empty);
+        return;
+      }
+
+      sessions.forEach(session => {
+        const row = document.createElement('div');
+        row.className = 'history-row' + (session.id === currentId ? ' active' : '');
+        row.dataset.sessionId = session.id;
+
+        row.innerHTML = `
+        <div class="history-main">
+          <div class="history-title">${session.title ? escapeHtml(session.title) : 'Untitled session'}</div>
+          <div class="history-meta">${this.timeAgo(session.updatedAt || session.createdAt)} • ${session.msgCount || 0}<span class="status-dot ${session.lastAppliedOk ? 'ok' : ''}"></span></div>
+        </div>
+        <div class="history-actions">
+          <button data-action="resume">Resume</button>
+          <button data-action="rename">Rename</button>
+          <button data-action="delete">Delete</button>
+        </div>
+      `;
+        pane.appendChild(row);
+      });
+    }
+
+    handleHistoryClick(event) {
+      const actionBtn = event.target.closest('button[data-action]');
+      const row = event.target.closest('.history-row');
+      if (!row) return;
+      const sessionId = row.dataset.sessionId;
+      if (!actionBtn) {
+        this.eventBus.emit('session:resume', sessionId);
+        return;
+      }
+      const action = actionBtn.dataset.action;
+      if (action === 'resume') {
+        this.eventBus.emit('session:resume', sessionId);
+      } else if (action === 'rename') {
+        if (row.classList.contains('renaming')) return;
+        this.startRename(row, sessionId);
+      } else if (action === 'delete') {
+        if (window.confirm('Delete this session?')) {
+          this.eventBus.emit('session:delete', sessionId);
+        }
+      }
+    }
+
+    startRename(row, sessionId) {
+      if (!row) return;
+      if (this.renameState && this.renameState.cancel) {
+        this.renameState.cancel();
+      }
+      const main = row.querySelector('.history-main');
+      const titleEl = row.querySelector('.history-title');
+      const metaEl = row.querySelector('.history-meta');
+      if (!main || !titleEl) return;
+
+      const current = (titleEl.textContent || '').trim();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = current;
+      input.placeholder = 'Session title';
+      input.className = 'history-rename';
+      input.setAttribute('aria-label', 'Rename session');
+
+      main.insertBefore(input, metaEl || null);
+      titleEl.style.display = 'none';
+      row.classList.add('renaming');
+
+      let finished = false;
+
+      const cleanup = (text = null) => {
+        input.removeEventListener('keydown', onKeyDown);
+        input.removeEventListener('blur', onBlur);
+        row.classList.remove('renaming');
+        if (titleEl) {
+          titleEl.style.display = '';
+          if (text !== null) {
+            titleEl.textContent = text;
+          }
+        }
+        if (input.parentNode) {
+          input.parentNode.removeChild(input);
+        }
+        if (this.renameState && this.renameState.input === input) {
+          this.renameState = null;
+        }
+      };
+
+      const commit = () => {
+        if (finished) return;
+        finished = true;
+        const next = input.value.trim();
+        cleanup(next || current);
+        if (next && next !== current) {
+          this.eventBus.emit('session:rename', { id: sessionId, title: next });
+        }
+      };
+
+      const cancel = () => {
+        if (finished) return;
+        finished = true;
+        cleanup(current);
+      };
+
+      const onKeyDown = (evt) => {
+        if (evt.key === 'Enter') {
+          evt.preventDefault();
+          commit();
+        } else if (evt.key === 'Escape') {
+          evt.preventDefault();
+          cancel();
+        }
+      };
+
+      const onBlur = () => {
+        commit();
+      };
+
+      input.addEventListener('keydown', onKeyDown);
+      input.addEventListener('blur', onBlur);
+      this.renameState = { row, input, titleEl, cancel };
+      input.focus();
+      input.select();
+    }
+
+    updateEngine(engine) {
+      if (this.engineSelect) {
+        this.engineSelect.value = engine === 'claude' ? 'claude' : 'codex';
+      }
+      this.updateEngineAvailability();
+    }
+
+    updateEngineAvailability() {
+      if (!this.engineShell) return;
+      const available = this.stateManager.get('engine.available') || {};
+      const current = this.stateManager.get('engine.current');
+      const dot = this.shadow.getElementById('engine-light');
+      const isAvailable = !!available[current];
+      this.engineShell.classList.toggle('available', isAvailable);
+      if (dot) {
+        dot.style.background = '';
+      }
+    }
+
+    updateProjectName(project) {
+      if (!this.projectLabel) return;
+      if (project && typeof project === 'object') {
+        const name = project.name || project.id || 'Linked Project';
+        this.projectLabel.textContent = `Lumi — ${name}`;
+      } else {
+        this.projectLabel.textContent = 'Lumi — Unmapped Page';
+      }
+    }
+
+    updateSendState() {
+      if (!this.sendBtn) return;
+      const elements = this.stateManager.get('selection.elements') || [];
+      const screenshots = this.stateManager.get('selection.screenshots') || [];
+      const hasContext = elements.length > 0 || screenshots.length > 0;
+      const hasIntent = this.getPlainText().trim().length > 0;
+      const hasEdits = this.stateManager.get('wysiwyg.hasDiffs')
+        || (Array.isArray(elements) && elements.some(e => e && e.edited));
+      const isProcessing = this.stateManager.get('processing.active');
+      const projectAllowed = this.stateManager.get('projects.allowed');
+      this.sendBtn.disabled = !hasContext || !(hasIntent || hasEdits) || isProcessing || projectAllowed === false;
+      this.sendBtn.textContent = isProcessing ? 'Sending...' : 'Send';
+    }
+
+    getPlainText() {
+      if (!this.editorEl) return '';
+      let text = '';
+      this.editorEl.childNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          text += node.textContent || '';
+        }
+      });
+      return text;
+    }
+
+    getInputValue() {
+      return this.getPlainText().trim();
+    }
+
+    clearInput() {
+      if (!this.editorEl) return;
+      const nodes = Array.from(this.editorEl.childNodes);
+      nodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          node.remove();
+        }
+      });
+      this.updatePlaceholder();
+      this.updateSendState();
+    }
+
+    focusComposer() {
+      if (!this.editorEl) return;
+      this.editorEl.focus();
+      try {
+        if (!this.restoreSelection()) {
+          const selection = this.getSelection();
+          if (!selection) return;
+          const range = document.createRange();
+          range.selectNodeContents(this.editorEl);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          this.savedRange = range.cloneRange();
+        }
+      } catch (_) {
+        // Ignore focus errors
+      }
+    }
+
+    getShadowRoot() {
+      return this.shadow;
+    }
+
+    createHandle() {
+      if (this.handle) return;
+      const button = document.createElement('button');
+      button.id = 'lumi-dock-handle';
+      button.type = 'button';
+      button.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="14 5 8 12 14 19"></polyline><line x1="16" y1="5" x2="16" y2="19"></line></svg>';
+      button.setAttribute('aria-label', 'Expand Dock');
+      button.style.cssText = `
+      position: fixed;
+      top: calc(50% - 24px);
+      right: 18px;
+      width: 52px;
+      height: 52px;
+      border-radius: 26px;
+      border: 1px solid var(--dock-stroke);
+      background: var(--dock-bg);
+      box-shadow: var(--shadow);
+      color: var(--dock-fg);
+      font-size: 18px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      z-index: 2147483646;
+      user-select: none;
+      transition: all 0.2s ease;
+    `;
+      button.addEventListener('mouseenter', () => {
+        button.style.transform = 'scale(1.05)';
+        button.style.boxShadow = 'var(--shadow-lg)';
+      });
+      button.addEventListener('mouseleave', () => {
+        if (!this.handleDragState?.active) {
+          button.style.transform = 'scale(1)';
+          button.style.boxShadow = 'var(--shadow)';
+        }
+      });
+      button.addEventListener('click', () => {
+        if (this.handleDragState?.active) return;
+        this.stateManager.set('ui.dockState', 'normal');
+      });
+      document.body.appendChild(button);
+      this.handle = button;
+      this.positionHandle(window.innerHeight / 2 - 26);
+      this.setupHandleDrag();
+    }
+
+    createLauncher() {
+      if (this.launcher) return;
+      const button = document.createElement('button');
+      button.id = 'lumi-dock-launcher';
+      button.type = 'button';
+      button.setAttribute('aria-label', 'Show Lumi Dock');
+      button.style.cssText = `
+      position: fixed;
+      bottom: 28px;
+      right: 24px;
+      width: 52px;
+      height: 52px;
+      border-radius: 26px;
+      border: 1px solid var(--dock-stroke);
+      background: var(--dock-bg);
+      box-shadow: var(--shadow);
+      color: var(--dock-fg);
+      font-size: 18px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 2147483646;
+      user-select: none;
+      transition: all 0.2s ease;
+    `;
+      button.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path><path d="M9 7v10"></path><path d="M15 7v10"></path></svg>';
+      button.addEventListener('mouseenter', () => {
+        button.style.transform = 'scale(1.05)';
+        button.style.boxShadow = 'var(--shadow-lg)';
+      });
+      button.addEventListener('mouseleave', () => {
+        button.style.transform = 'scale(1)';
+        button.style.boxShadow = 'var(--shadow)';
+      });
+      button.addEventListener('click', () => {
+        this.stateManager.set('ui.dockOpen', true);
+        this.stateManager.set('ui.dockState', 'normal');
+      });
+      document.body.appendChild(button);
+      this.launcher = button;
+    }
+
+    setupHandleDrag() {
+      if (!this.handle) return;
+      this.handleDragState = { active: false, moved: false, offsetY: 0 };
+      this.handle.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return;
+        this.handleDragState.active = true;
+        this.handleDragState.moved = false;
+        const rect = this.handle.getBoundingClientRect();
+        this.handleDragState.offsetY = event.clientY - rect.top;
+        event.preventDefault();
+      });
+      window.addEventListener('mousemove', (event) => {
+        if (!this.handleDragState?.active) return;
+        this.handleDragState.moved = true;
+        this.positionHandle(event.clientY - this.handleDragState.offsetY);
+      });
+      window.addEventListener('mouseup', (event) => {
+        if (!this.handleDragState?.active) return;
+        const moved = this.handleDragState.moved;
+        this.handleDragState.active = false;
+        if (!moved) {
+          this.stateManager.set('ui.dockState', 'normal');
+        }
+      });
+    }
+
+    positionHandle(top) {
+      if (!this.handle) return;
+      const min = 24;
+      const max = window.innerHeight - 60;
+      const clamped = Math.min(max, Math.max(min, top));
+      this.handle.style.top = `${clamped}px`;
+    }
+
+    renderChips(elements) {
+      this.syncChips(elements);
+      this.updatePlaceholder();
+      this.updateSendState();
+    }
+
+    insertChipForElement(item, index) {
+      if (!this.editorEl) return;
+      const selection = this.ensureCaretSelection();
+      const chip = this.createChipElement(item, index);
+      const frag = document.createDocumentFragment();
+      frag.appendChild(chip);
+      frag.appendChild(document.createTextNode('\u00A0'));
+
+      if (selection && selection.rangeCount && this.editorEl.contains(selection.anchorNode)) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(frag);
+        const space = chip.nextSibling;
+        if (space) {
+          const caret = document.createRange();
+          caret.setStartAfter(space);
+          caret.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(caret);
+          this.savedRange = caret.cloneRange();
+        }
+      } else {
+        this.editorEl.appendChild(frag);
+        this.captureSelection();
+      }
+      this.updatePlaceholder();
+    }
+
+    moveChipToCaret(index) {
+      if (!this.editorEl) return false;
+      const chip = this.editorEl.querySelector(`.chip[data-index="${index}"]`);
+      if (!chip) return false;
+      const selection = this.ensureCaretSelection();
+      const trailing = chip.nextSibling;
+      chip.remove();
+      if (trailing && trailing.nodeType === Node.TEXT_NODE && /^\u00A0?$/.test(trailing.textContent || '')) {
+        trailing.remove();
+      }
+
+      const frag = document.createDocumentFragment();
+      frag.appendChild(chip);
+      frag.appendChild(document.createTextNode('\u00A0'));
+
+      if (selection && selection.rangeCount && this.editorEl.contains(selection.anchorNode)) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(frag);
+        const space = chip.nextSibling;
+        if (space) {
+          const caret = document.createRange();
+          caret.setStartAfter(space);
+          caret.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(caret);
+          this.savedRange = caret.cloneRange();
+        }
+      } else {
+        this.editorEl.appendChild(frag);
+        this.captureSelection();
+      }
+      this.updatePlaceholder();
+      return true;
+    }
+
+    ensureCaretSelection() {
+      if (!this.editorEl) return null;
+      if (!this.restoreSelection()) {
+        this.focusComposer();
+      }
+      const selection = this.getSelection();
+      if (!selection || !selection.rangeCount || !this.editorEl.contains(selection.anchorNode)) {
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(this.editorEl);
+          range.collapse(false);
+          const sel = this.getSelection();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+            this.savedRange = range.cloneRange();
+            return sel;
+          }
+        } catch (_) {
+          return selection;
+        }
+      }
+      return selection;
+    }
+
+    getSelection() {
+      if (this.shadow && typeof this.shadow.getSelection === 'function') {
+        const sel = this.shadow.getSelection();
+        if (sel) return sel;
+      }
+      return window.getSelection();
+    }
+
+    captureSelection() {
+      if (!this.editorEl) return;
+      const sel = this.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      if (!this.editorEl.contains(range.startContainer) || !this.editorEl.contains(range.endContainer)) return;
+      this.savedRange = range.cloneRange();
+    }
+
+    restoreSelection() {
+      if (!this.editorEl || !this.savedRange) return false;
+      try {
+        const sel = this.getSelection();
+        if (!sel) return false;
+        sel.removeAllRanges();
+        sel.addRange(this.savedRange);
+        return true;
+      } catch (_) {
+        this.savedRange = null;
+        return false;
+      }
+    }
+
+    removeChipForElement(index) {
+      if (!this.editorEl) return;
+      const chip = this.editorEl.querySelector(`.chip[data-index="${index}"]`);
+      if (!chip) return;
+      const space = chip.nextSibling;
+      chip.remove();
+      if (space && space.nodeType === Node.TEXT_NODE && /^\u00A0?$/.test(space.textContent || '')) {
+        space.remove();
+      }
+      this.updateChipIndices(index);
+      this.updatePlaceholder();
+      this.updateSendState();
+    }
+
+    clearChips() {
+      if (!this.editorEl) return;
+      this.getChipNodes().forEach((chip) => {
+        const next = chip.nextSibling;
+        chip.remove();
+        if (next && next.nodeType === Node.TEXT_NODE && /^\u00A0?$/.test(next.textContent || '')) {
+          next.remove();
+        }
+      });
+      this.updatePlaceholder();
+      this.updateSendState();
+    }
+
+    syncChips(elements) {
+      if (!this.editorEl) return;
+      const chips = this.getChipNodes();
+      if (chips.length > elements.length) {
+        for (let i = chips.length - 1; i >= elements.length; i -= 1) {
+          const chip = chips[i];
+          const next = chip.nextSibling;
+          chip.remove();
+          if (next && next.nodeType === Node.TEXT_NODE && /^\u00A0?$/.test(next.textContent || '')) {
+            next.remove();
+          }
+        }
+      } else if (elements.length > chips.length) {
+        for (let i = chips.length; i < elements.length; i += 1) {
+          this.appendChip(elements[i], i);
+        }
+      }
+      const updatedChips = this.getChipNodes();
+      updatedChips.forEach((chip, idx) => {
+        const item = elements[idx];
+        if (!item) return;
+        this.decorateChip(chip, item, idx);
+      });
+    }
+
+    createChipElement(item, index) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.index = String(index);
+      chip.contentEditable = 'false';
+
+      const labelBtn = document.createElement('button');
+      labelBtn.type = 'button';
+      labelBtn.className = 'chip-label';
+      labelBtn.addEventListener('click', () => {
+        const current = Number(chip.dataset.index || index);
+        this.eventBus.emit('context-tag:element-clicked', current);
+        this.eventBus.emit('edit:open', { index: current });
+      });
+
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'x';
+      close.textContent = '×';
+      close.title = 'Remove';
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = Number(chip.dataset.index || index);
+        this.removeElementAt(current);
+      });
+
+      chip.appendChild(labelBtn);
+      chip.appendChild(close);
+      this.decorateChip(chip, item, index);
+      return chip;
+    }
+
+    appendChip(item, index) {
+      if (!this.editorEl) return;
+      const chip = this.createChipElement(item, index);
+      this.editorEl.appendChild(chip);
+      this.editorEl.appendChild(document.createTextNode('\u00A0'));
+    }
+
+    getChipNodes() {
+      if (!this.editorEl) return [];
+      return Array.from(this.editorEl.querySelectorAll('.chip'));
+    }
+
+    decorateChip(chip, item, index) {
+      if (!chip || !item) return;
+      chip.dataset.index = String(index);
+      chip.classList.toggle('edited', !!item.edited);
+      chip.title = item.diffSummary || '';
+      const labelBtn = chip.querySelector('.chip-label') || chip.querySelector('button');
+      if (labelBtn) {
+        const label = item.element ? readableElementName(item.element) : 'element';
+        labelBtn.textContent = '@' + label;
+      }
+    }
+
+    updateChipIndices(startIndex = 0) {
+      const chips = this.getChipNodes();
+      for (let i = startIndex; i < chips.length; i += 1) {
+        chips[i].dataset.index = String(i);
+      }
+    }
+
+    updatePlaceholder() {
+      if (!this.editorEl) return;
+      const hasContent = this.editorEl.textContent.trim().length > 0 || this.getChipNodes().length > 0;
+      this.editorEl.classList.toggle('has-content', hasContent);
+    }
+
+    sanitizeEditor() {
+      if (!this.editorEl) return;
+      const nodes = Array.from(this.editorEl.childNodes);
+      nodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'DIV') {
+          const text = document.createTextNode(node.textContent || '');
+          this.editorEl.replaceChild(text, node);
+        }
+      });
+      this.updatePlaceholder();
+    }
+
+    removeElementAt(index) {
+      const list = (this.stateManager.get('selection.elements') || []).slice();
+      if (index < 0 || index >= list.length) return;
+      list.splice(index, 1);
+      this.stateManager.set('selection.elements', list);
+      this.eventBus.emit('element:removed', index);
+    }
+
+    timeAgo(ts) {
+      if (!ts) return 'Just now';
+      const diff = Date.now() - ts;
+      const m = Math.floor(diff / 60000);
+      if (m < 60) return m <= 1 ? 'Just now' : `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      if (d < 7) return `${d}d ago`;
+      return new Date(ts).toLocaleDateString();
+    }
+  }
+
+  /**
+   * ElementSchema - Derive control schema for the Property Panel
+   */
+
+
+  function describeChanges(changes) {
+    if (!changes) return 'Edited';
+    const friendly = {
+      text: 'Text',
+      color: 'Text Color',
+      backgroundColor: 'Background',
+      fontSize: 'Font Size',
+      fontWeight: 'Font Weight',
+      lineHeight: 'Line Height',
+      borderRadius: 'Radius',
+      padding: 'Padding',
+      paddingTop: 'Padding Top',
+      paddingRight: 'Padding Right',
+      paddingBottom: 'Padding Bottom',
+      paddingLeft: 'Padding Left',
+      boxShadow: 'Shadow'
+    };
+    const keys = Object.keys(changes);
+    if (!keys.length) return 'Edited';
+    const labels = keys.map(key => friendly[key] || key);
+    return Array.from(new Set(labels)).join(', ');
+  }
+
+  const SHADOW_PRESETS = {
+    none: 'none',
+    soft: '0 6px 18px rgba(15,23,42,0.12)',
+    medium: '0 12px 28px rgba(15,23,42,0.16)',
+    deep: '0 24px 44px rgba(15,23,42,0.2)'
+  };
+
+  class DockEditModal {
+    constructor(eventBus, stateManager, mountRoot) {
+      this.eventBus = eventBus;
+      this.stateManager = stateManager;
+      this.mountRoot = mountRoot || document.body;
+      this.container = null;
+      this.backdrop = null;
+      this.form = null;
+      this.targets = [];
+      this.indices = [];
+      this.base = null;
+      this.inline = null;
+      this.current = {};
+      this.bodyScrollLocked = false;
+    }
+
+    mount() {
+      if (this.container) return;
+      this.backdrop = document.createElement('div');
+      this.backdrop.id = 'dock-edit-overlay';
+      this.backdrop.style.cssText = `
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: auto;
+      width: 420px; /* updated dynamically in open() */
+      background: color-mix(in srgb, var(--dock-fg, #0f172a) 22%, transparent);
+      backdrop-filter: blur(8px);
+      z-index: 2147483647;
+      display: none;
+      `;
+      this.backdrop.addEventListener('click', () => this.close(true));
+
+      this.container = document.createElement('div');
+      this.container.id = 'dock-edit-modal';
+      this.container.style.cssText = `
+      position: fixed;
+      right: 24px;
+      top: 72px;
+      width: 360px;
+      background: var(--dock-bg);
+      backdrop-filter: blur(24px);
+      border-radius: var(--radius-panel, 18px);
+      border: 1px solid var(--dock-stroke);
+      box-shadow: var(--shadow);
+      padding: 20px 22px;
+      display: none; /* hidden by default; becomes flex on open() */
+      z-index: 2147483647;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--dock-fg);
+      max-height: calc(100vh - 144px);
+      overflow: hidden;
+      flex-direction: column;
+    `;
+
+      this.container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0;">
+        <div id="dock-edit-title" style="font-weight:600;font-size:14px;">Edit</div>
+        <button id="dock-edit-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--dock-fg-2);">×</button>
+      </div>
+      <div id="dock-edit-scroll" style="flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding-right:4px;min-height:0;">
+        <form id="dock-edit-form" class="dock-edit-form" style="display:flex;flex-direction:column;gap:14px;"></form>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-shrink:0;">
+        <button type="button" id="dock-edit-reset" class="dock-edit-btn" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);">Reset</button>
+        <button type="button" id="dock-edit-apply" class="dock-edit-apply" style="border:1px solid var(--dock-stroke);background:var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent));border-radius:12px;padding:6px 12px;color:var(--dock-fg);">Apply</button>
+      </div>
+    `;
+
+      this.form = this.container.querySelector('#dock-edit-form');
+      this.scrollContainer = this.container.querySelector('#dock-edit-scroll');
+      this.container.querySelector('#dock-edit-close').addEventListener('click', () => this.close(true));
+      this.container.querySelector('#dock-edit-reset').addEventListener('click', () => this.resetChanges());
+      this.container.querySelector('#dock-edit-apply').addEventListener('click', () => this.applyChanges());
+
+      // Prevent scroll events from bubbling to page
+      this.container.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+      }, { passive: true });
+      
+      // Ensure scroll only happens within modal
+      if (this.scrollContainer) {
+        this.scrollContainer.addEventListener('wheel', (e) => {
+          const { scrollTop, scrollHeight, clientHeight } = this.scrollContainer;
+          const isScrollingUp = e.deltaY < 0;
+          const isScrollingDown = e.deltaY > 0;
+          const isAtTop = scrollTop === 0;
+          const isAtBottom = scrollTop + clientHeight >= scrollHeight;
+          
+          if ((isAtTop && isScrollingUp) || (isAtBottom && isScrollingDown)) {
+            e.preventDefault();
+          }
+          e.stopPropagation();
+        }, { passive: false });
+      }
+
+      if (!this.mountRoot) return;
+      this.mountRoot.appendChild(this.backdrop);
+      this.mountRoot.appendChild(this.container);
+    }
+
+    open({ index, element } = {}) {
+      this.mount();
+      const selection = this.stateManager.get('selection.elements') || [];
+      if (!Array.isArray(selection) || selection.length === 0) return;
+
+      let indices = [];
+      if (typeof index === 'number' && selection[index]) {
+        indices = [index];
+      } else if (element) {
+        const found = selection.findIndex(item => item.element === element);
+        if (found >= 0) indices = [found];
+      }
+      if (!indices.length) {
+        indices = selection.map((_, i) => i);
+      }
+
+      this.indices = indices;
+      this.targets = indices
+        .map((i) => {
+          const item = selection[i];
+          return item && item.element ? { element: item.element, selector: item.selector } : null;
+        })
+        .filter(Boolean);
+
+      if (!this.targets.length) return;
+
+      this.current = {};
+      this.collectBase();
+      this.renderForm();
+      this.stateManager.set('wysiwyg.pending', null);
+      this.stateManager.set('wysiwyg.active', true);
+      if (!this.bodyScrollLocked) {
+        document.body.classList.add('lumi-scroll-lock');
+        this.bodyScrollLocked = true;
+      }
+      // Ensure overlay only covers Dock area
+      this.positionOverlay();
+      this.backdrop.style.display = 'block';
+      this.container.style.display = 'flex';
+    }
+
+    close(cancel = false) {
+      if (!this.container) return;
+      if (cancel) {
+        this.restoreBase();
+      }
+      this.backdrop.style.display = 'none';
+      this.container.style.display = 'none';
+      window.removeEventListener('resize', this._onResize);
+      this.form.innerHTML = '';
+      this.current = {};
+      this.targets = [];
+      this.indices = [];
+      this.stateManager.set('wysiwyg.pending', null);
+      this.stateManager.set('wysiwyg.active', false);
+      if (this.bodyScrollLocked) {
+        document.body.classList.remove('lumi-scroll-lock');
+        this.bodyScrollLocked = false;
+      }
+    }
+
+    positionOverlay() {
+      try {
+        const state = this.stateManager.get('ui.dockState');
+        const dockWidth = state === 'compact' ? 56 : (this.stateManager.get('ui.dockWidth') || 420);
+        this.backdrop.style.left = (window.innerWidth - dockWidth) + 'px';
+        this.backdrop.style.width = dockWidth + 'px';
+        // keep container aligned to right visually
+        this.container.style.right = '24px';
+      } catch (_) {}
+      if (!this._onResize) {
+        this._onResize = () => this.positionOverlay();
+      }
+      window.addEventListener('resize', this._onResize, { passive: true });
+    }
+
+    collectBase() {
+      const base = {
+        text: null,
+        color: null,
+        backgroundColor: null,
+        fontSize: null,
+        fontWeight: null,
+        lineHeight: null,
+        paddingTop: null,
+        paddingRight: null,
+        paddingBottom: null,
+        paddingLeft: null,
+        borderRadius: null,
+        boxShadow: null
+      };
+      const inline = [];
+      this.targets.forEach(({ element }) => {
+        const style = window.getComputedStyle(element);
+        const entry = {
+          text: element.textContent,
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          paddingTop: style.paddingTop,
+          paddingRight: style.paddingRight,
+          paddingBottom: style.paddingBottom,
+          paddingLeft: style.paddingLeft,
+          borderRadius: style.borderRadius,
+          boxShadow: style.boxShadow,
+          inline: {
+            color: element.style.color,
+            backgroundColor: element.style.backgroundColor,
+            fontSize: element.style.fontSize,
+            fontWeight: element.style.fontWeight,
+            lineHeight: element.style.lineHeight,
+            paddingTop: element.style.paddingTop,
+            paddingRight: element.style.paddingRight,
+            paddingBottom: element.style.paddingBottom,
+            paddingLeft: element.style.paddingLeft,
+            borderRadius: element.style.borderRadius,
+            boxShadow: element.style.boxShadow
+          }
+        };
+        inline.push(entry);
+        Object.keys(base).forEach((key) => {
+          if (base[key] === null) {
+            base[key] = entry[key];
+          } else if (base[key] !== entry[key]) {
+            base[key] = 'mixed';
+          }
+        });
+      });
+      this.base = base;
+      this.inline = inline;
+    }
+
+    restoreBase() {
+      this.targets.forEach(({ element }, idx) => {
+        const data = this.inline[idx];
+        if (!data) return;
+        element.textContent = data.text;
+        element.style.color = data.inline.color;
+        element.style.backgroundColor = data.inline.backgroundColor;
+        element.style.fontSize = data.inline.fontSize;
+        element.style.fontWeight = data.inline.fontWeight;
+        element.style.lineHeight = data.inline.lineHeight;
+        element.style.paddingTop = data.inline.paddingTop;
+        element.style.paddingRight = data.inline.paddingRight;
+        element.style.paddingBottom = data.inline.paddingBottom;
+        element.style.paddingLeft = data.inline.paddingLeft;
+        element.style.borderRadius = data.inline.borderRadius;
+        element.style.boxShadow = data.inline.boxShadow;
+      });
+    }
+
+    renderForm() {
+      const base = this.base;
+      const form = this.form;
+      form.innerHTML = '';
+
+      const title = this.container.querySelector('#dock-edit-title');
+      if (this.targets.length > 1) {
+        title.textContent = `${this.targets.length} elements selected`;
+      } else {
+        const el = this.targets[0].element;
+        title.textContent = readableElementName(el);
+      }
+
+      form.appendChild(this.renderTextField('Text', 'text', base.text));
+      form.appendChild(this.renderColorField('Text Color', 'color', base.color));
+      form.appendChild(this.renderColorField('Background', 'backgroundColor', base.backgroundColor));
+      form.appendChild(this.renderNumberField('Font Size (px)', 'fontSize', base.fontSize, { unit: 'px' }));
+      form.appendChild(this.renderSelectField('Font Weight', 'fontWeight', base.fontWeight, ['300','400','500','600','700']));
+      form.appendChild(this.renderNumberField('Line Height', 'lineHeight', base.lineHeight));
+
+      form.appendChild(this.renderPaddingGroup(base));
+      form.appendChild(this.renderNumberField('Border Radius (px)', 'borderRadius', base.borderRadius, {unit:'px'}));
+      form.appendChild(this.renderShadowField(base.boxShadow));
+    }
+
+    renderTextField(label, key, value) {
+      const wrapper = document.createElement('label');
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.gap = '6px';
+      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+      const textarea = document.createElement('textarea');
+      textarea.style.fontSize = '13px';
+      textarea.style.padding = '8px 10px';
+      textarea.style.border = '1px solid var(--dock-stroke)';
+      textarea.style.borderRadius = '10px';
+      textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+      textarea.style.resize = 'vertical';
+      textarea.value = value === 'mixed' ? '' : (value || '');
+      textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
+      textarea.addEventListener('input', () => {
+        if (value === 'mixed' && !textarea.value.trim()) {
+          delete this.current[key];
+        } else {
+          this.current[key] = textarea.value;
+        }
+        this.preview();
+      });
+      wrapper.appendChild(textarea);
+      return wrapper;
+    }
+
+    renderColorField(label, key, value) {
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.gap = '6px';
+      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = this.toHex(value === 'mixed' ? '#999999' : value);
+      input.addEventListener('input', () => {
+        this.current[key] = input.value;
+        this.preview();
+      });
+      wrapper.appendChild(input);
+      return wrapper;
+    }
+
+    renderNumberField(label, key, value, opts = {}) {
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.gap = '6px';
+      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.style.padding = '6px 10px';
+      input.style.border = '1px solid var(--dock-stroke)';
+      input.style.borderRadius = '10px';
+      input.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+      input.step = opts.step || '1';
+      if (value !== 'mixed' && value !== null) {
+        input.value = this.parseNumeric(value, opts.unit);
+      } else {
+        input.placeholder = 'Mixed';
+      }
+      input.addEventListener('input', () => {
+        if (input.value === '') {
+          delete this.current[key];
+        } else {
+          const unit = opts.unit || '';
+          this.current[key] = unit ? `${input.value}${unit}` : input.value;
+        }
+        this.preview();
+      });
+      wrapper.appendChild(input);
+      return wrapper;
+    }
+
+    renderSelectField(label, key, value, options) {
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.gap = '6px';
+      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+      const select = document.createElement('select');
+      select.style.padding = '6px 10px';
+      select.style.border = '1px solid var(--dock-stroke)';
+      select.style.borderRadius = '10px';
+      select.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+      select.innerHTML = `<option value="">Mixed</option>` + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+      if (value && value !== 'mixed') {
+        select.value = value.replace(/[^0-9]/g, '') || value;
+      }
+      select.addEventListener('change', () => {
+        if (!select.value) {
+          delete this.current[key];
+        } else {
+          this.current[key] = select.value;
+        }
+        this.preview();
+      });
+      wrapper.appendChild(select);
+      return wrapper;
+    }
+
+    renderPaddingGroup(base) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Padding (px)</span>`;
+      const grid = document.createElement('div');
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+      grid.style.gap = '10px';
+
+      ['Top','Right','Bottom','Left'].forEach(side => {
+        const key = `padding${side}`;
+        const cell = this.renderNumberField(side, key, base[key], { unit: 'px' });
+        grid.appendChild(cell);
+      });
+      wrapper.appendChild(grid);
+      return wrapper;
+    }
+
+    renderShadowField(value) {
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.flexDirection = 'column';
+      wrapper.style.gap = '6px';
+      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Shadow</span>`;
+      const select = document.createElement('select');
+      select.style.padding = '6px 10px';
+      select.style.border = '1px solid var(--dock-stroke)';
+      select.style.borderRadius = '10px';
+      select.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+      select.innerHTML = `
+      <option value="none">None</option>
+      <option value="soft">Soft</option>
+      <option value="medium">Medium</option>
+      <option value="deep">Deep</option>
+    `;
+      const matched = Object.entries(SHADOW_PRESETS).find(([key, preset]) => preset === value);
+      select.value = matched ? matched[0] : 'none';
+      select.addEventListener('change', () => {
+        const preset = SHADOW_PRESETS[select.value] || 'none';
+        this.current.boxShadow = preset;
+        this.preview();
+      });
+      wrapper.appendChild(select);
+      return wrapper;
+    }
+
+    preview() {
+      const changes = this.current;
+      this.targets.forEach(({ element }) => {
+        if (changes.text !== undefined) {
+          element.textContent = changes.text;
+        }
+        if (changes.color !== undefined) element.style.color = changes.color;
+        if (changes.backgroundColor !== undefined) element.style.backgroundColor = changes.backgroundColor;
+        if (changes.fontSize !== undefined) element.style.fontSize = this.withUnit(changes.fontSize, 'px');
+        if (changes.fontWeight !== undefined) element.style.fontWeight = changes.fontWeight;
+        if (changes.lineHeight !== undefined) element.style.lineHeight = changes.lineHeight;
+        if (changes.paddingTop !== undefined) element.style.paddingTop = this.withUnit(changes.paddingTop, 'px');
+        if (changes.paddingRight !== undefined) element.style.paddingRight = this.withUnit(changes.paddingRight, 'px');
+        if (changes.paddingBottom !== undefined) element.style.paddingBottom = this.withUnit(changes.paddingBottom, 'px');
+        if (changes.paddingLeft !== undefined) element.style.paddingLeft = this.withUnit(changes.paddingLeft, 'px');
+        if (changes.borderRadius !== undefined) element.style.borderRadius = this.withUnit(changes.borderRadius, 'px');
+        if (changes.boxShadow !== undefined) element.style.boxShadow = changes.boxShadow;
+      });
+      this.syncPending();
+    }
+
+    resetChanges() {
+      this.restoreBase();
+      this.current = {};
+      this.renderForm();
+      this.syncPending();
+    }
+
+    applyChanges() {
+      if (!this.targets.length) return;
+      const changes = { ...this.current };
+      Object.keys(changes).forEach(key => {
+        if (changes[key] === undefined) delete changes[key];
+      });
+      const summary = describeChanges(changes) || 'Edited';
+      this.targets.forEach(({ selector }, idx) => {
+        const index = this.indices[idx];
+        this.eventBus.emit('wysiwyg:apply', {
+          index,
+          selector,
+          changes,
+          summary
+        });
+      });
+      this.close();
+    }
+
+    parseNumeric(value, unit) {
+      if (!value || value === 'mixed') return '';
+      if (unit === 'px') {
+        const match = String(value).match(/-?\d+(?:\.\d+)?/);
+        return match ? match[0] : '';
+      }
+      if (String(value).endsWith('px')) return value.replace('px', '');
+      return value;
+    }
+
+    withUnit(value, unit) {
+      if (value === undefined || value === null || value === '') return '';
+      if (String(value).endsWith(unit)) return value;
+      return `${value}${unit}`;
+    }
+
+    toHex(color) {
+      if (!color) return '#000000';
+      if (color.startsWith('#')) return color.length === 7 ? color : '#000000';
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.fillStyle = color;
+      return ctx.fillStyle;
+    }
+
+    syncPending() {
+      if (!this.indices.length || this.indices.length !== 1) {
+        this.stateManager.set('wysiwyg.pending', null);
+        return;
+      }
+      const trimmed = {};
+      Object.entries(this.current || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          trimmed[key] = value;
+        }
+      });
+      if (Object.keys(trimmed).length) {
+        this.stateManager.set('wysiwyg.pending', {
+          index: this.indices[0],
+          changes: trimmed
+        });
+      } else {
+        this.stateManager.set('wysiwyg.pending', null);
+      }
+    }
+  }
+
+  /**
+   * StyleApplier - Injects and manages scoped style rules for WYSIWYG edits
+   */
+
+  const SHEET_ID = 'lumi-style-sheet';
+
+  class StyleApplier {
+    constructor(eventBus) {
+      this.eventBus = eventBus;
+      this.sheet = null;
+      this.ruleMap = new Map(); // key -> { selector, property, value }
+    }
+
+    ensureSheet() {
+      if (this.sheet) return this.sheet;
+      let styleEl = document.getElementById(SHEET_ID);
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = SHEET_ID;
+        styleEl.dataset.lumi = 'styles';
+        document.head.appendChild(styleEl);
+      }
+      this.sheet = styleEl.sheet;
+      return this.sheet;
+    }
+
+    apply(element, property, value, context = {}) {
+      if (!element || !property) return;
+      const sheet = this.ensureSheet();
+      const selector = this.getSelectorForElement(element, context);
+      const key = this.getRuleKey(selector, property, context);
+
+      const ruleBody = `${property}: ${value};`;
+      const cssRule = `${selector} { ${ruleBody} }`;
+
+      this.removeRule(key);
+      try {
+        const index = sheet.cssRules.length;
+        sheet.insertRule(cssRule, index);
+        this.ruleMap.set(key, { index, selector, property, value, context });
+      } catch (error) {
+        console.warn('[StyleApplier] Failed to insert rule', cssRule, error);
+      }
+    }
+
+    remove(element, property, context = {}) {
+      if (!element || !property) return;
+      const selector = this.getSelectorForElement(element, context);
+      const key = this.getRuleKey(selector, property, context);
+      this.removeRule(key);
+    }
+
+    clear() {
+      const sheet = this.ensureSheet();
+      while (sheet.cssRules.length) {
+        sheet.deleteRule(sheet.cssRules.length - 1);
+      }
+      this.ruleMap.clear();
+    }
+
+    export() {
+      const rules = [];
+      this.ruleMap.forEach((entry) => {
+        const { selector, property, value, context } = entry;
+        rules.push({ selector, property, value, context });
+      });
+      return rules;
+    }
+
+    getSelectorForElement(element, context = {}) {
+      const { index } = context;
+      if (!element.dataset.lumiId) {
+        element.dataset.lumiId = this.generateId(element, index);
+      }
+      const baseSelector = `[data-lumi-id="${element.dataset.lumiId}"]`;
+
+      const { breakpoint, state } = context;
+      let selector = baseSelector;
+
+      if (state) {
+        selector = `${selector}:${state}`;
+      }
+
+      if (breakpoint) {
+        return `@media ${breakpoint} { ${selector}`;
+      }
+
+      return selector;
+    }
+
+    getRuleKey(selector, property, context = {}) {
+      const scope = context.breakpoint ? context.breakpoint : 'default';
+      const state = context.state || 'default';
+      return `${scope}|${state}|${selector}|${property}`;
+    }
+
+    removeRule(key) {
+      if (!this.ruleMap.has(key)) return;
+      const entry = this.ruleMap.get(key);
+      const sheet = this.ensureSheet();
+      if (entry.index !== undefined && sheet.cssRules[entry.index]) {
+        sheet.deleteRule(entry.index);
+      } else {
+        // fallback: search by selector/property
+        for (let i = sheet.cssRules.length - 1; i >= 0; i -= 1) {
+          const rule = sheet.cssRules[i];
+          if (rule.selectorText === entry.selector && rule.style && rule.style[entry.property] !== undefined) {
+            sheet.deleteRule(i);
+          }
+        }
+      }
+      this.ruleMap.delete(key);
+    }
+
+    generateId(element, index) {
+      const base = element.tagName ? element.tagName.toLowerCase() : 'node';
+      const random = Math.random().toString(36).slice(2, 7);
+      return `${base}-${index !== undefined ? index : 'x'}-${random}`;
+    }
+  }
+
+  /**
+   * StyleHistory - Tracks committed style changes for undo/redo
+   */
+
+  class StyleHistory {
+    constructor(limit = 200) {
+      this.limit = limit;
+      this.stack = [];
+      this.position = -1;
+    }
+
+    push(change) {
+      if (!change) return;
+      if (this.position < this.stack.length - 1) {
+        this.stack = this.stack.slice(0, this.position + 1);
+      }
+      this.stack.push(change);
+      if (this.stack.length > this.limit) {
+        this.stack.shift();
+      } else {
+        this.position += 1;
+      }
+    }
+
+    undo() {
+      if (this.position < 0) return null;
+      const change = this.stack[this.position];
+      this.position -= 1;
+      return change;
+    }
+
+    redo() {
+      if (this.position >= this.stack.length - 1) return null;
+      this.position += 1;
+      return this.stack[this.position];
+    }
+
+    clear() {
+      this.stack = [];
+      this.position = -1;
+    }
+
+    get canUndo() {
+      return this.position >= 0;
+    }
+
+    get canRedo() {
+      return this.position < this.stack.length - 1;
+    }
   }
 
   /**
@@ -3116,6 +3962,9 @@
     const chromeBridge = new ChromeBridge(eventBus);
     const serverClient = new ServerClient(chromeBridge);
 
+    // Expose for DevTools-driven experiments in M1 (no UI yet)
+    try { window.__lumiEventBus = eventBus; } catch (_) {}
+
     // If the script is accidentally loaded in page context (no runtime), bail out early
     if (!chromeBridge.isRuntimeAvailable()) {
       console.warn('[LUMI] Chrome runtime not available in this context; skipping init');
@@ -3123,18 +3972,101 @@
     }
 
     // Initialize UI
-    const bubbleUI = new BubbleUI(eventBus, stateManager);
     const topBanner = new TopBanner();
-    let contextTags = null;
+    let dockRoot = null;
+    let editModal = null;
+    // InteractionBubble removed for a simpler UX
+    const styleApplier = new StyleApplier(eventBus);
+    const styleHistory = new StyleHistory();
 
     // Initialize selection helpers (instantiated after UI mounts)
-    const highlightManager = new HighlightManager();
+    const highlightManager = new HighlightManager(eventBus);
     let elementSelector = null;
     let screenshotSelector = null;
 
     // Initialize engine & health
     const engineManager = new EngineManager(eventBus, stateManager, chromeBridge);
     const healthChecker = new HealthChecker(eventBus, stateManager, chromeBridge, engineManager);
+
+    ensureDefaultSession();
+
+    function ensureDefaultSession() {
+      let sessions = stateManager.get('sessions.list');
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        const id = generateSessionId();
+        const session = {
+          id,
+          title: 'New Session',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          msgCount: 0,
+          lastAppliedOk: false,
+          transcript: [],
+          snapshotTokens: []
+        };
+        stateManager.batch({
+          'sessions.list': [session],
+          'sessions.currentId': id
+        });
+        sessions = [session];
+      }
+      if (!stateManager.get('sessions.currentId') && sessions.length) {
+        stateManager.set('sessions.currentId', sessions[0].id);
+      }
+    }
+
+    function generateSessionId() {
+      return 's' + Math.random().toString(36).slice(2);
+    }
+
+    function selectionToTokens() {
+      const elements = stateManager.get('selection.elements') || [];
+      return elements.map((item, idx) => {
+        const el = item.element;
+        const base = el.id || item.selector || `el-${idx}`;
+        return {
+          id: base,
+          label: '@' + readableElementName(el),
+          selector: item.selector
+        };
+      });
+    }
+
+    function updateSessionById(id, mutator) {
+      const list = (stateManager.get('sessions.list') || []).map(session => {
+        if (session.id !== id) return session;
+        const updated = {
+          ...session,
+          transcript: Array.isArray(session.transcript) ? session.transcript.slice() : [],
+          snapshotTokens: Array.isArray(session.snapshotTokens) ? session.snapshotTokens.slice() : []
+        };
+        mutator(updated);
+        updated.msgCount = updated.transcript.length;
+        return updated;
+      });
+      stateManager.set('sessions.list', list);
+    }
+
+    function appendMessage(sessionId, message) {
+      updateSessionById(sessionId, (session) => {
+        session.transcript.push({ ...message, timestamp: message.timestamp || Date.now() });
+        session.updatedAt = Date.now();
+        if (message.role === 'assistant' && typeof message.applied === 'boolean') {
+          session.lastAppliedOk = !!message.applied;
+        }
+      });
+    }
+
+    function formatEditDetails(edits = []) {
+      const details = [];
+      edits.forEach(entry => {
+        const changes = entry?.changes || {};
+        Object.entries(changes).forEach(([prop, value]) => {
+          details.push(`${prop} → ${value}`);
+        });
+      });
+      return details;
+    }
 
     // Inject global styles
     function injectGlobalStyles() {
@@ -3145,6 +4077,15 @@
 
     // Event bindings
     function bindEvents() {
+      function summarizeChanges(changes) {
+        try {
+          const keys = Object.keys(changes || {});
+          if (!keys.length) return 'Edited';
+          return keys.slice(0, 6).join(', ');
+        } catch (_) {
+          return 'Edited';
+        }
+      }
       function refreshElementHighlights() {
         highlightManager.clearAllSelections();
         const elements = stateManager.get('selection.elements');
@@ -3152,46 +4093,150 @@
       }
 
       // Selection events
-      eventBus.on('element:selected', () => {
-        bubbleUI.updateSendButtonState();
-        if (contextTags) {
-          contextTags.render();
+      eventBus.on('element:selected', (item) => {
+        const elements = stateManager.get('selection.elements') || [];
+        const index = elements.findIndex((e) => e && e.element === item.element);
+        if (dockRoot && index >= 0) {
+          // Always insert chip at cursor position
+          dockRoot.insertChipForElement(elements[index], index);
+        }
+        // no-op (bubble removed)
+        stateManager.set('ui.dockState', 'normal');
+        // Do not insert plain-text tokens into Dock input; chips reflect selection state.
+      });
+
+      // Handle remove event from InteractionBubble
+      eventBus.on('element:remove', (index) => {
+        const elements = stateManager.get('selection.elements') || [];
+        if (index >= 0 && index < elements.length) {
+          const updated = elements.filter((_, i) => i !== index);
+          stateManager.set('selection.elements', updated);
+          eventBus.emit('element:removed', index);
         }
       });
 
-      eventBus.on('element:removed', () => {
-        bubbleUI.updateSendButtonState();
+      eventBus.on('element:removed', (removedIndex) => {
+        // Reindex or drop edits tied to the removed element
+        const edits = (stateManager.get('wysiwyg.edits') || []).slice();
+        const adjusted = [];
+        edits.forEach((e) => {
+          if (typeof e.index !== 'number') return;
+          if (e.index === removedIndex) return; // drop
+          if (e.index > removedIndex) {
+            adjusted.push({ ...e, index: e.index - 1 });
+          } else {
+            adjusted.push(e);
+          }
+        });
+        const hasDiffs = adjusted.length > 0;
+        stateManager.batch({
+          'wysiwyg.edits': adjusted,
+          'wysiwyg.hasDiffs': hasDiffs
+        });
+        // Also clear the edited flag on remaining selection items to avoid stale flags
+        const elements = stateManager.get('selection.elements') || [];
+        elements.forEach((item, idx) => {
+          item.edited = adjusted.some(e => e.index === idx);
+          if (!item.edited) delete item.diffSummary;
+        });
+        stateManager.set('selection.elements', elements, true);
+        if (dockRoot) {
+          dockRoot.removeChipForElement(removedIndex);
+          dockRoot.renderChips(elements);
+          dockRoot.updateSendState();
+        }
+        // no-op (bubble removed)
+        stateManager.set('ui.dockState', 'normal');
         refreshElementHighlights();
-        if (contextTags) {
-          contextTags.render();
+        if (!elements.length && editModal) {
+          editModal.close();
+          // no-op (bubble removed)
         }
       });
 
       eventBus.on('selection:clear', () => {
         highlightManager.clearAll();
-        bubbleUI.updateSendButtonState();
-        if (contextTags) {
-          contextTags.render();
+        if (dockRoot) {
+          dockRoot.clearChips();
+          dockRoot.updateSendState();
         }
+        if (editModal) editModal.close();
+        // no-op (bubble removed)
+        stateManager.set('ui.dockState', 'normal');
       });
 
       eventBus.on('screenshot:captured', () => {
-        bubbleUI.updateSendButtonState();
-        if (contextTags) {
-          contextTags.render();
+        if (dockRoot) dockRoot.updateSendState();
+        const shots = stateManager.get('selection.screenshots') || [];
+        const last = shots[shots.length - 1];
+        if (last) {
+          // Previously showed a confirm bubble; keep selection and return to normal state
+          stateManager.set('ui.dockState', 'normal');
         }
       });
 
       eventBus.on('screenshot:removed', () => {
-        bubbleUI.updateSendButtonState();
-        if (contextTags) {
-          contextTags.render();
-        }
+        if (dockRoot) dockRoot.updateSendState();
       });
 
       eventBus.on('screenshot:error', (error) => {
         const message = error?.message || 'Screenshot capture failed';
-        bubbleUI.showStatus(message, 'error');
+        topBanner.update(message);
+        setTimeout(() => topBanner.hide(), 2200);
+      });
+
+      eventBus.on('session:create', () => {
+        const tokens = selectionToTokens();
+        const titleSource = dockRoot ? dockRoot.getInputValue() : '';
+        const id = generateSessionId();
+        const session = {
+          id,
+          title: titleSource.trim() || 'New Session',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          msgCount: 0,
+          lastAppliedOk: false,
+          transcript: [],
+          snapshotTokens: tokens
+        };
+        const list = [session, ...(stateManager.get('sessions.list') || [])];
+        stateManager.batch({
+          'sessions.list': list,
+          'sessions.currentId': id
+        });
+        if (dockRoot) dockRoot.clearInput();
+      });
+
+      eventBus.on('session:resume', (id) => {
+        const sessions = stateManager.get('sessions.list') || [];
+        if (!sessions.some(s => s.id === id)) return;
+        stateManager.batch({
+          'sessions.currentId': id,
+          'ui.dockTab': 'chat'
+        });
+      });
+
+      eventBus.on('session:rename', ({ id, title }) => {
+        const value = (title || '').trim();
+        if (!value) return;
+        updateSessionById(id, (session) => {
+          session.title = value;
+          session.updatedAt = Date.now();
+        });
+      });
+
+      eventBus.on('session:delete', (id) => {
+        const list = (stateManager.get('sessions.list') || []).filter(session => session.id !== id);
+        stateManager.set('sessions.list', list);
+        const currentId = stateManager.get('sessions.currentId');
+        if (currentId === id) {
+          const nextId = list[0]?.id || null;
+          stateManager.batch({
+            'sessions.currentId': nextId,
+            'ui.dockTab': nextId ? 'chat' : 'history'
+          });
+          if (!nextId) ensureDefaultSession();
+        }
       });
 
       // Context tag click events
@@ -3205,6 +4250,44 @@
         }
       });
 
+      eventBus.on('edit:open', (payload = {}) => {
+        if (!editModal) return;
+        const selection = stateManager.get('selection.elements') || [];
+        if (!Array.isArray(selection) || selection.length === 0) return;
+        let idx = typeof payload.index === 'number' ? payload.index : -1;
+        if (idx < 0 && payload.element) {
+          idx = selection.findIndex(item => item.element === payload.element);
+        }
+        if (idx < 0) idx = 0;
+        const target = selection[idx];
+        if (!target || !target.element) return;
+        try {
+          target.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) {
+          // ignore scroll failures
+        }
+        editModal.open({ index: idx, element: target.element });
+        stateManager.set('ui.dockState', 'normal');
+      });
+
+      eventBus.on('interaction:hover', ({ element, index }) => {
+        // Always show edit bubble on hover if dock is open and not in active selection mode
+        if (stateManager.get('ui.dockOpen') === false) return;
+        const mode = stateManager.get('ui.mode');
+        if (mode === 'element' || mode === 'screenshot') return; // suppress while in active picking modes
+        const elements = stateManager.get('selection.elements') || [];
+        if (typeof index !== 'number' || index < 0) return;
+        const match = elements[index];
+        if (!match || match.element !== element) return;
+        // no-op (bubble removed)
+      });
+      eventBus.on('interaction:leave', () => {
+        const mode = stateManager.get('ui.mode');
+        // Only hide if not in selection mode
+        if (mode === 'element' || mode === 'screenshot') return;
+        // no-op (bubble removed)
+      });
+
       // Mode toggle events
       eventBus.on('mode:toggle-element', () => {
         if (!elementSelector || !screenshotSelector) return;
@@ -3212,6 +4295,7 @@
 
         if (currentMode === 'element') {
           elementSelector.deactivate();
+          // no-op (bubble removed)
         } else {
           screenshotSelector.deactivate();
           elementSelector.activate();
@@ -3224,31 +4308,38 @@
 
         if (currentMode === 'screenshot') {
           screenshotSelector.deactivate();
+          // no-op (bubble removed)
         } else {
           elementSelector.deactivate();
           screenshotSelector.activate();
         }
       });
 
-      // Bubble events
+      // Dock events (legacy bubble hooks mapped to dock)
       eventBus.on('bubble:close', () => {
-        bubbleUI.hide();
+        stateManager.set('ui.dockOpen', false);
+        if (dockRoot) dockRoot.setVisible(false);
         if (elementSelector) elementSelector.deactivate();
         if (screenshotSelector) screenshotSelector.deactivate();
         highlightManager.clearAll();
+        // no-op (bubble removed)
+        if (editModal) editModal.close();
       });
 
       eventBus.on('bubble:toggle', () => {
-        const isVisible = stateManager.get('ui.bubbleVisible');
-
-        if (isVisible) {
-          bubbleUI.hide();
+        const isOpen = stateManager.get('ui.dockOpen') !== false;
+        stateManager.set('ui.dockOpen', !isOpen);
+        if (!isOpen && dockRoot) {
+          dockRoot.setVisible(true);
+          dockRoot.focusComposer();
+          // Interaction bubble removed
+        }
+        if (isOpen) {
           if (elementSelector) elementSelector.deactivate();
           if (screenshotSelector) screenshotSelector.deactivate();
           highlightManager.clearAll();
-        } else {
-          bubbleUI.show();
-          if (elementSelector) elementSelector.activate(); // Auto-activate element mode
+          // no-op (bubble removed)
+          if (editModal) editModal.close();
         }
       });
 
@@ -3259,25 +4350,22 @@
           const message = engine === 'claude'
             ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
             : 'Codex CLI not detected. Please install Codex CLI to enable.';
-          bubbleUI.showStatus(message, 'error');
+          topBanner.update(message);
+          setTimeout(() => topBanner.hide(), 2200);
           return;
         }
         // Switch engine and update UI immediately for responsiveness
         engineManager.selectEngine(engine);
-        bubbleUI.updateEngineSelector(engine);
+        // Dock reflects engine via state subscription
       });
 
       eventBus.on('engine:selected', (engine) => {
         console.log('[Content] Engine selected, updating UI:', engine);
-        const shadow = bubbleUI.getShadowRoot();
-        if (shadow) {
-          bubbleUI.updateEngineSelector(engine);
-        }
       });
 
       eventBus.on('engine:availability-updated', ({ codex, claude }) => {
         console.log('[Content] Engine availability event received:', { codex, claude });
-        bubbleUI.updateEngineAvailability({ codex, claude });
+        // Bubble hidden; Dock can reflect status; errors routed via TopBanner
         const current = engineManager.getCurrentEngine();
         if (!engineManager.isEngineAvailable(current)) {
           const fallback = codex ? 'codex' : claude ? 'claude' : null;
@@ -3287,12 +4375,14 @@
             const message = current === 'claude'
               ? 'Claude CLI not detected. Switched back to Codex.'
               : 'Codex CLI not detected. Switched back to Claude.';
-            bubbleUI.showStatus(message, 'error');
+            topBanner.update(message);
+            setTimeout(() => topBanner.hide(), 2200);
           } else {
             const message = current === 'claude'
               ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
               : 'Codex CLI not detected. Please install Codex CLI to enable.';
-            bubbleUI.showStatus(message, 'error');
+            topBanner.update(message);
+            setTimeout(() => topBanner.hide(), 2200);
           }
         }
       });
@@ -3300,52 +4390,149 @@
       // State subscription: Update UI when engine state changes
       stateManager.subscribe('engine.current', (newEngine, oldEngine) => {
         console.log('[Content] Engine state changed:', oldEngine, '->', newEngine);
-        const shadow = bubbleUI.getShadowRoot();
-        if (shadow) {
-          bubbleUI.updateEngineSelector(newEngine);
-        }
+        // Dock updates engine label; Bubble hidden
       });
 
       // Input events
       eventBus.on('input:changed', () => {
-        bubbleUI.updateSendButtonState();
-        if (contextTags) contextTags.updateInsertedStates();
+        if (dockRoot) dockRoot.updateSendState();
+      });
+
+      // WYSIWYG events (M1 scaffolding)
+      eventBus.on('wysiwyg:apply', (payload = {}) => {
+        const { index, changes, summary } = payload;
+        const elements = stateManager.get('selection.elements');
+        if (!Array.isArray(elements) || typeof index !== 'number' || !elements[index]) {
+          console.warn('[LUMI] wysiwyg:apply ignored: invalid index');
+          return;
+        }
+        const selector = elements[index].selector;
+        const edits = (stateManager.get('wysiwyg.edits') || []).slice();
+        // Replace existing entry for this index, if any
+        const next = edits.filter(e => e.index !== index);
+        const entry = {
+          index,
+          selector,
+          changes: { ...(changes || {}) },
+          summary: summary || summarizeChanges(changes)
+        };
+        next.push(entry);
+        // Apply styles via StyleApplier and record history
+        const element = elements[index].element;
+        const context = { index };
+        const committed = {};
+        Object.entries(changes || {}).forEach(([prop, value]) => {
+          if (prop === 'text') {
+            element.textContent = value;
+            committed[prop] = value;
+            return;
+          }
+          styleApplier.apply(element, prop, value, context);
+          committed[prop] = value;
+        });
+        if (Object.keys(committed).length) {
+          styleHistory.push({ index, selector, changes: committed });
+        }
+
+        // Mark element
+        elements[index].edited = true;
+        elements[index].diffSummary = entry.summary;
+        stateManager.batch({
+          'selection.elements': elements,
+          'wysiwyg.edits': next,
+          'wysiwyg.hasDiffs': next.length > 0,
+          'wysiwyg.pending': null,
+          'wysiwyg.active': false
+        });
+        if (dockRoot) dockRoot.updateSendState();
+      });
+
+      eventBus.on('wysiwyg:reset', () => {
+        const pending = stateManager.get('wysiwyg.pending');
+        if (pending && pending.index !== undefined) {
+          const elements = stateManager.get('selection.elements');
+          const item = elements[pending.index];
+          if (item && item.element) {
+            Object.entries(pending.changes || {}).forEach(([prop, value]) => {
+              if (prop === 'text') {
+                item.element.textContent = value;
+              } else {
+                styleApplier.remove(item.element, prop, { index: pending.index });
+              }
+            });
+          }
+        }
+        stateManager.set('wysiwyg.pending', null);
+      });
+
+      eventBus.on('wysiwyg:clear', () => {
+        const elements = stateManager.get('selection.elements');
+        elements.forEach(el => { delete el.edited; delete el.diffSummary; });
+        stateManager.batch({
+          'selection.elements': elements,
+          'wysiwyg.edits': [],
+          'wysiwyg.hasDiffs': false,
+          'wysiwyg.pending': null
+        });
+        if (dockRoot) dockRoot.updateSendState();
+        if (editModal) editModal.close();
       });
 
       // Submit event
       eventBus.on('submit:requested', async () => {
-        const intent = bubbleUI.getInputValue();
+        let intent = dockRoot ? dockRoot.getInputValue() : '';
         const elements = stateManager.get('selection.elements');
         const screenshots = stateManager.get('selection.screenshots') || [];
         const projectAllowed = stateManager.get('projects.allowed');
 
-        if (!intent || (elements.length === 0 && screenshots.length === 0)) {
-          bubbleUI.showStatus('Please select an element or capture a screenshot first', 'error');
-          return;
-        }
+        const edits = stateManager.get('wysiwyg.edits') || [];
+        const hasEdits = stateManager.get('wysiwyg.hasDiffs') || edits.length > 0 || (elements || []).some(e => e?.edited);
 
         if (projectAllowed === false) {
           const message = 'LUMI is not configured for this site. Open Settings to map it to a project before submitting.';
-          bubbleUI.showStatus(message, 'error');
-          eventBus.emit('notify:error', message);
+          topBanner.update(message);
+          setTimeout(() => topBanner.hide(), 2200);
           return;
         }
 
-      const engine = engineManager.getCurrentEngine();
-      if (!engineManager.isEngineAvailable(engine)) {
-        const message = engine === 'claude'
-          ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
-          : 'Codex CLI not detected. Please install Codex CLI to enable.';
-        bubbleUI.showStatus(message, 'error');
-        return;
-      }
+        if ((elements.length === 0 && screenshots.length === 0)) {
+          topBanner.update('Please select an element or capture a screenshot first');
+          setTimeout(() => topBanner.hide(), 2200);
+          return;
+        }
 
-      stateManager.set('processing.active', true);
-      bubbleUI.setLoading(true, 'Analyzing...');
+        if (!intent && !hasEdits) {
+          topBanner.update('Please type your instructions or apply edits first');
+          setTimeout(() => topBanner.hide(), 2200);
+          return;
+        }
 
-      try {
-        console.log('[Content] Submitting with engine:', engine, 'elements:', elements.length);
+        if (!intent && hasEdits) {
+          intent = 'Apply the following WYSIWYG edits to the selected elements.';
+        }
 
+        const engine = engineManager.getCurrentEngine();
+        if (!engineManager.isEngineAvailable(engine)) {
+          const message = engine === 'claude'
+            ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
+            : 'Codex CLI not detected. Please install Codex CLI to enable.';
+          topBanner.update(message);
+          setTimeout(() => topBanner.hide(), 2200);
+          return;
+        }
+
+        const sessionId = stateManager.get('sessions.currentId');
+        if (sessionId && intent && intent.trim()) {
+          appendMessage(sessionId, {
+            id: 'm' + Math.random().toString(36).slice(2),
+            role: 'user',
+            text: intent.trim()
+          });
+        }
+
+        stateManager.set('processing.active', true);
+
+        try {
           const pageInfo = {
             url: window.location.href,
             title: document.title
@@ -3358,43 +4545,61 @@
             elements,
             lastScreenshot,
             pageInfo,
-            screenshots
+            screenshots,
+            edits
           );
 
-          if (result.success) {
-            bubbleUI.showStatus('Success! Changes applied.', 'success');
-            bubbleUI.clearInput();
+          if (sessionId) {
+            appendMessage(sessionId, {
+              id: 'm' + Math.random().toString(36).slice(2),
+              role: 'assistant',
+              text: result.success ? 'Applied ✓' : (result.error || 'Request failed'),
+              summary: result.success ? 'Applied ✓' : undefined,
+              details: result.success ? formatEditDetails(edits) : [],
+              applied: !!result.success
+            });
+            updateSessionById(sessionId, (session) => {
+              session.snapshotTokens = selectionToTokens();
+            });
+          }
 
-            // Clear selections after successful submission
+          if (result.success) {
+            topBanner.update('Success! Changes applied.');
+            setTimeout(() => topBanner.hide(), 2200);
+            if (dockRoot) dockRoot.clearInput();
+
             stateManager.batch({
               'selection.elements': [],
-              'selection.screenshots': []
+              'selection.screenshots': [],
+              'wysiwyg.edits': [],
+              'wysiwyg.hasDiffs': false,
+              'wysiwyg.pending': null
             });
-            if (contextTags) {
-              contextTags.render();
-            }
-            bubbleUI.updateSendButtonState();
+            if (dockRoot) dockRoot.updateSendState();
             highlightManager.clearAll();
+            if (editModal) editModal.close();
           } else {
-            bubbleUI.showStatus(result.error || 'Request failed', 'error');
+            topBanner.update(result.error || 'Request failed');
+            setTimeout(() => topBanner.hide(), 2200);
           }
         } catch (error) {
           console.error('[Content] Submit failed:', error);
-          bubbleUI.showStatus('Network error: ' + error.message, 'error');
+          topBanner.update('Network error: ' + error.message);
+          setTimeout(() => topBanner.hide(), 2200);
         } finally {
           stateManager.set('processing.active', false);
-          bubbleUI.setLoading(false);
+          if (dockRoot) dockRoot.updateSendState();
         }
       });
 
       // Health check events
       eventBus.on('health:server-status-changed', (isHealthy) => {
-        bubbleUI.updateServerStatus(isHealthy);
+        topBanner.update(isHealthy ? '' : 'Local server unavailable');
+        if (!isHealthy) setTimeout(() => topBanner.hide(), 2200);
       });
 
       eventBus.on('health:capabilities-updated', ({ codex, claude }) => {
         console.log('[Content] Engine capabilities updated:', { codex, claude });
-        bubbleUI.updateEngineAvailability({ codex, claude });
       });
 
       // Context clear
@@ -3403,23 +4608,21 @@
           'selection.elements': [],
           'selection.screenshots': []
         });
-        bubbleUI.updateSendButtonState();
-        if (contextTags) {
-          contextTags.render();
-        }
+        if (dockRoot) dockRoot.updateSendState();
         highlightManager.clearAll();
+        if (editModal) editModal.close();
       });
 
       eventBus.on('projects:blocked', ({ host }) => {
-        if (stateManager.get('ui.bubbleVisible')) {
+        if (stateManager.get('ui.dockOpen') !== false) {
           topBanner.update('LUMI is not configured for this page. Open Settings to map it to a project.');
         }
-        bubbleUI.updateSendButtonState();
+        if (dockRoot) dockRoot.updateSendState();
       });
 
       eventBus.on('projects:allowed', () => {
         topBanner.hide();
-        bubbleUI.updateSendButtonState();
+        if (dockRoot) dockRoot.updateSendState();
       });
 
       // Top banner notifications
@@ -3442,15 +4645,15 @@
           return;
         }
 
-        // Esc: Close bubble or deactivate mode
+        // Esc: Close dock or deactivate mode
         if (e.key === 'Escape') {
-          const isVisible = stateManager.get('ui.bubbleVisible');
+          const isDockOpen = stateManager.get('ui.dockOpen') !== false;
           const mode = stateManager.get('ui.mode');
 
           if (mode !== 'idle') {
             if (elementSelector) elementSelector.deactivate();
             if (screenshotSelector) screenshotSelector.deactivate();
-          } else if (isVisible) {
+          } else if (isDockOpen) {
             eventBus.emit('bubble:close');
           }
           e.preventDefault();
@@ -3481,15 +4684,18 @@
       console.log('[LUMI] Initializing...');
 
       injectGlobalStyles();
+      // Apply global dock theme tokens on page
+      try { applyDockThemeAuto(); watchDockTheme(); } catch (_) {}
 
       // Mount UI components
-      bubbleUI.mount();
       topBanner.mount();
+      dockRoot = new DockRoot(eventBus, stateManager);
+      dockRoot.mount();
+      editModal = new DockEditModal(eventBus, stateManager, document.body);
+      editModal.mount();
+      // Interaction bubble removed
 
-      // Mount context tags inside bubble shadow DOM
-      const shadowRoot = bubbleUI.getShadowRoot();
-      contextTags = new ContextTags(shadowRoot, eventBus, stateManager);
-      contextTags.mount();
+      // ControlsOverlay currently disabled; use highlight pen modal instead
 
       // Initialize selectors after UI is ready
       elementSelector = new ElementSelector(eventBus, stateManager, highlightManager, topBanner);

@@ -19,14 +19,14 @@ export default class TopBanner {
       right: 0;
       z-index: 2147483646;
       padding: 12px 24px;
-      background: rgba(59, 130, 246, 0.95);
+      background: var(--accent);
       backdrop-filter: blur(12px);
-      color: white;
+      color: var(--on-accent);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 13px;
       font-weight: 500;
       text-align: center;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+      box-shadow: var(--shadow);
       display: none;
       animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     `;
@@ -61,4 +61,3 @@ export default class TopBanner {
     }
   }
 }
-

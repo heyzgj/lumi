@@ -6,7 +6,8 @@
     "build": "rollup -c",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "package": "npm run build && rm -f ../lumi-extension.zip && zip -r ../lumi-extension.zip background.js content.js manifest.json icons options.html options.css options.js popup.html popup.js"
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^16.0.2",

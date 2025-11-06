@@ -1,44 +1,29 @@
 /**
- * HighlightManager - Unified management of all page highlights
+ * HighlightManager - Manage hover/selection halos and screenshot overlays
  */
 
 export default class HighlightManager {
-  constructor() {
+  constructor(eventBus = null) {
+    this.eventBus = eventBus;
     this.hoverHighlight = null;
     this.selectionHighlights = [];
+    this.selectionElements = [];
+    this.selectionListeners = new Map();
     this.screenshotOverlay = null;
   }
 
-  /**
-   * Show hover highlight for element
-   */
   showHover(element) {
     this.hideHover();
-    
     const bbox = element.getBoundingClientRect();
-    const highlight = document.createElement('div');
-    highlight.className = 'lumi-highlight lumi-hover';
-    highlight.style.cssText = `
-      position: absolute;
-      top: ${bbox.top + window.scrollY}px;
-      left: ${bbox.left + window.scrollX}px;
-      width: ${bbox.width}px;
-      height: ${bbox.height}px;
-      background: rgba(59, 130, 246, 0.1);
-      border: 2px solid #3b82f6;
-      pointer-events: none;
-      z-index: 2147483645;
-      border-radius: 2px;
-      animation: fadeIn 0.15s;
-    `;
-    
-    document.body.appendChild(highlight);
-    this.hoverHighlight = highlight;
+    const halo = document.createElement('div');
+    halo.className = 'lumi-highlight lumi-hover';
+    halo.style.cssText = this.buildHaloStyle(bbox, element);
+    // Hover halo must never intercept pointer events; clicks should go to the page element
+    halo.style.pointerEvents = 'none';
+    document.body.appendChild(halo);
+    this.hoverHighlight = halo;
   }
 
-  /**
-   * Hide hover highlight
-   */
   hideHover() {
     if (this.hoverHighlight) {
       this.hoverHighlight.remove();
@@ -46,75 +31,90 @@ export default class HighlightManager {
     }
   }
 
-  /**
-   * Add selection highlight for element
-   */
-  addSelection(element) {
+  addSelection(element, index = null) {
     const bbox = element.getBoundingClientRect();
-    const highlight = document.createElement('div');
-    highlight.className = 'lumi-highlight lumi-selected';
-    highlight.style.cssText = `
-      position: absolute;
-      top: ${bbox.top + window.scrollY}px;
-      left: ${bbox.left + window.scrollX}px;
-      width: ${bbox.width}px;
-      height: ${bbox.height}px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 2px solid #10b981;
-      pointer-events: none;
-      z-index: 2147483645;
-      border-radius: 2px;
-      animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    `;
-    
-    // Add label
-    const label = document.createElement('div');
-    label.style.cssText = `
-      position: absolute;
-      top: -24px;
-      left: 0;
-      padding: 4px 8px;
-      background: #10b981;
-      color: white;
-      font-size: 11px;
-      font-weight: 500;
-      border-radius: 4px;
-      white-space: nowrap;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-    label.textContent = element.tagName.toLowerCase() + (element.className ? '.' + element.className.split(' ')[0] : '');
-    highlight.appendChild(label);
-    
-    document.body.appendChild(highlight);
-    this.selectionHighlights.push(highlight);
-    
-    return this.selectionHighlights.length - 1;
+    const halo = document.createElement('div');
+    halo.className = 'lumi-highlight lumi-selected';
+    halo.style.cssText = this.buildHaloStyle(bbox, element);
+
+    const resolveIndex = () => {
+      const current = this.selectionElements.indexOf(element);
+      if (current >= 0) return current;
+      return typeof index === 'number' ? index : 0;
+    };
+
+    halo.addEventListener('mouseenter', () => {
+      if (this.eventBus) {
+        this.eventBus.emit('interaction:hover', { element, index: resolveIndex() });
+      }
+    });
+    halo.addEventListener('mouseleave', () => {
+      if (this.eventBus) {
+        this.eventBus.emit('interaction:leave', { element, index: resolveIndex() });
+      }
+    });
+
+    document.body.appendChild(halo);
+    const nextIndex = this.selectionHighlights.push(halo) - 1;
+    this.selectionElements.push(element);
+
+    const onEnter = () => {
+      if (this.eventBus) {
+        this.eventBus.emit('interaction:hover', { element, index: resolveIndex() });
+      }
+    };
+    const onLeave = () => {
+      if (this.eventBus) {
+        this.eventBus.emit('interaction:leave', { element, index: resolveIndex() });
+      }
+    };
+    element.addEventListener('mouseenter', onEnter);
+    element.addEventListener('mouseleave', onLeave);
+    this.selectionListeners.set(element, { onEnter, onLeave });
+
+    halo.dataset.index = String(nextIndex);
+    return nextIndex;
   }
 
-  /**
-   * Remove selection highlight by index
-   */
   removeSelection(index) {
-    if (this.selectionHighlights[index]) {
-      this.selectionHighlights[index].remove();
-      this.selectionHighlights.splice(index, 1);
+    const highlight = this.selectionHighlights[index];
+    if (highlight) {
+      highlight.remove();
     }
+    this.selectionHighlights.splice(index, 1);
+
+    const element = this.selectionElements[index];
+    if (element) {
+      const handlers = this.selectionListeners.get(element);
+      if (handlers) {
+        element.removeEventListener('mouseenter', handlers.onEnter);
+        element.removeEventListener('mouseleave', handlers.onLeave);
+        this.selectionListeners.delete(element);
+      }
+    }
+    this.selectionElements.splice(index, 1);
+
+    this.selectionHighlights.forEach((halo, idx) => {
+      halo.dataset.index = String(idx);
+    });
   }
 
-  /**
-   * Clear all selection highlights
-   */
   clearAllSelections() {
     this.selectionHighlights.forEach(h => h.remove());
     this.selectionHighlights = [];
+    this.selectionElements.forEach((element) => {
+      const handlers = this.selectionListeners.get(element);
+      if (handlers) {
+        element.removeEventListener('mouseenter', handlers.onEnter);
+        element.removeEventListener('mouseleave', handlers.onLeave);
+      }
+    });
+    this.selectionElements = [];
+    this.selectionListeners.clear();
   }
 
-  /**
-   * Show screenshot overlay
-   */
   showScreenshotOverlay(bbox) {
     this.hideScreenshotOverlay();
-    
     const overlay = document.createElement('div');
     overlay.className = 'lumi-screenshot-overlay';
     overlay.style.cssText = `
@@ -123,34 +123,26 @@ export default class HighlightManager {
       top: ${bbox.top}px;
       width: ${bbox.width}px;
       height: ${bbox.height}px;
-      border: 2px dashed #3b82f6;
-      background: rgba(59, 130, 246, 0.1);
+      border: 2px dashed var(--accent);
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
       pointer-events: none;
       z-index: 2147483645;
     `;
-    
     document.body.appendChild(overlay);
     this.screenshotOverlay = overlay;
   }
 
-  /**
-   * Update screenshot overlay dimensions
-   */
   updateScreenshotOverlay(bbox) {
     if (!this.screenshotOverlay) {
       this.showScreenshotOverlay(bbox);
       return;
     }
-    
-    this.screenshotOverlay.style.left = bbox.left + 'px';
-    this.screenshotOverlay.style.top = bbox.top + 'px';
-    this.screenshotOverlay.style.width = bbox.width + 'px';
-    this.screenshotOverlay.style.height = bbox.height + 'px';
+    this.screenshotOverlay.style.left = `${bbox.left}px`;
+    this.screenshotOverlay.style.top = `${bbox.top}px`;
+    this.screenshotOverlay.style.width = `${bbox.width}px`;
+    this.screenshotOverlay.style.height = `${bbox.height}px`;
   }
 
-  /**
-   * Hide screenshot overlay
-   */
   hideScreenshotOverlay() {
     if (this.screenshotOverlay) {
       this.screenshotOverlay.remove();
@@ -158,13 +150,30 @@ export default class HighlightManager {
     }
   }
 
-  /**
-   * Clear all highlights
-   */
   clearAll() {
     this.hideHover();
     this.clearAllSelections();
     this.hideScreenshotOverlay();
   }
-}
 
+  buildHaloStyle(bbox, element) {
+    const computed = window.getComputedStyle(element);
+    const radius = computed.borderRadius || '14px';
+    return `
+      position: absolute;
+      top: ${bbox.top + window.scrollY}px;
+      left: ${bbox.left + window.scrollX}px;
+      width: ${bbox.width}px;
+      height: ${bbox.height}px;
+      pointer-events: none;
+      z-index: 2147483645;
+      border-radius: ${radius};
+      box-shadow: 0 0 0 2px var(--dock-stroke);
+      background: transparent;
+      cursor: default;
+      transition: box-shadow 0.15s ease;
+    `;
+  }
+
+  penSVG() { return ''; }
+}

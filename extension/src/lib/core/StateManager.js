@@ -10,16 +10,26 @@ export default class StateManager {
     // Initial state structure
     this.state = {
       ui: {
-        bubbleVisible: false,
-        bubblePosition: { left: 24, bottom: 24 },
         mode: 'idle', // 'idle' | 'element' | 'screenshot'
-        loading: false,
-        loadingText: 'Processing...'
+        dockOpen: false,
+        dockWidth: 420,
+        dockTab: 'chat',
+        dockState: 'normal' // 'normal' | 'compact' | 'expanded'
       },
       selection: {
         elements: [],
         screenshots: [],
         hoveredElement: null
+      },
+      sessions: {
+        currentId: null,
+        list: []
+      },
+      wysiwyg: {
+        active: false,
+        pending: null, // { index, changes }
+        edits: [], // [{ index, selector, changes, summary? }]
+        hasDiffs: false
       },
       engine: {
         current: 'codex',
@@ -47,7 +57,7 @@ export default class StateManager {
 
   /**
    * Get current state or specific path
-   * @param {string} [path] - Dot-separated path (e.g., 'ui.bubbleVisible')
+   * @param {string} [path] - Dot-separated path (e.g., 'ui.dockOpen')
    * @returns {any} State value
    */
   get(path) {
@@ -129,16 +139,26 @@ export default class StateManager {
     
     this.state = {
       ui: {
-        bubbleVisible: false,
-        bubblePosition: { left: 24, bottom: 24 },
         mode: 'idle',
-        loading: false,
-        loadingText: 'Processing...'
+        dockOpen: false,
+        dockWidth: 420,
+        dockTab: 'chat',
+        dockState: 'normal'
       },
       selection: {
         elements: [],
         screenshots: [],
         hoveredElement: null
+      },
+      sessions: {
+        currentId: null,
+        list: []
+      },
+      wysiwyg: {
+        active: false,
+        pending: null,
+        edits: [],
+        hasDiffs: false
       },
       engine: {
         current: 'codex',

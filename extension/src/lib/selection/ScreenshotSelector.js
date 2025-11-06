@@ -45,6 +45,7 @@ export default class ScreenshotSelector {
     
     this.isActive = false;
     this.stateManager.set('ui.mode', 'idle');
+    this.stateManager.set('ui.dockState', 'normal');
     
     this.topBanner.hide();
     this.highlightManager.hideScreenshotOverlay();

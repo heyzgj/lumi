@@ -12,17 +12,17 @@
 
 **Lumi lets your AI see.**  
 For the first time, you don’t have to describe what’s on your screen — you can *show* it.  
-Click what you see, say what you want, and Lumi turns your coding agent into a true visual collaborator.
+Click what you see, type what you want, and Lumi turns your coding agent into a true visual collaborator.
 
 Lumi is a Chrome extension that connects directly to your coding agent (like **Codex** or **Claude Code**) to enable visual, in-browser editing for any web app.  
-No more guessing selectors or typing long prompts — just click, speak, and watch your app update instantly.
+No more guessing selectors or typing long prompts — just click, comment, and watch your app update instantly.
 
 
 
 ## Requirements
 - Node.js 20+
 - Chrome 115+
-- At least one CLI: Codex and or Claude Code CLI
+- At least one CLI: Codex CLI and or Claude Code
 
 ## Quick Start
 1. **Clone the repository**

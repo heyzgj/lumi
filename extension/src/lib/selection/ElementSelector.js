@@ -38,6 +38,7 @@ export default class ElementSelector {
     
     this.isActive = false;
     this.stateManager.set('ui.mode', 'idle');
+    this.stateManager.set('ui.dockState', 'normal');
     
     this.topBanner.hide();
     this.highlightManager.hideHover();
@@ -96,8 +97,11 @@ export default class ElementSelector {
     const updated = [...elements, item];
     this.stateManager.set('selection.elements', updated);
 
-    this.highlightManager.addSelection(element);
+    this.highlightManager.addSelection(element, updated.length - 1);
     this.eventBus.emit('element:selected', item);
+
+    // Exit element mode after each selection for clarity
+    this.deactivate();
   }
 
   clearSelections() {

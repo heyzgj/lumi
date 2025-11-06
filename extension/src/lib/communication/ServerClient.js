@@ -2,15 +2,21 @@
  * ServerClient - Handle server communication
  */
 
-import { getComputedStyleSummary } from '../utils/dom.js';
+import {
+  getComputedStyleSummary,
+  getElementClassList,
+  getElementDataset,
+  getAncestorTrail,
+  detectFrameworkSignatures
+} from '../utils/dom.js';
 
 export default class ServerClient {
   constructor(chromeBridge) {
     this.chromeBridge = chromeBridge;
   }
 
-  async execute(engine, intent, elements, screenshot, pageInfo, screenshots = []) {
-    const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots);
+  async execute(engine, intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
+    const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots, edits);
     
     try {
       const result = await this.chromeBridge.executeOnServer(
@@ -26,12 +32,22 @@ export default class ServerClient {
     }
   }
 
-  buildContext(intent, elements, screenshot, pageInfo, screenshots = []) {
+  buildContext(intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
     const context = {
       intent,
       pageUrl: pageInfo.url,
       pageTitle: pageInfo.title,
-      selectionMode: elements.length > 0 ? 'element' : 'screenshot'
+      selectionMode: elements.length > 0 ? 'element' : 'screenshot',
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight
+      }
+    };
+
+    const { frameworks, styleStrategy } = detectFrameworkSignatures();
+    context.meta = {
+      frameworks,
+      styleStrategy
     };
     
     // Add element context - support multiple elements
@@ -42,6 +58,9 @@ export default class ServerClient {
           tagName: elements[0].element.tagName,
           selector: elements[0].selector,
           className: elements[0].element.className,
+          classList: getElementClassList(elements[0].element),
+          dataset: getElementDataset(elements[0].element),
+          ancestors: getAncestorTrail(elements[0].element),
           id: elements[0].element.id,
           outerHTML: elements[0].element.outerHTML,
           textContent: getElementText(elements[0].element),
@@ -55,6 +74,9 @@ export default class ServerClient {
           tagName: item.element.tagName,
           selector: item.selector,
           className: item.element.className,
+          classList: getElementClassList(item.element),
+          dataset: getElementDataset(item.element),
+          ancestors: getAncestorTrail(item.element),
           id: item.element.id,
           outerHTML: item.element.outerHTML,
           textContent: getElementText(item.element),
@@ -71,6 +93,16 @@ export default class ServerClient {
     }
     if (screenshot) {
       context.screenshot = screenshot;
+    }
+
+    // Include WYSIWYG edits if present
+    if (edits && edits.length) {
+      context.edits = edits.map(e => ({
+        index: e.index,
+        selector: e.selector,
+        changes: e.changes,
+        summary: e.summary
+      }));
     }
     
     return context;
