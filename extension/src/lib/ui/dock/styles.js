@@ -100,19 +100,7 @@ export const DOCK_STYLES = `
     align-items: center;
     gap: 10px;
   }
-  .header-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-secondary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-  }
+  .header-btn { width:34px;height:34px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
   .header-btn svg {
     width: 18px;
     height: 18px;
@@ -123,19 +111,18 @@ export const DOCK_STYLES = `
   .header-btn.header-toggle svg.collapsed {
     transform: scaleX(-1);
   }
-  .header-btn:hover { 
-    color: var(--text); 
-    background: var(--surface-hover); 
-    transform: scale(1.05);
-  }
-  .header-btn.header-close { border:1px solid var(--border); background: color-mix(in srgb, var(--dock-bg) 94%, transparent); color: var(--text-secondary); font-size:18px; }
-  .header-btn.header-close:hover { color: var(--text); background: color-mix(in srgb, var(--dock-bg) 88%, transparent); }
+  .header-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .header-btn:active { transform: scale(0.98); }
+  .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--text-secondary); font-size:18px; }
+  .header-btn.header-close:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
 
-  .tabs { display:flex; gap:8px; padding:12px 16px 10px 16px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--dock-bg) 96%, transparent); backdrop-filter: blur(12px); }
-  .tab { flex:1; text-align:center; padding:8px 16px; font-size:12px; font-weight:500; color:var(--text-secondary); background:color-mix(in srgb, var(--dock-bg) 92%, transparent); border:1px solid var(--border); border-radius:999px; cursor:pointer; transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1); position:relative; box-shadow: 0 1px 0 rgba(0,0,0,0.02) inset; }
-  .tab:hover { color:var(--text); background: color-mix(in srgb, var(--dock-bg) 88%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
-  .tab.active { color:var(--text); background: color-mix(in srgb, var(--dock-bg) 82%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 28%, transparent); box-shadow: 0 6px 18px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.06) inset; font-weight:600; }
-  .tab:focus-visible { outline:none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--dock-fg) 25%, transparent); }
+  .tabs { display:flex; gap:14px; padding:12px 16px 8px 16px; border-bottom:1px solid var(--border); background:transparent; }
+  .tab { flex:0 0 auto; text-align:center; padding:8px 2px; min-width:70px; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-radius:0; cursor:pointer; transition: color 0.15s ease; position:relative; }
+  .tab:hover { color:var(--text); }
+  .tab::after { content:''; position:absolute; left:0; right:0; bottom:-9px; height:2px; background: transparent; border-radius:1px; transition: background 0.2s ease; }
+  .tab.active { color:var(--text); font-weight:600; }
+  .tab.active::after { background: color-mix(in srgb, var(--dock-fg) 28%, transparent); }
+  .tab:focus-visible { outline:none; }
 
   .body {
     flex: 1;
