@@ -14,7 +14,18 @@ export default class StateManager {
         dockOpen: false,
         dockWidth: 420,
         dockTab: 'chat',
-        dockState: 'normal' // 'normal' | 'compact' | 'expanded'
+        dockState: 'normal', // 'normal' | 'compact' | 'expanded'
+        theme: 'light', // 'light' | 'dark' | 'auto'
+        viewport: {
+          enabled: true,
+          preset: 'responsive',
+          logical: { width: 1280, height: 800 },
+          fit: 'width',
+          scale: 1,
+          mode: 'center',
+          auto: true,
+          useIframeStage: false
+        }
       },
       selection: {
         elements: [],
@@ -143,7 +154,8 @@ export default class StateManager {
         dockOpen: false,
         dockWidth: 420,
         dockTab: 'chat',
-        dockState: 'normal'
+        dockState: 'normal',
+        theme: 'light'
       },
       selection: {
         elements: [],

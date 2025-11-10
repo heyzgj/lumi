@@ -1,5 +1,8 @@
+let __dockThemeMode = 'auto'; // 'auto' | 'light' | 'dark'
+
 export function applyDockThemeAuto() {
   try {
+    if (__dockThemeMode !== 'auto') return; // respect manual override
     const parseRGB = (str) => {
       if (!str) return null;
       const m = String(str).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
@@ -26,16 +29,29 @@ export function watchDockTheme() {
     if (window.matchMedia) {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
       if (typeof mq.addEventListener === 'function') {
-        mq.addEventListener('change', applyDockThemeAuto);
+        mq.addEventListener('change', () => { if (__dockThemeMode === 'auto') applyDockThemeAuto(); });
       } else if (typeof mq.addListener === 'function') {
-        mq.addListener(applyDockThemeAuto);
+        mq.addListener(() => { if (__dockThemeMode === 'auto') applyDockThemeAuto(); });
       }
     }
-    const ro = new MutationObserver(() => applyDockThemeAuto());
+    const ro = new MutationObserver(() => { if (__dockThemeMode === 'auto') applyDockThemeAuto(); });
     ro.observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: false });
     // Also watch body style changes that could flip background dramatically
-    const bo = new MutationObserver(() => applyDockThemeAuto());
+    const bo = new MutationObserver(() => { if (__dockThemeMode === 'auto') applyDockThemeAuto(); });
     bo.observe(document.body, { attributes: true, attributeFilter: ['style', 'class'] });
   } catch (_) {}
 }
 
+export function setDockThemeMode(mode = 'auto') {
+  __dockThemeMode = (mode === 'dark' || mode === 'light') ? mode : 'auto';
+  if (__dockThemeMode === 'dark') {
+    try { document.documentElement.classList.add('dark-dock'); } catch (_) {}
+    return 'dark';
+  }
+  if (__dockThemeMode === 'light') {
+    try { document.documentElement.classList.remove('dark-dock'); } catch (_) {}
+    return 'light';
+  }
+  applyDockThemeAuto();
+  return 'auto';
+}

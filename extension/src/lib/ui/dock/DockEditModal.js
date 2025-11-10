@@ -3,9 +3,9 @@ import { readableElementName } from '../../utils/dom.js';
 
 const SHADOW_PRESETS = {
   none: 'none',
-  soft: '0 6px 18px rgba(15,23,42,0.12)',
-  medium: '0 12px 28px rgba(15,23,42,0.16)',
-  deep: '0 24px 44px rgba(15,23,42,0.2)'
+  soft: '0 6px 18px color-mix(in srgb, var(--dock-fg) 12%, transparent)',
+  medium: '0 12px 28px color-mix(in srgb, var(--dock-fg) 16%, transparent)',
+  deep: '0 24px 44px color-mix(in srgb, var(--dock-fg) 20%, transparent)'
 };
 
 export default class DockEditModal {
@@ -22,6 +22,9 @@ export default class DockEditModal {
     this.inline = null;
     this.current = {};
     this.bodyScrollLocked = false;
+    // Preview-level history (undo before Apply)
+    this.previewHistory = [];
+    this.lastPreviewState = {};
   }
 
   mount() {
@@ -34,7 +37,9 @@ export default class DockEditModal {
       right: 0;
       bottom: 0;
       left: auto;
+      right: 0; /* Pin to the right edge to align with Dock */
       width: 420px; /* updated dynamically in open() */
+      box-sizing: border-box;
       background: color-mix(in srgb, var(--dock-fg, #0f172a) 22%, transparent);
       backdrop-filter: blur(8px);
       z-index: 2147483647;
@@ -49,6 +54,8 @@ export default class DockEditModal {
       right: 24px;
       top: 72px;
       width: 360px;
+      text-align: left;
+      box-sizing: border-box;
       background: var(--dock-bg);
       backdrop-filter: blur(24px);
       border-radius: var(--radius-panel, 18px);
@@ -73,7 +80,7 @@ export default class DockEditModal {
         <form id="dock-edit-form" class="dock-edit-form" style="display:flex;flex-direction:column;gap:14px;"></form>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-shrink:0;">
-        <button type="button" id="dock-edit-reset" class="dock-edit-btn" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);">Reset</button>
+        <button type="button" id="dock-edit-undo" class="dock-edit-btn" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);">Undo</button>
         <button type="button" id="dock-edit-apply" class="dock-edit-apply" style="border:1px solid var(--dock-stroke);background:var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent));border-radius:12px;padding:6px 12px;color:var(--dock-fg);">Apply</button>
       </div>
     `;
@@ -81,13 +88,23 @@ export default class DockEditModal {
     this.form = this.container.querySelector('#dock-edit-form');
     this.scrollContainer = this.container.querySelector('#dock-edit-scroll');
     this.container.querySelector('#dock-edit-close').addEventListener('click', () => this.close(true));
-    this.container.querySelector('#dock-edit-reset').addEventListener('click', () => this.resetChanges());
+    this.undoBtn = this.container.querySelector('#dock-edit-undo');
+    if (this.undoBtn) this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) {} });
     this.container.querySelector('#dock-edit-apply').addEventListener('click', () => this.applyChanges());
 
     // Prevent scroll events from bubbling to page
     this.container.addEventListener('wheel', (e) => {
       e.stopPropagation();
     }, { passive: true });
+
+    // Keyboard: Cmd/Ctrl+Z for Undo while modal is open
+    this.container.addEventListener('keydown', (e) => {
+      const isUndo = (e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z');
+      if (isUndo) {
+        e.preventDefault();
+        try { this.eventBus.emit('wysiwyg:undo'); } catch (_) {}
+      }
+    });
     
     // Ensure scroll only happens within modal
     if (this.scrollContainer) {
@@ -108,6 +125,7 @@ export default class DockEditModal {
     if (!this.mountRoot) return;
     this.mountRoot.appendChild(this.backdrop);
     this.mountRoot.appendChild(this.container);
+    this.updateUndoAvailability();
   }
 
   open({ index, element } = {}) {
@@ -141,6 +159,9 @@ export default class DockEditModal {
     this.renderForm();
     this.stateManager.set('wysiwyg.pending', null);
     this.stateManager.set('wysiwyg.active', true);
+    // Reset preview history every time modal opens
+    this.previewHistory = [];
+    this.lastPreviewState = {};
     if (!this.bodyScrollLocked) {
       document.body.classList.add('lumi-scroll-lock');
       this.bodyScrollLocked = true;
@@ -171,13 +192,39 @@ export default class DockEditModal {
     }
   }
 
+  getVar(name) {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || '';
+    } catch (_) { return ''; }
+  }
+
   positionOverlay() {
     try {
-      const state = this.stateManager.get('ui.dockState');
-      const dockWidth = state === 'compact' ? 56 : (this.stateManager.get('ui.dockWidth') || 420);
-      this.backdrop.style.left = (window.innerWidth - dockWidth) + 'px';
-      this.backdrop.style.width = dockWidth + 'px';
-      // keep container aligned to right visually
+      // Measure dock host rect for precise alignment
+      const host = document.getElementById('lumi-dock-root');
+      const rect = host ? host.getBoundingClientRect() : null;
+      const fallbackWidth = this.stateManager.get('ui.dockWidth') || 420;
+      const hasVisibleDock = !!rect && rect.width >= 40 && rect.right > 0;
+
+      const dockWidth = Math.round(hasVisibleDock ? rect.width : fallbackWidth);
+      if (hasVisibleDock) {
+        // Pin overlay exactly over visible dock area
+        const dockLeft = Math.max(0, Math.round(rect.left));
+        this.backdrop.style.left = dockLeft + 'px';
+        this.backdrop.style.right = '';
+        this.backdrop.style.width = dockWidth + 'px';
+      } else {
+        // Dock hidden: fallback to right-anchored overlay (avoid jumping to left)
+        this.backdrop.style.left = '';
+        this.backdrop.style.right = '0px';
+        this.backdrop.style.width = dockWidth + 'px';
+      }
+
+      // Ensure modal fits within dock area
+      const maxModal = Math.max(260, dockWidth - 48);
+      const modalWidth = Math.min(360, maxModal);
+      this.container.style.width = modalWidth + 'px';
       this.container.style.right = '24px';
     } catch (_) {}
     if (!this._onResize) {
@@ -245,10 +292,14 @@ export default class DockEditModal {
   }
 
   restoreBase() {
+    // Restore to the snapshot from when the modal was opened (non-destructive cancel)
     this.targets.forEach(({ element }, idx) => {
       const data = this.inline[idx];
       if (!data) return;
-      element.textContent = data.text;
+      // Only restore text for text-only elements
+      if (this.canEditText(element)) {
+        element.textContent = data.text;
+      }
       element.style.color = data.inline.color;
       element.style.backgroundColor = data.inline.backgroundColor;
       element.style.fontSize = data.inline.fontSize;
@@ -260,6 +311,33 @@ export default class DockEditModal {
       element.style.paddingLeft = data.inline.paddingLeft;
       element.style.borderRadius = data.inline.borderRadius;
       element.style.boxShadow = data.inline.boxShadow;
+    });
+  }
+
+  restoreBaseline() {
+    // Restore to the original baseline captured at selection-time (spanning multiple edits)
+    const selection = this.stateManager.get('selection.elements') || [];
+    this.targets.forEach(({ element }, idx) => {
+      const index = this.indices[idx];
+      const selItem = selection && typeof index === 'number' ? selection[index] : null;
+      const base = selItem && selItem.baseline ? selItem.baseline : null;
+      if (!base) return;
+      const inline = base.inline || {};
+      // Only restore text for text-only elements
+      if (this.canEditText(element) && base.text !== null && base.text !== undefined) {
+        element.textContent = base.text;
+      }
+      element.style.color = inline.color || '';
+      element.style.backgroundColor = inline.backgroundColor || '';
+      element.style.fontSize = inline.fontSize || '';
+      element.style.fontWeight = inline.fontWeight || '';
+      element.style.lineHeight = inline.lineHeight || '';
+      element.style.paddingTop = inline.paddingTop || '';
+      element.style.paddingRight = inline.paddingRight || '';
+      element.style.paddingBottom = inline.paddingBottom || '';
+      element.style.paddingLeft = inline.paddingLeft || '';
+      element.style.borderRadius = inline.borderRadius || '';
+      element.style.boxShadow = inline.boxShadow || '';
     });
   }
 
@@ -276,7 +354,11 @@ export default class DockEditModal {
       title.textContent = readableElementName(el);
     }
 
-    form.appendChild(this.renderTextField('Text', 'text', base.text));
+    // Text field only for single, text-only elements
+    const allowText = this.targets.length === 1 && this.canEditText(this.targets[0].element);
+    if (allowText) {
+      form.appendChild(this.renderTextField('Text', 'text', base.text));
+    }
     form.appendChild(this.renderColorField('Text Color', 'color', base.color));
     form.appendChild(this.renderColorField('Background', 'backgroundColor', base.backgroundColor));
     form.appendChild(this.renderNumberField('Font Size (px)', 'fontSize', base.fontSize, { unit: 'px' }));
@@ -288,11 +370,22 @@ export default class DockEditModal {
     form.appendChild(this.renderShadowField(base.boxShadow));
   }
 
+  canEditText(element) {
+    try {
+      if (!element) return false;
+      const tag = (element.tagName || '').toLowerCase();
+      if (['input','textarea','img','video','canvas','svg'].includes(tag)) return false;
+      // Only when there are no element children (text-only nodes)
+      return element.childElementCount === 0;
+    } catch (_) { return false; }
+  }
+
   renderTextField(label, key, value) {
     const wrapper = document.createElement('label');
     wrapper.style.display = 'flex';
     wrapper.style.flexDirection = 'column';
     wrapper.style.gap = '6px';
+    wrapper.style.textAlign = 'left';
     wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
     const textarea = document.createElement('textarea');
     textarea.style.fontSize = '13px';
@@ -300,6 +393,7 @@ export default class DockEditModal {
     textarea.style.border = '1px solid var(--dock-stroke)';
     textarea.style.borderRadius = '10px';
     textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+    textarea.style.color = 'var(--dock-fg)';
     textarea.style.resize = 'vertical';
     textarea.value = value === 'mixed' ? '' : (value || '');
     textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
@@ -320,10 +414,13 @@ export default class DockEditModal {
     wrapper.style.display = 'flex';
     wrapper.style.flexDirection = 'column';
     wrapper.style.gap = '6px';
+    wrapper.style.textAlign = 'left';
     wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
     const input = document.createElement('input');
     input.type = 'color';
-    input.value = this.toHex(value === 'mixed' ? '#999999' : value);
+    input.value = this.toHex(value === 'mixed' ? (this.getVar('--dock-fg-2') || 'gray') : value);
+    input.style.background = 'var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent))';
+    input.style.color = 'var(--dock-fg)';
     input.addEventListener('input', () => {
       this.current[key] = input.value;
       this.preview();
@@ -337,6 +434,7 @@ export default class DockEditModal {
     wrapper.style.display = 'flex';
     wrapper.style.flexDirection = 'column';
     wrapper.style.gap = '6px';
+    wrapper.style.textAlign = 'left';
     wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
     const input = document.createElement('input');
     input.type = 'number';
@@ -344,6 +442,7 @@ export default class DockEditModal {
     input.style.border = '1px solid var(--dock-stroke)';
     input.style.borderRadius = '10px';
     input.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+    input.style.color = 'var(--dock-fg)';
     input.step = opts.step || '1';
     if (value !== 'mixed' && value !== null) {
       input.value = this.parseNumeric(value, opts.unit);
@@ -368,12 +467,14 @@ export default class DockEditModal {
     wrapper.style.display = 'flex';
     wrapper.style.flexDirection = 'column';
     wrapper.style.gap = '6px';
+    wrapper.style.textAlign = 'left';
     wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
     const select = document.createElement('select');
     select.style.padding = '6px 10px';
     select.style.border = '1px solid var(--dock-stroke)';
     select.style.borderRadius = '10px';
     select.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
+    select.style.color = 'var(--dock-fg)';
     select.innerHTML = `<option value="">Mixed</option>` + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
     if (value && value !== 'mixed') {
       select.value = value.replace(/[^0-9]/g, '') || value;
@@ -392,6 +493,7 @@ export default class DockEditModal {
 
   renderPaddingGroup(base) {
     const wrapper = document.createElement('div');
+    wrapper.style.textAlign = 'left';
     wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Padding (px)</span>`;
     const grid = document.createElement('div');
     grid.style.display = 'grid';
@@ -412,6 +514,7 @@ export default class DockEditModal {
     wrapper.style.display = 'flex';
     wrapper.style.flexDirection = 'column';
     wrapper.style.gap = '6px';
+    wrapper.style.textAlign = 'left';
     wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Shadow</span>`;
     const select = document.createElement('select');
     select.style.padding = '6px 10px';
@@ -437,8 +540,40 @@ export default class DockEditModal {
 
   preview() {
     const changes = this.current;
+    // Compute trimmed current state (keys with non-empty values)
+    const trimmed = {};
+    Object.entries(changes || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        trimmed[key] = value;
+      }
+    });
+    // Determine changed keys vs last preview state
+    const changedKeys = Object.keys(trimmed).filter(k => this.lastPreviewState[k] !== trimmed[k]);
+    // If keys removed (no longer present), also treat as change to clear styles
+    Object.keys(this.lastPreviewState).forEach((k) => {
+      if (!Object.prototype.hasOwnProperty.call(trimmed, k)) changedKeys.push(k);
+    });
+    // Record a preview step before applying
+    if (changedKeys.length) {
+      const step = { prevByIndex: new Map(), keys: Array.from(new Set(changedKeys)) };
+      this.targets.forEach((t, i) => {
+        const idx = this.indices[i];
+        const el = t.element;
+        const prev = {};
+        step.keys.forEach((key) => {
+          if (key === 'text') {
+            if (this.canEditText(el)) prev.text = el.textContent;
+          } else {
+            prev[key] = el.style[key] || '';
+          }
+        });
+        step.prevByIndex.set(idx, prev);
+      });
+      this.previewHistory.push(step);
+      this.lastPreviewState = { ...trimmed };
+    }
     this.targets.forEach(({ element }) => {
-      if (changes.text !== undefined) {
+      if (changes.text !== undefined && this.canEditText(element)) {
         element.textContent = changes.text;
       }
       if (changes.color !== undefined) element.style.color = changes.color;
@@ -454,21 +589,68 @@ export default class DockEditModal {
       if (changes.boxShadow !== undefined) element.style.boxShadow = changes.boxShadow;
     });
     this.syncPending();
+    this.updateUndoAvailability();
+  }
+
+  undoPreviewStep() {
+    if (!this.previewHistory || this.previewHistory.length === 0) return false;
+    const step = this.previewHistory.pop();
+    if (!step) return false;
+    // Revert values per target
+    this.targets.forEach((t, i) => {
+      const idx = this.indices[i];
+      const prev = step.prevByIndex.get(idx) || {};
+      const el = t.element;
+      step.keys.forEach((key) => {
+        if (key === 'text') {
+          if (this.canEditText(el) && Object.prototype.hasOwnProperty.call(prev, 'text')) {
+            el.textContent = prev.text;
+          }
+        } else {
+          const val = prev[key];
+          el.style[key] = val || '';
+        }
+      });
+    });
+    // Reset current and last preview snapshot to reflect DOM after revert
+    this.current = {};
+    this.lastPreviewState = {};
+    // Refresh controls from DOM
+    this.collectBase();
+    this.renderForm();
+    this.syncPending();
+    this.updateUndoAvailability();
+    return true;
+  }
+
+  isOpen() {
+    return !!this.container && this.container.style.display === 'flex';
   }
 
   resetChanges() {
-    this.restoreBase();
+    // Reset to original page state (baseline), even across multiple edit sessions
+    this.restoreBaseline();
     this.current = {};
+    // Re-collect base from the now-restored DOM so controls reflect baseline
+    this.collectBase();
     this.renderForm();
     this.syncPending();
+    this.updateUndoAvailability();
   }
 
   applyChanges() {
     if (!this.targets.length) return;
     const changes = { ...this.current };
+    // Remove text change if not applicable
+    if (Object.prototype.hasOwnProperty.call(changes, 'text')) {
+      const allow = this.targets.length === 1 && this.canEditText(this.targets[0].element);
+      if (!allow) delete changes.text;
+    }
+    // Trim empty/undefined changes
     Object.keys(changes).forEach(key => {
-      if (changes[key] === undefined) delete changes[key];
+      if (changes[key] === undefined || changes[key] === null || changes[key] === '') delete changes[key];
     });
+    const hasDiff = Object.keys(changes).length > 0;
     const summary = describeChanges(changes) || 'Edited';
     this.targets.forEach(({ selector }, idx) => {
       const index = this.indices[idx];
@@ -479,7 +661,19 @@ export default class DockEditModal {
         summary
       });
     });
-    this.close();
+    // Only auto-close when there are effective diffs
+    if (hasDiff) this.close();
+    this.updateUndoAvailability();
+  }
+
+  updateUndoAvailability() {
+    try {
+      if (!this.undoBtn) return;
+      const canUndo = Array.isArray(this.previewHistory) && this.previewHistory.length > 0;
+      this.undoBtn.disabled = !canUndo;
+      this.undoBtn.style.opacity = canUndo ? '1' : '0.5';
+      this.undoBtn.style.cursor = canUndo ? 'pointer' : 'not-allowed';
+    } catch (_) {}
   }
 
   parseNumeric(value, unit) {
@@ -499,11 +693,13 @@ export default class DockEditModal {
   }
 
   toHex(color) {
-    if (!color) return '#000000';
-    if (color.startsWith('#')) return color.length === 7 ? color : '#000000';
+    const fallback = this.getVar('--dock-fg') || 'black';
+    if (!color) return fallback;
+    if (color.startsWith('#')) return color.length === 7 ? color : fallback;
     const ctx = document.createElement('canvas').getContext('2d');
     ctx.fillStyle = color;
-    return ctx.fillStyle;
+    const computed = ctx.fillStyle;
+    return /^#/.test(computed) ? computed : fallback;
   }
 
   syncPending() {

@@ -3,12 +3,23 @@
  * Main orchestrator for all modules
  */
 
+// Anti-recursive guard: if inside a LUMI viewport iframe, skip bootstrapping
+let __LUMI_SKIP_BOOTSTRAP__ = false;
+try {
+  const url = new URL(window.location.href);
+  __LUMI_SKIP_BOOTSTRAP__ = url.searchParams.has('_lumi_vp') || window.name === 'lumi-viewport-iframe';
+  if (__LUMI_SKIP_BOOTSTRAP__) {
+    try { window.LUMI_INJECTED = true; } catch (_) {}
+    console.info('[LUMI] Skipping bootstrap inside viewport iframe');
+  }
+} catch (_) {}
+
 // Core
 import EventBus from './lib/core/EventBus.js';
 import StateManager from './lib/core/StateManager.js';
 
 // UI
-import TopBanner from './lib/ui/TopBanner.js';
+// TopBanner removed; keep styles only
 import { GLOBAL_STYLES } from './lib/ui/styles.js';
 import { TOKENS_CSS } from '../shared/tokens.js';
 import { readableElementName } from './lib/utils/dom.js';
@@ -24,12 +35,18 @@ import HealthChecker from './lib/engine/HealthChecker.js';
 import ChromeBridge from './lib/communication/ChromeBridge.js';
 import ServerClient from './lib/communication/ServerClient.js';
 import DockRoot from './lib/ui/dock/DockRoot.js';
-import { applyDockThemeAuto, watchDockTheme } from './lib/ui/dock/theme.js';
+import { setDockThemeMode } from './lib/ui/dock/theme.js';
 import DockEditModal from './lib/ui/dock/DockEditModal.js';
 import StyleApplier from './lib/engine/StyleApplier.js';
 import StyleHistory from './lib/engine/StyleHistory.js';
+// Viewport (M0 scaffolding)
+import ViewportController from './lib/ui/viewport/ViewportController.js';
+import TopViewportBar from './lib/ui/viewport/TopViewportBar.js';
 
-if (window.LUMI_INJECTED) {
+console.info('[LUMI] host', window.location.host, 'inject=true');
+if (__LUMI_SKIP_BOOTSTRAP__) {
+  // Do nothing in iframe stage context
+} else if (window.LUMI_INJECTED) {
   console.warn('[LUMI] Content script already injected, skipping bootstrap');
 } else {
   window.LUMI_INJECTED = true;
@@ -53,7 +70,8 @@ function bootstrap() {
   }
 
   // Initialize UI
-  const topBanner = new TopBanner();
+  // TopBanner removed; provide no-op API to keep calls harmless
+  const topBanner = { update: () => {}, hide: () => {}, setRightOffset: () => {} };
   let dockRoot = null;
   let editModal = null;
   // InteractionBubble removed for a simpler UX
@@ -62,12 +80,25 @@ function bootstrap() {
 
   // Initialize selection helpers (instantiated after UI mounts)
   const highlightManager = new HighlightManager(eventBus);
+  let highlightManagerFrame = null;
   let elementSelector = null;
+  let elementSelectorFrame = null;
   let screenshotSelector = null;
+  let pendingElementMode = false;
 
   // Initialize engine & health
   const engineManager = new EngineManager(eventBus, stateManager, chromeBridge);
   const healthChecker = new HealthChecker(eventBus, stateManager, chromeBridge, engineManager);
+
+  // Viewport scaffolding (reflow toggle supported)
+  const viewportController = new ViewportController(eventBus, stateManager);
+  viewportController.init();
+  const viewportBar = new TopViewportBar(eventBus, stateManager);
+
+  // Default to iframe stage for true responsive behavior, but auto-disable on known blocked hosts
+  const HOST_IFRAME_BLOCKLIST = /(^|\.)google\.[a-z.]+$|(^|\.)apply\.ycombinator\.com$/i;
+  const blocked = HOST_IFRAME_BLOCKLIST.test(window.location.hostname);
+  stateManager.set('ui.viewport.useIframeStage', !blocked);
 
   ensureDefaultSession();
 
@@ -161,6 +192,44 @@ function bootstrap() {
 
   // Event bindings
   function bindEvents() {
+    // Helper: setup selection/highlights inside viewport iframe (kept local to avoid scope issues)
+    function setupIframeSelectionLocal(iframe) {
+      if (!iframe || !iframe.contentDocument || !iframe.contentWindow) return;
+      // Clean previous
+      if (highlightManagerFrame) {
+        try { highlightManagerFrame.clearAll(); } catch (_) {}
+      }
+      // Inject tokens/global styles for consistent visuals/cursors inside the frame
+      try {
+        const head = iframe.contentDocument.head || iframe.contentDocument.documentElement;
+        const s1 = iframe.contentDocument.createElement('style');
+        s1.textContent = TOKENS_CSS;
+        head.appendChild(s1);
+        const s2 = iframe.contentDocument.createElement('style');
+        s2.textContent = GLOBAL_STYLES;
+        head.appendChild(s2);
+      } catch (_) {}
+      highlightManagerFrame = new HighlightManager(eventBus, iframe.contentDocument, iframe.contentWindow);
+      elementSelectorFrame = new ElementSelector(eventBus, stateManager, highlightManagerFrame, topBanner, iframe.contentDocument, iframe.contentWindow);
+      // Activate correct selector depending on mode
+      const mode = stateManager.get('ui.mode');
+      if (mode === 'element' || pendingElementMode) {
+        pendingElementMode = false;
+        try { elementSelector.deactivate(); } catch (_) {}
+        try { elementSelectorFrame.activate(); } catch (_) {}
+      }
+      // Rebind highlights into the active document to avoid duplicates/drift
+      rebindHighlightsToActive();
+    }
+
+    function rebindHighlightsToActive() {
+      const elements = stateManager.get('selection.elements') || [];
+      try { highlightManager.clearAllSelections(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) {}
+      const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
+      const mgr = (useIframe && highlightManagerFrame) ? highlightManagerFrame : highlightManager;
+      elements.forEach((item, idx) => { try { mgr.addSelection(item.element, idx); } catch (_) {} });
+    }
     function summarizeChanges(changes) {
       try {
         const keys = Object.keys(changes || {});
@@ -171,9 +240,12 @@ function bootstrap() {
       }
     }
     function refreshElementHighlights() {
-      highlightManager.clearAllSelections();
-      const elements = stateManager.get('selection.elements');
-      elements.forEach(item => highlightManager.addSelection(item.element));
+      const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
+      try { highlightManager.clearAllSelections(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) {}
+      const mgr = (useIframe && highlightManagerFrame) ? highlightManagerFrame : highlightManager;
+      const elements = stateManager.get('selection.elements') || [];
+      elements.forEach((item, idx) => { try { mgr.addSelection(item.element, idx); } catch (_) {} });
     }
 
     // Selection events
@@ -181,22 +253,61 @@ function bootstrap() {
       const elements = stateManager.get('selection.elements') || [];
       const index = elements.findIndex((e) => e && e.element === item.element);
       if (dockRoot && index >= 0) {
-        // Always insert chip at cursor position
-        dockRoot.insertChipForElement(elements[index], index);
+        // Prefer moving existing chip to caret; otherwise insert once
+        const moved = dockRoot.moveChipToCaret(index);
+        if (!moved) {
+          dockRoot.insertChipForElement(elements[index], index);
+        }
+        // Ensure chips are fully synced regardless of caret state
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        try { dockRoot.updateSendState(); } catch (_) {}
       }
       // no-op (bubble removed)
       stateManager.set('ui.dockState', 'normal');
       // Do not insert plain-text tokens into Dock input; chips reflect selection state.
     });
 
-    // Handle remove event from InteractionBubble
+    // Handle remove event from legacy bubble (capture baseline before removal)
     eventBus.on('element:remove', (index) => {
       const elements = stateManager.get('selection.elements') || [];
       if (index >= 0 && index < elements.length) {
+        try { eventBus.emit('element:pre-remove', { index, snapshot: elements[index] }); } catch (_) {}
         const updated = elements.filter((_, i) => i !== index);
         stateManager.set('selection.elements', updated);
         eventBus.emit('element:removed', index);
       }
+    });
+
+    // Revert DOM to baseline when tag is removed
+    eventBus.on('element:pre-remove', ({ index, snapshot }) => {
+      try {
+        if (!snapshot || !snapshot.element) return;
+        const el = snapshot.element;
+        // 1) Revert edited properties tracked in wysiwyg.edits for this index
+        const edits = stateManager.get('wysiwyg.edits') || [];
+        const entry = edits.find(e => e && e.index === index);
+        if (entry && entry.changes) {
+          Object.keys(entry.changes).forEach((prop) => {
+            if (prop === 'text') return; // handled by baseline
+            // If baseline provides a value, restore it; else remove inline style
+            const base = snapshot.baseline && snapshot.baseline.inline ? snapshot.baseline.inline[prop] : undefined;
+            if (base === undefined || base === null || base === '') {
+              try { el.style[prop] = ''; } catch (_) {}
+            } else {
+              try { el.style[prop] = base; } catch (_) {}
+            }
+          });
+        }
+        // 2) Restore text content if baseline captured it
+        if (snapshot.baseline && Object.prototype.hasOwnProperty.call(snapshot.baseline, 'text')) {
+          try { el.textContent = snapshot.baseline.text; } catch (_) {}
+        }
+        // 3) Restore key inline properties from baseline to guarantee full reset
+        const baseInline = (snapshot.baseline && snapshot.baseline.inline) || {};
+        Object.entries(baseInline).forEach(([prop, value]) => {
+          try { el.style[prop] = value || ''; } catch (_) {}
+        });
+      } catch (_) { /* ignore */ }
     });
 
     eventBus.on('element:removed', (removedIndex) => {
@@ -239,7 +350,8 @@ function bootstrap() {
     });
 
     eventBus.on('selection:clear', () => {
-      highlightManager.clearAll();
+      try { highlightManager.clearAll(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
       if (dockRoot) {
         dockRoot.clearChips();
         dockRoot.updateSendState();
@@ -323,19 +435,24 @@ function bootstrap() {
       }
     });
 
-    // Context tag click events
+    // Context tag click events (stage-aware highlight refresh)
     eventBus.on('context-tag:element-clicked', (index) => {
-      const elements = stateManager.get('selection.elements');
+      const elements = stateManager.get('selection.elements') || [];
       const item = elements[index];
-      if (item) {
-        item.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        highlightManager.clearAll();
-        elements.forEach(entry => highlightManager.addSelection(entry.element));
-      }
+      if (!item) return;
+      try { item.element.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      // Clear both managers to avoid duplicate halos across documents
+      try { highlightManager.clearAllSelections(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) {}
+      const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
+      const mgr = (useIframe && highlightManagerFrame) ? highlightManagerFrame : highlightManager;
+      elements.forEach((entry, idx) => { try { mgr.addSelection(entry.element, idx); } catch (_) {} });
     });
 
     eventBus.on('edit:open', (payload = {}) => {
       if (!editModal) return;
+      try { highlightManager.hideHover(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.hideHover(); } catch (_) {}
       const selection = stateManager.get('selection.elements') || [];
       if (!Array.isArray(selection) || selection.length === 0) return;
       let idx = typeof payload.index === 'number' ? payload.index : -1;
@@ -349,6 +466,10 @@ function bootstrap() {
         target.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch (_) {
         // ignore scroll failures
+      }
+      // Ensure dock is visible so modal can align to it
+      if (stateManager.get('ui.dockOpen') === false) {
+        stateManager.set('ui.dockOpen', true);
       }
       editModal.open({ index: idx, element: target.element });
       stateManager.set('ui.dockState', 'normal');
@@ -374,14 +495,25 @@ function bootstrap() {
 
     // Mode toggle events
     eventBus.on('mode:toggle-element', () => {
-      if (!elementSelector || !screenshotSelector) return;
       const currentMode = stateManager.get('ui.mode');
-
+      const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
       if (currentMode === 'element') {
-        elementSelector.deactivate();
-        // no-op (bubble removed)
+        try { elementSelector.deactivate(); } catch (_) {}
+        try { elementSelectorFrame && elementSelectorFrame.deactivate(); } catch (_) {}
+        return;
+      }
+      // Switching into element mode
+      screenshotSelector && screenshotSelector.deactivate();
+      if (useIframe) {
+        if (elementSelectorFrame) {
+          elementSelectorFrame.activate();
+        } else {
+          // Wait for existing iframe mount to finish; do not remount to avoid page refresh
+          pendingElementMode = true;
+          topBanner.update('Preparing responsive frame…');
+          setTimeout(() => topBanner.hide(), 1200);
+        }
       } else {
-        screenshotSelector.deactivate();
         elementSelector.activate();
       }
     });
@@ -399,6 +531,23 @@ function bootstrap() {
       }
     });
 
+    // Stage lifecycle: bind iframe hooks for selection/highlights in true responsive mode
+    eventBus.on('viewport:iframe-ready', ({ iframe }) => {
+      try {
+        setupIframeSelectionLocal(iframe);
+      } catch (err) {
+        console.warn('[LUMI] Failed to setup iframe selection:', err);
+      }
+    });
+    eventBus.on('viewport:iframe-fallback', () => {
+      if (pendingElementMode) {
+        pendingElementMode = false;
+        try { elementSelector.activate(); } catch (_) {}
+      }
+      // Rebind highlights to top document after fallback
+      try { rebindHighlightsToActive(); } catch (_) {}
+    });
+
     // Dock events (legacy bubble hooks mapped to dock)
     eventBus.on('bubble:close', () => {
       stateManager.set('ui.dockOpen', false);
@@ -408,6 +557,16 @@ function bootstrap() {
       highlightManager.clearAll();
       // no-op (bubble removed)
       if (editModal) editModal.close();
+      // Also clear selection context to prevent lingering highlights/actions
+      stateManager.batch({
+        'selection.elements': [],
+        'selection.screenshots': []
+      });
+      // Disable viewport and hide bar, restoring DOM 1:1
+      try {
+        viewportController.setEnabled(false);
+        viewportBar.setVisible(false);
+      } catch (_) {}
     });
 
     eventBus.on('bubble:toggle', () => {
@@ -477,6 +636,16 @@ function bootstrap() {
       // Dock updates engine label; Bubble hidden
     });
 
+    // Keep TopBanner width aligned with Dock squeeze
+    const alignTopBanner = () => {
+      const open = stateManager.get('ui.dockOpen') !== false;
+      const state = stateManager.get('ui.dockState');
+      const offset = open && state !== 'compact' ? 420 : 0;
+      try { topBanner.setRightOffset(offset + 'px'); } catch (_) {}
+    };
+    stateManager.subscribe('ui.dockOpen', alignTopBanner);
+    stateManager.subscribe('ui.dockState', alignTopBanner);
+
     // Input events
     eventBus.on('input:changed', () => {
       if (dockRoot) dockRoot.updateSendState();
@@ -505,17 +674,22 @@ function bootstrap() {
       const element = elements[index].element;
       const context = { index };
       const committed = {};
+      const prev = {};
       Object.entries(changes || {}).forEach(([prop, value]) => {
         if (prop === 'text') {
-          element.textContent = value;
-          committed[prop] = value;
+          if (canEditText(element)) {
+            try { prev[prop] = element.textContent; } catch (_) {}
+            element.textContent = value;
+            committed[prop] = value;
+          }
           return;
         }
+        try { prev[prop] = element.style[prop] || ''; } catch (_) { prev[prop] = ''; }
         styleApplier.apply(element, prop, value, context);
         committed[prop] = value;
       });
       if (Object.keys(committed).length) {
-        styleHistory.push({ index, selector, changes: committed });
+        styleHistory.push({ index, selector, changes: committed, prev });
       }
 
       // Mark element
@@ -528,7 +702,103 @@ function bootstrap() {
         'wysiwyg.pending': null,
         'wysiwyg.active': false
       });
-      if (dockRoot) dockRoot.updateSendState();
+      if (dockRoot) {
+        dockRoot.updateSendState();
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+      }
+      try { highlightManager.updateAllPositions(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.updateAllPositions(); } catch (_) {}
+    });
+
+    // Undo: prefer preview-level undo when modal is open; fallback to applied edits
+    eventBus.on('wysiwyg:undo', () => {
+      if (editModal && typeof editModal.isOpen === 'function' && editModal.isOpen()) {
+        if (typeof editModal.undoPreviewStep === 'function' && editModal.undoPreviewStep()) {
+          return;
+        }
+      }
+      const last = styleHistory.undo();
+      if (!last) {
+        topBanner.update('Nothing to undo');
+        setTimeout(() => topBanner.hide(), 1400);
+        return;
+      }
+      const { index, selector, changes, prev } = last;
+      const elements = stateManager.get('selection.elements') || [];
+      let target = elements[index]?.element || null;
+      if (!target && selector) {
+        try { target = document.querySelector(selector); } catch (_) {}
+      }
+      if (!target) return;
+      const context = { index };
+      // Revert properties
+      Object.entries(changes || {}).forEach(([prop, value]) => {
+        if (prop === 'text') {
+          if (canEditText(target)) {
+            const back = prev && Object.prototype.hasOwnProperty.call(prev, 'text') ? prev.text : '';
+            target.textContent = back;
+          }
+          return;
+        }
+        const back = prev && Object.prototype.hasOwnProperty.call(prev, prop) ? prev[prop] : '';
+        if (back === '' || back === undefined || back === null) {
+          styleApplier.remove(target, prop, context);
+        } else {
+          styleApplier.apply(target, prop, back, context);
+        }
+      });
+
+      // Update wysiwyg.edits to reflect the latest effective change for this index (if any)
+      const edits = (stateManager.get('wysiwyg.edits') || []).slice();
+      const remaining = edits.filter(e => e.index !== index);
+      const prevEntry = styleHistory.lastForIndex(index);
+      if (prevEntry && prevEntry.changes && Object.keys(prevEntry.changes).length) {
+        remaining.push({
+          index,
+          selector: prevEntry.selector || selector,
+          changes: prevEntry.changes,
+          summary: prevEntry.summary || summarizeChanges(prevEntry.changes)
+        });
+      }
+
+      // Reconcile edited flag against baseline snapshot
+      const items = stateManager.get('selection.elements') || [];
+      const item = items[index];
+      if (item && item.element) {
+        const base = item.baseline || {};
+        let stillEdited = false;
+        // Compare text
+        try {
+          if (base.text !== null && base.text !== undefined && canEditText(item.element)) {
+            if ((item.element.textContent || '') !== (base.text || '')) stillEdited = true;
+          }
+        } catch (_) {}
+        const keys = Object.keys(base.inline || {});
+        for (const k of keys) {
+          try {
+            const cur = item.element.style[k] || '';
+            const orig = base.inline[k] || '';
+            if (cur !== orig) { stillEdited = true; break; }
+          } catch (_) {}
+        }
+        item.edited = stillEdited;
+        if (!stillEdited) {
+          delete item.diffSummary;
+        } else if (prevEntry) {
+          item.diffSummary = prevEntry.summary || summarizeChanges(prevEntry.changes || {});
+        }
+      }
+
+      stateManager.batch({
+        'selection.elements': elements,
+        'wysiwyg.edits': remaining,
+        'wysiwyg.hasDiffs': remaining.length > 0
+      });
+
+      if (dockRoot) {
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        dockRoot.updateSendState();
+      }
     });
 
     eventBus.on('wysiwyg:reset', () => {
@@ -539,7 +809,7 @@ function bootstrap() {
         if (item && item.element) {
           Object.entries(pending.changes || {}).forEach(([prop, value]) => {
             if (prop === 'text') {
-              item.element.textContent = value;
+              if (canEditText(item.element)) item.element.textContent = value;
             } else {
               styleApplier.remove(item.element, prop, { index: pending.index });
             }
@@ -659,6 +929,7 @@ function bootstrap() {
             'wysiwyg.hasDiffs': false,
             'wysiwyg.pending': null
           });
+          try { styleHistory.clear(); } catch (_) {}
           if (dockRoot) dockRoot.updateSendState();
           highlightManager.clearAll();
           if (editModal) editModal.close();
@@ -693,7 +964,8 @@ function bootstrap() {
         'selection.screenshots': []
       });
       if (dockRoot) dockRoot.updateSendState();
-      highlightManager.clearAll();
+      try { highlightManager.clearAll(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
       if (editModal) editModal.close();
     });
 
@@ -715,10 +987,20 @@ function bootstrap() {
       setTimeout(() => topBanner.hide(), 2200);
     });
   }
+  function canEditText(el) {
+    try {
+      if (!el) return false;
+      const tag = (el.tagName || '').toLowerCase();
+      if (['input','textarea','img','video','canvas','svg'].includes(tag)) return false;
+      return el.childElementCount === 0;
+    } catch (_) { return false; }
+  }
 
   // Keyboard shortcuts
   function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+      // track space pressed for panning
+      if (e.key === ' ') { try { window.__lumiSpacePressed = true; } catch (_) {} }
       // Ignore if typing in input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         // Allow Cmd+Enter for submit
@@ -755,11 +1037,38 @@ function bootstrap() {
         e.preventDefault();
       }
 
+      // Viewport Mode: Ctrl/Cmd+Shift+V toggle
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+        const on = !!stateManager.get('ui.viewport.enabled');
+        eventBus.emit('viewport:toggle', !on);
+        e.preventDefault();
+      }
+      // Viewport Scale: Ctrl/Cmd+Shift+= or -
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '+' || e.key === '=')) {
+        const cur = stateManager.get('ui.viewport.scale') || 1;
+        eventBus.emit('viewport:scale', Math.min(2, cur + 0.1));
+        e.preventDefault();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '-' || e.key === '_')) {
+        const cur = stateManager.get('ui.viewport.scale') || 1;
+        eventBus.emit('viewport:scale', Math.max(0.25, cur - 0.1));
+        e.preventDefault();
+      }
+
       // Cmd+K: Clear context
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         eventBus.emit('context:clear');
         e.preventDefault();
       }
+
+      // Ctrl/Cmd + Alt + 0 : emergency viewport restore
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === '0') {
+        eventBus.emit('viewport:toggle', false);
+        e.preventDefault();
+      }
+    });
+    document.addEventListener('keyup', (e) => {
+      if (e.key === ' ') { try { window.__lumiSpacePressed = false; } catch (_) {} }
     });
   }
 
@@ -768,21 +1077,26 @@ function bootstrap() {
     console.log('[LUMI] Initializing...');
 
     injectGlobalStyles();
-    // Apply global dock theme tokens on page
-    try { applyDockThemeAuto(); watchDockTheme(); } catch (_) {}
+    // Manual theming only; auto detection disabled
 
     // Mount UI components
-    topBanner.mount();
+    // No top banner UI
     dockRoot = new DockRoot(eventBus, stateManager);
     dockRoot.mount();
-    editModal = new DockEditModal(eventBus, stateManager, document.body);
+    // Mount Edit Modal inside Dock's ShadowRoot to avoid page CSS leakage (e.g., Google/Baidu resets)
+    try {
+      const mount = dockRoot && typeof dockRoot.getShadowRoot === 'function' ? dockRoot.getShadowRoot() : document.body;
+      editModal = new DockEditModal(eventBus, stateManager, mount);
+    } catch (_) {
+      editModal = new DockEditModal(eventBus, stateManager, document.body);
+    }
     editModal.mount();
     // Interaction bubble removed
 
     // ControlsOverlay currently disabled; use highlight pen modal instead
 
     // Initialize selectors after UI is ready
-    elementSelector = new ElementSelector(eventBus, stateManager, highlightManager, topBanner);
+    elementSelector = new ElementSelector(eventBus, stateManager, highlightManager, topBanner, document, window);
     screenshotSelector = new ScreenshotSelector(eventBus, stateManager, highlightManager, topBanner, chromeBridge);
 
     // Bind all events (after UI is mounted)
@@ -791,10 +1105,64 @@ function bootstrap() {
     // Setup keyboard shortcuts
     setupKeyboardShortcuts();
 
+    // Theme: manual only, default light (no persistence)
+    try {
+      stateManager.set('ui.theme', 'light');
+      setDockThemeMode('light');
+    } catch (_) {}
+
+    // Apply initial viewport visibility (flag off by default)
+    try {
+      const enabled = !!stateManager.get('ui.viewport.enabled');
+      viewportController.setEnabled(enabled);
+      viewportBar.mount();
+      viewportBar.setVisible(enabled);
+    } catch (_) {}
+
+    // Keep highlight layer in sync with viewport canvas scroll (inline stage)
+    try {
+      const syncScrollTarget = () => {
+        const el = viewportController && viewportController.canvas;
+        const on = !!stateManager.get('ui.viewport.enabled');
+        highlightManager.setExtraScrollContainer(on ? el : null);
+      };
+      eventBus.on('viewport:toggle', (on) => {
+        viewportController.setEnabled(on);
+        viewportBar.setVisible(on);
+        setTimeout(syncScrollTarget, 0);
+      });
+      eventBus.on('viewport:preset', (name) => viewportController.setPreset(name));
+      eventBus.on('viewport:fit', (mode) => viewportController.setFit(mode));
+      eventBus.on('viewport:scale', (value) => viewportController.setScale(value));
+      eventBus.on('viewport:zoom', (value) => viewportController.setZoom(value));
+      syncScrollTarget();
+    } catch (_) {}
+
+    // Top bar follows dock visibility, and viewport toggles with dock
+    try {
+      stateManager.subscribe('ui.dockOpen', (open) => {
+        const on = open !== false;
+        viewportBar.setVisible(on);
+        eventBus.emit('viewport:toggle', on);
+      });
+      stateManager.subscribe('ui.theme', (mode) => {
+        try { setDockThemeMode(mode); } catch (_) {}
+      });
+    } catch (_) {}
+
+    // (moved into bindEvents scope as setupIframeSelectionLocal)
+
     // Listen for background messages
     chromeBridge.onMessage((message) => {
       if (message.type === 'TOGGLE_BUBBLE') {
         eventBus.emit('bubble:toggle');
+        // Ensure viewport bar is visible with dock
+        try {
+          const open = stateManager.get('ui.dockOpen') !== false;
+          if (open) {
+            eventBus.emit('viewport:toggle', true);
+          }
+        } catch (_) {}
       }
     });
 
@@ -803,6 +1171,28 @@ function bootstrap() {
 
     // Start health checker
     healthChecker.start();
+
+    // Runtime self-check (non-fatal)
+    try {
+      (function selfCheck(){
+        const get = (p) => stateManager.get(p);
+        const need = (cond, msg) => { if (!cond) console.error('[LUMI SelfCheck]', msg); };
+        const p = get('ui.viewport.preset');
+        need(['responsive','mobile','pad','laptop'].includes(p), 'Unknown preset: '+p);
+        const logical = get('ui.viewport.logical')||{};
+        need(logical.width>0 && logical.height>0, 'Logical size invalid');
+        const auto = get('ui.viewport.auto');
+        const scale = get('ui.viewport.scale');
+        need((auto || (scale>=0.25 && scale<=2)), 'Scale out of range or auto mis-set');
+        const bar = document.getElementById('lumi-viewport-bar-root');
+        need(!!bar, 'TopViewportBar not mounted');
+        const stage = document.getElementById('lumi-viewport-stage');
+        need(!!stage, 'Viewport stage missing');
+        const stageInfo = viewportController?.getStageInfo?.() || { mode: 'unknown', fallback: 'n/a', enabled: stateManager.get('ui.viewport.enabled') };
+        console.info(`[LUMI] preset=${p} ${logical.width}x${logical.height} scale=${scale} mode=${stageInfo.mode} (fallback:${stageInfo.fallback || 'none'}) enabled=${stageInfo.enabled}`);
+        console.info('[LUMI SelfCheck] done');
+      })();
+    } catch (_) {}
 
     console.log('[LUMI] Initialized successfully');
   }

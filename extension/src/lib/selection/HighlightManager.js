@@ -3,24 +3,31 @@
  */
 
 export default class HighlightManager {
-  constructor(eventBus = null) {
+  constructor(eventBus = null, rootDocument = document, rootWindow = window) {
     this.eventBus = eventBus;
+    this.doc = rootDocument || document;
+    this.win = rootWindow || window;
     this.hoverHighlight = null;
     this.selectionHighlights = [];
     this.selectionElements = [];
     this.selectionListeners = new Map();
     this.screenshotOverlay = null;
+    this._mo = null;
+    this._onScroll = this.updateAllPositions.bind(this);
+    this._onResize = this.updateAllPositions.bind(this);
+    this._raf = null;
+    this._extraScrollEl = null;
   }
 
   showHover(element) {
     this.hideHover();
     const bbox = element.getBoundingClientRect();
-    const halo = document.createElement('div');
+    const halo = this.doc.createElement('div');
     halo.className = 'lumi-highlight lumi-hover';
     halo.style.cssText = this.buildHaloStyle(bbox, element);
     // Hover halo must never intercept pointer events; clicks should go to the page element
     halo.style.pointerEvents = 'none';
-    document.body.appendChild(halo);
+    this.doc.body.appendChild(halo);
     this.hoverHighlight = halo;
   }
 
@@ -33,9 +40,39 @@ export default class HighlightManager {
 
   addSelection(element, index = null) {
     const bbox = element.getBoundingClientRect();
-    const halo = document.createElement('div');
+    const halo = this.doc.createElement('div');
     halo.className = 'lumi-highlight lumi-selected';
     halo.style.cssText = this.buildHaloStyle(bbox, element);
+
+    // Subtle fill layer (only on hover)
+    const fill = this.doc.createElement('div');
+    fill.style.cssText = `
+      position:absolute; inset:0; border-radius:inherit;
+      background: color-mix(in srgb, var(--accent) 6%, transparent);
+      pointer-events:none; opacity:0; transition: opacity 120ms ease;
+    `;
+    halo.appendChild(fill);
+
+    // Inline edit affordance (top-right pill)
+    const action = this.doc.createElement('button');
+    action.type = 'button';
+    action.setAttribute('aria-label', 'Edit');
+    action.style.cssText = `
+      position:absolute; top:-10px; right:-10px; 
+      padding:4px 8px; border-radius:999px; border:1px solid var(--dock-stroke);
+      background: var(--dock-bg); color: var(--dock-fg);
+      font-size:11px; line-height:1; pointer-events:auto; cursor:pointer;
+      box-shadow: var(--shadow); display:none;
+    `;
+    action.textContent = 'Edit';
+    action.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = resolveIndex();
+      if (this.eventBus && typeof idx === 'number') {
+        this.eventBus.emit('edit:open', { index: idx, element });
+      }
+    });
+    halo.appendChild(action);
 
     const resolveIndex = () => {
       const current = this.selectionElements.indexOf(element);
@@ -43,18 +80,42 @@ export default class HighlightManager {
       return typeof index === 'number' ? index : 0;
     };
 
+    // Element label (top-left, subtle)
+    const label = this.doc.createElement('div');
+    label.style.cssText = `
+      position:absolute; top:-10px; left:0; transform: translateY(-100%);
+      padding:0 6px; font-size:10px; line-height:16px; height:16px; border-radius:8px;
+      color: var(--dock-fg-2); background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
+      pointer-events:none; white-space:nowrap; box-shadow:none; border:none;
+    `;
+    label.textContent = this.readable(element);
+    halo.appendChild(label);
+
     halo.addEventListener('mouseenter', () => {
+      action.style.display = 'inline-flex';
+      fill.style.opacity = '1';
       if (this.eventBus) {
         this.eventBus.emit('interaction:hover', { element, index: resolveIndex() });
       }
     });
     halo.addEventListener('mouseleave', () => {
+      action.style.display = 'none';
+      fill.style.opacity = '0';
       if (this.eventBus) {
         this.eventBus.emit('interaction:leave', { element, index: resolveIndex() });
       }
     });
 
-    document.body.appendChild(halo);
+    halo.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = resolveIndex();
+      if (this.eventBus && typeof idx === 'number') {
+        this.eventBus.emit('edit:open', { index: idx, element });
+      }
+    });
+
+    this.doc.body.appendChild(halo);
     const nextIndex = this.selectionHighlights.push(halo) - 1;
     this.selectionElements.push(element);
 
@@ -73,6 +134,7 @@ export default class HighlightManager {
     this.selectionListeners.set(element, { onEnter, onLeave });
 
     halo.dataset.index = String(nextIndex);
+    this.ensureObservers();
     return nextIndex;
   }
 
@@ -111,6 +173,7 @@ export default class HighlightManager {
     });
     this.selectionElements = [];
     this.selectionListeners.clear();
+    this.teardownObservers();
   }
 
   showScreenshotOverlay(bbox) {
@@ -165,15 +228,81 @@ export default class HighlightManager {
       left: ${bbox.left + window.scrollX}px;
       width: ${bbox.width}px;
       height: ${bbox.height}px;
-      pointer-events: none;
+      pointer-events: auto;
       z-index: 2147483645;
       border-radius: ${radius};
-      box-shadow: 0 0 0 2px var(--dock-stroke);
+      box-shadow: 0 0 0 2px var(--accent);
       background: transparent;
-      cursor: default;
+      cursor: pointer;
       transition: box-shadow 0.15s ease;
     `;
   }
 
   penSVG() { return ''; }
+
+  readable(el) {
+    try {
+      if (!el) return 'element';
+      if (el.id) return `#${el.id}`;
+      const cls = el.classList && el.classList[0];
+      const tag = (el.tagName || 'element').toLowerCase();
+      return cls ? `${tag}.${cls}` : tag;
+    } catch (_) { return 'element'; }
+  }
+
+  ensureObservers() {
+    if (this._mo) return;
+    this._mo = new MutationObserver(() => this.scheduleUpdate());
+    try { this._mo.observe(this.doc.body, { attributes: true, childList: true, subtree: true }); } catch (_) {}
+    this.win.addEventListener('scroll', this._onScroll, true);
+    this.win.addEventListener('resize', this._onResize, true);
+    if (this._extraScrollEl) {
+      try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) {}
+    }
+  }
+
+  teardownObservers() {
+    if (this._mo) { try { this._mo.disconnect(); } catch (_) {} this._mo = null; }
+    this.win.removeEventListener('scroll', this._onScroll, true);
+    this.win.removeEventListener('resize', this._onResize, true);
+    if (this._extraScrollEl) {
+      try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) {}
+    }
+    if (this._raf) { this.win.cancelAnimationFrame ? this.win.cancelAnimationFrame(this._raf) : cancelAnimationFrame(this._raf); this._raf = null; }
+  }
+
+  setExtraScrollContainer(el) {
+    if (this._extraScrollEl && this._extraScrollEl !== el) {
+      try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) {}
+    }
+    this._extraScrollEl = el || null;
+    // If observers are active, attach immediately
+    if (this._extraScrollEl && this._mo) {
+      try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) {}
+    }
+  }
+
+  scheduleUpdate() {
+    if (this._raf) return;
+    const raf = this.win.requestAnimationFrame || requestAnimationFrame;
+    this._raf = raf(() => {
+      this._raf = null;
+      this.updateAllPositions();
+    });
+  }
+
+  updateAllPositions() {
+    if (!this.selectionHighlights.length) return;
+    this.selectionHighlights.forEach((halo, idx) => {
+      const el = this.selectionElements[idx];
+      if (!halo || !el || !el.getBoundingClientRect) return;
+      const r = el.getBoundingClientRect();
+      halo.style.top = (r.top + this.win.scrollY) + 'px';
+      halo.style.left = (r.left + this.win.scrollX) + 'px';
+      halo.style.width = r.width + 'px';
+      halo.style.height = r.height + 'px';
+      // keep radius in sync if element style changed
+      try { halo.style.borderRadius = this.win.getComputedStyle(el).borderRadius || '14px'; } catch (_) {}
+    });
+  }
 }

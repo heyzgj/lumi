@@ -66,7 +66,13 @@ function getNthOfType(element) {
 export function readableElementName(element) {
   if (!element) return 'element';
   if (element.id) return `#${element.id}`;
-  const firstClass = (element.className || '').split(' ').filter(Boolean)[0];
+  // className can be an SVGAnimatedString or object; normalize to string safely
+  let classStr = '';
+  try {
+    const raw = element.className;
+    classStr = typeof raw === 'string' ? raw : (raw && typeof raw.baseVal === 'string' ? raw.baseVal : '');
+  } catch (_) { classStr = ''; }
+  const firstClass = classStr.split(' ').filter(Boolean)[0];
   if (firstClass) return `${element.tagName.toLowerCase()}.${firstClass}`;
   return element.tagName.toLowerCase();
 }

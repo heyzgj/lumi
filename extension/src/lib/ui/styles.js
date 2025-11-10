@@ -26,7 +26,7 @@ export const GLOBAL_STYLES = `
     }
   }
   /* Global cursor helpers for selection modes */
-  html.lumi-element-cursor, body.lumi-element-cursor { cursor: pointer !important; }
+  html.lumi-element-cursor, body.lumi-element-cursor { cursor: crosshair !important; }
   html.lumi-screenshot-cursor, body.lumi-screenshot-cursor { cursor: crosshair !important; }
   html.lumi-screenshot-cursor *, body.lumi-screenshot-cursor * {
     cursor: crosshair !important;

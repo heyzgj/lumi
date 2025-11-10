@@ -176,7 +176,18 @@ async function checkServerHealth() {
 }
 
 // Handle extension icon click - inject content script
+function isAllowedHost(url = '') {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch (_) {
+    return false;
+  }
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
+  // Allow toggling/injection on any host; page-level blocking is handled in-app
+  console.info('[LUMI] action clicked for', tab?.url || 'unknown', 'inject=forced');
   console.log('[LUMI] Extension icon clicked for tab:', tab.id);
 
   try {
@@ -187,7 +198,14 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     if (result.result) {
       console.log('[LUMI] Content script already injected, toggling bubble');
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' });
+      try {
+        chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' }, () => {
+          const err = chrome.runtime.lastError;
+          if (err) console.debug('[LUMI] toggle sendMessage lastError (non-fatal):', err.message);
+        });
+      } catch (err) {
+        console.debug('[LUMI] toggle sendMessage threw (non-fatal):', err?.message);
+      }
       return;
     }
 
@@ -198,8 +216,15 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     console.log('[LUMI] Content script injected successfully');
     setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' });
-    }, 80);
+      try {
+        chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' }, () => {
+          const err = chrome.runtime.lastError;
+          if (err) console.debug('[LUMI] post-inject sendMessage lastError (non-fatal):', err.message);
+        });
+      } catch (err) {
+        console.debug('[LUMI] post-inject sendMessage threw (non-fatal):', err?.message);
+      }
+    }, 120);
   } catch (error) {
     console.error('[LUMI] Failed to inject content script:', error);
   }

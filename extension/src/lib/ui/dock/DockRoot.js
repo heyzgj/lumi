@@ -1,5 +1,5 @@
 import { DOCK_STYLES } from './styles.js';
-import { applyDockThemeAuto } from './theme.js';
+// Manual theming is handled via ui.theme and setDockThemeMode in content
 import { readableElementName } from '../../utils/dom.js';
 import { escapeHtml } from './utils.js';
 
@@ -22,6 +22,24 @@ export default class DockRoot {
     this.captureSelection = this.captureSelection.bind(this);
   }
 
+  updateTheme() {
+    try {
+      const mode = this.stateManager.get('ui.theme') || 'light';
+      const dock = this.shadow && this.shadow.getElementById('dock');
+      if (!dock) return;
+      if (mode === 'dark') dock.classList.add('dark'); else dock.classList.remove('dark');
+    } catch (_) {}
+  }
+
+  reflectMode(mode) {
+    try {
+      const select = this.shadow.getElementById('select-btn');
+      const shot = this.shadow.getElementById('shot-btn');
+      if (select) select.classList.toggle('active', mode === 'element');
+      if (shot) shot.classList.toggle('active', mode === 'screenshot');
+    } catch (_) {}
+  }
+
   mount() {
     if (this.host) return;
     this.host = document.createElement('div');
@@ -31,10 +49,10 @@ export default class DockRoot {
     this.shadow.innerHTML = this.renderHTML();
     document.body.appendChild(this.host);
     
-    // Apply squeeze mode to document.documentElement
+    // Apply initial layout (no squeeze until shown)
     this.applySqueeze(false);
     
-    this.createHandle();
+    // Remove compact handle – prefer close + launcher orb UX
     this.createLauncher();
     this.bind();
     this.renderChips(this.stateManager.get('selection.elements') || []);
@@ -49,16 +67,11 @@ export default class DockRoot {
         <div class="header">
           <div class="project" id="project-name">Lumi — Demo Project</div>
           <div class="header-actions">
-            <button class="header-btn header-toggle" id="dock-toggle" title="Collapse Dock" aria-label="Collapse Dock">
-              <svg id="icon-collapse" viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="14" height="16" rx="2"></rect>
-                <path d="M19 4v16"></path>
-                <path d="M12 12l-3-3m3 3l-3 3"></path>
-              </svg>
-              <svg id="icon-expand" style="display:none" viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="7" y="4" width="14" height="16" rx="2"></rect>
-                <path d="M5 4v16"></path>
-                <path d="M12 12l3-3m-3 3l3 3"></path>
+            <button class="header-btn header-theme" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path data-icon="sun" d="M12 4V2m0 20v-2m8-8h2M2 12h2m12.95 6.95l1.41 1.41M4.64 4.64l1.41 1.41m0 12.9l-1.41 1.41m12.9-12.9l1.41-1.41"/>
+                <circle data-icon="sun" cx="12" cy="12" r="3.5"></circle>
+                <path data-icon="moon" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" style="display:none"/>
               </svg>
             </button>
             <button class="header-btn header-settings" id="gear" title="Open Settings" aria-label="Open Settings">
@@ -131,22 +144,49 @@ export default class DockRoot {
     this.engineSelect = this.shadow.getElementById('engine-select');
     this.engineShell = this.shadow.getElementById('engine');
     this.projectLabel = this.shadow.getElementById('project-name');
-    this.toggleCollapse = this.shadow.getElementById('icon-collapse');
-    this.toggleExpand = this.shadow.getElementById('icon-expand');
+    this.toggleCollapse = null;
+    this.toggleExpand = null;
 
     const settingsBtn = this.shadow.getElementById('gear');
-    this.toggleBtn = this.shadow.getElementById('dock-toggle');
+    this.toggleBtn = null;
     settingsBtn.addEventListener('click', () => this.eventBus.emit('settings:open'));
-    this.toggleBtn.addEventListener('click', () => {
-      const state = this.stateManager.get('ui.dockState');
-      const next = state === 'compact' ? 'normal' : 'compact';
-      this.stateManager.set('ui.dockState', next);
+    // collapse/expand removed
+
+    const themeBtn = this.shadow.getElementById('theme-toggle');
+    const reflectThemeIcon = () => {
+      const mode = this.stateManager.get('ui.theme') || 'light';
+      const svg = themeBtn && themeBtn.querySelector('svg');
+      if (!svg) return;
+      svg.querySelectorAll('[data-icon="sun"]').forEach(n => n.style.display = (mode === 'dark') ? 'none' : 'block');
+      const moon = svg.querySelector('[data-icon="moon"]');
+      if (moon) moon.style.display = (mode === 'dark') ? 'block' : 'none';
+      themeBtn.title = mode === 'dark' ? 'Light Mode' : 'Dark Mode';
+    };
+    if (themeBtn) themeBtn.addEventListener('click', () => {
+      const cur = this.stateManager.get('ui.theme') || 'light';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      this.stateManager.set('ui.theme', next);
+      this.eventBus.emit('theme:set', next);
+      reflectThemeIcon();
     });
+    reflectThemeIcon();
+    try {
+      this.stateManager.subscribe('ui.theme', () => {
+        reflectThemeIcon();
+        this.updateTheme();
+      });
+      this.stateManager.subscribe('ui.mode', (mode) => this.reflectMode(mode));
+    } catch (_) {}
+
+    // Apply theme and mode on mount
+    this.updateTheme();
+    this.reflectMode(this.stateManager.get('ui.mode'));
 
     const closeBtn = this.shadow.getElementById('dock-close');
     closeBtn.addEventListener('click', () => {
       this.stateManager.set('ui.dockOpen', false);
       this.setVisible(false);
+      try { this.eventBus.emit('bubble:close'); } catch (_) {}
     });
 
     this.tabsEl.addEventListener('click', (e) => {
@@ -169,8 +209,59 @@ export default class DockRoot {
       this.eventBus.emit('input:changed');
       this.updateSendState();
       this.captureSelection();
+      this.reconcileSelectionWithChips();
     });
     this.editorEl.addEventListener('keydown', (e) => {
+      // Remove adjacent chip via Backspace/Delete
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const sel = this.getSelection();
+        if (sel && sel.rangeCount && this.editorEl.contains(sel.anchorNode)) {
+          const range = sel.getRangeAt(0);
+          const removeChip = (chip) => {
+            if (!chip || !chip.classList || !chip.classList.contains('chip')) return false;
+            const idx = Number(chip.dataset.index || '-1');
+            if (idx >= 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              this.removeElementAt(idx);
+              this.captureSelection();
+              this.updateSendState();
+              return true;
+            }
+            return false;
+          };
+          const isEmptyText = (n) => n && n.nodeType === Node.TEXT_NODE && /^\s*$/.test(n.textContent || '');
+          let node = range.startContainer;
+          // If selection spans multiple nodes, prefer default behavior
+          if (!range.collapsed) return;
+          if (e.key === 'Backspace') {
+            // When at start of a text node, look left to previous sibling
+            if (node.nodeType === Node.TEXT_NODE && range.startOffset === 0) {
+              let prev = node.previousSibling;
+              while (isEmptyText(prev)) prev = prev && prev.previousSibling;
+              if (removeChip(prev)) return;
+            }
+            // If in element node with an offset, check prior child
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const idx = Math.max(0, range.startOffset - 1);
+              let prev = node.childNodes[idx] || node.childNodes[idx - 1] || node.previousSibling;
+              while (isEmptyText(prev)) prev = prev && prev.previousSibling;
+              if (removeChip(prev)) return;
+            }
+          } else if (e.key === 'Delete') {
+            if (node.nodeType === Node.TEXT_NODE && range.startOffset >= (node.textContent || '').length) {
+              let next = node.nextSibling;
+              while (isEmptyText(next)) next = next && next.nextSibling;
+              if (removeChip(next)) return;
+            }
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              let next = node.childNodes[range.startOffset] || node.nextSibling;
+              while (isEmptyText(next)) next = next && next.nextSibling;
+              if (removeChip(next)) return;
+            }
+          }
+        }
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         this.eventBus.emit('submit:requested');
@@ -188,6 +279,7 @@ export default class DockRoot {
     this.editorEl.addEventListener('blur', () => {
       this.sanitizeEditor();
       this.captureSelection();
+      this.reconcileSelectionWithChips();
     });
 
     this.sendBtn.addEventListener('click', () => this.eventBus.emit('submit:requested'));
@@ -202,7 +294,8 @@ export default class DockRoot {
     this.stateManager.subscribe('sessions.currentId', () => this.renderBody());
     this.stateManager.subscribe('ui.dockTab', (tab) => this.setTab(tab, true));
     this.stateManager.subscribe('ui.dockOpen', (open) => this.setVisible(open !== false));
-    this.stateManager.subscribe('ui.dockState', (state) => this.updateDockState(state));
+    // Keep state wired, but collapse/expand is disabled; always enforce 'normal'
+    this.stateManager.subscribe('ui.dockState', () => this.updateDockState('normal'));
     this.stateManager.subscribe('processing.active', () => this.updateSendState());
     this.stateManager.subscribe('wysiwyg.hasDiffs', () => this.updateSendState());
     this.stateManager.subscribe('projects.allowed', () => this.updateSendState());
@@ -216,7 +309,7 @@ export default class DockRoot {
     this.updateDockState(this.stateManager.get('ui.dockState') || 'normal');
     this.updateProjectName(this.stateManager.get('projects.current'));
     this.updatePlaceholder();
-    this.applyTheme();
+    this.updateTheme();
 
     // Live updates for session changes (ensure History/UI refresh immediately)
     this.stateManager.subscribe('sessions.list', () => {
@@ -229,43 +322,22 @@ export default class DockRoot {
     });
   }
 
-  applyTheme() {
-    try {
-      applyDockThemeAuto();
-      const dock = this.shadow.getElementById('dock');
-      if (!dock) return;
-      const isDark = document.documentElement.classList.contains('dark-dock');
-      dock.classList.toggle('dark', isDark);
-    } catch (_) {}
-  }
-
   applySqueeze(isOpen) {
-    const html = document.documentElement;
-    const body = document.body;
-    
-    if (isOpen) {
-      // Squeeze mode: reduce viewport width
-      html.style.transition = 'margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
-      html.style.marginRight = '420px';
-      html.style.overflow = 'hidden';
-      body.style.overflow = 'auto';
-    } else {
-      // Normal: restore full width
-      html.style.transition = 'margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
-      html.style.marginRight = '0';
-      setTimeout(() => {
-        html.style.overflow = '';
-      }, 250);
-    }
+    // Overlay mode: do not squeeze page (user feedback: squeeze was too strong)
+    try {
+      const html = document.documentElement;
+      const body = document.body;
+      html.style.paddingRight = '0px';
+      body.style.paddingRight = '0px';
+    } catch (_) {}
   }
 
   updateDockState(state) {
     const dock = this.shadow.getElementById('dock');
     if (!dock) return;
-    dock.classList.toggle('compact', state === 'compact');
-    
-    const isCompact = state === 'compact';
-    const dockWidth = isCompact ? '56px' : '420px';
+    dock.classList.remove('compact');
+    const isCompact = false;
+    const dockWidth = '420px';
     
     if (this.host) {
       this.host.style.pointerEvents = isCompact ? 'none' : 'auto';
@@ -275,38 +347,23 @@ export default class DockRoot {
     
     // Update squeeze based on compact state
     const isOpen = this.stateManager.get('ui.dockOpen') !== false;
-    if (isOpen) {
-      const html = document.documentElement;
-      html.style.transition = 'margin-right 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
-      html.style.marginRight = isCompact ? '56px' : '420px';
-    }
+    if (isOpen) this.applySqueeze(false);
     
-    // Hide toggle button when compact (use handle instead)
-    if (this.toggleBtn) {
-      this.toggleBtn.style.display = 'flex';
-      const label = isCompact ? 'Expand Dock' : 'Collapse Dock';
-      this.toggleBtn.title = label;
-      this.toggleBtn.setAttribute('aria-label', label);
-    }
-    if (this.toggleCollapse && this.toggleExpand) {
-      this.toggleCollapse.style.display = isCompact ? 'none' : 'block';
-      this.toggleExpand.style.display = isCompact ? 'block' : 'none';
-    }
-    if (this.handle) {
-      this.handle.style.display = isOpen && isCompact ? 'flex' : 'none';
-      if (isCompact) {
-        const currentTop = parseFloat(this.handle.style.top || `${window.innerHeight / 2 - 26}`);
-        this.positionHandle(currentTop);
-      }
-    }
+    // Hide Dock surface entirely in compact; use handle instead
+    dock.style.display = isCompact ? 'none' : 'flex';
+
+    // Hide collapse/expand affordances completely
+    if (this.toggleBtn) this.toggleBtn.style.display = 'none';
+    if (this.toggleCollapse) this.toggleCollapse.style.display = 'none';
+    if (this.toggleExpand) this.toggleExpand.style.display = 'none';
   }
 
   setVisible(isOpen) {
     if (!this.host) return;
     this.host.style.display = isOpen ? 'block' : 'none';
     
-    // Apply or remove squeeze
-    this.applySqueeze(isOpen);
+    // Overlay mode, no squeeze
+    this.applySqueeze(false);
     
     if (this.handle) {
       const state = this.stateManager.get('ui.dockState');
@@ -632,52 +689,7 @@ export default class DockRoot {
     return this.shadow;
   }
 
-  createHandle() {
-    if (this.handle) return;
-    const button = document.createElement('button');
-    button.id = 'lumi-dock-handle';
-    button.type = 'button';
-    button.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="14 5 8 12 14 19"></polyline><line x1="16" y1="5" x2="16" y2="19"></line></svg>';
-    button.setAttribute('aria-label', 'Expand Dock');
-    button.style.cssText = `
-      position: fixed;
-      top: calc(50% - 24px);
-      right: 18px;
-      width: 52px;
-      height: 52px;
-      border-radius: 26px;
-      border: 1px solid var(--dock-stroke);
-      background: var(--dock-bg);
-      box-shadow: var(--shadow);
-      color: var(--dock-fg);
-      font-size: 18px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-      z-index: 2147483646;
-      user-select: none;
-      transition: all 0.2s ease;
-    `;
-    button.addEventListener('mouseenter', () => {
-      button.style.transform = 'scale(1.05)';
-      button.style.boxShadow = 'var(--shadow-lg)';
-    });
-    button.addEventListener('mouseleave', () => {
-      if (!this.handleDragState?.active) {
-        button.style.transform = 'scale(1)';
-        button.style.boxShadow = 'var(--shadow)';
-      }
-    });
-    button.addEventListener('click', () => {
-      if (this.handleDragState?.active) return;
-      this.stateManager.set('ui.dockState', 'normal');
-    });
-    document.body.appendChild(button);
-    this.handle = button;
-    this.positionHandle(window.innerHeight / 2 - 26);
-    this.setupHandleDrag();
-  }
+  // (compact handle removed)
 
   createLauncher() {
     if (this.launcher) return;
@@ -705,7 +717,9 @@ export default class DockRoot {
       user-select: none;
       transition: all 0.2s ease;
     `;
-    button.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path><path d="M9 7v10"></path><path d="M15 7v10"></path></svg>';
+    button.textContent = 'L';
+    button.style.fontWeight = '700';
+    button.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     button.addEventListener('mouseenter', () => {
       button.style.transform = 'scale(1.05)';
       button.style.boxShadow = 'var(--shadow-lg)';
@@ -722,39 +736,9 @@ export default class DockRoot {
     this.launcher = button;
   }
 
-  setupHandleDrag() {
-    if (!this.handle) return;
-    this.handleDragState = { active: false, moved: false, offsetY: 0 };
-    this.handle.addEventListener('mousedown', (event) => {
-      if (event.button !== 0) return;
-      this.handleDragState.active = true;
-      this.handleDragState.moved = false;
-      const rect = this.handle.getBoundingClientRect();
-      this.handleDragState.offsetY = event.clientY - rect.top;
-      event.preventDefault();
-    });
-    window.addEventListener('mousemove', (event) => {
-      if (!this.handleDragState?.active) return;
-      this.handleDragState.moved = true;
-      this.positionHandle(event.clientY - this.handleDragState.offsetY);
-    });
-    window.addEventListener('mouseup', (event) => {
-      if (!this.handleDragState?.active) return;
-      const moved = this.handleDragState.moved;
-      this.handleDragState.active = false;
-      if (!moved) {
-        this.stateManager.set('ui.dockState', 'normal');
-      }
-    });
-  }
+  // (compact handle removed)
 
-  positionHandle(top) {
-    if (!this.handle) return;
-    const min = 24;
-    const max = window.innerHeight - 60;
-    const clamped = Math.min(max, Math.max(min, top));
-    this.handle.style.top = `${clamped}px`;
-  }
+  // (compact handle removed)
 
   renderChips(elements) {
     this.syncChips(elements);
@@ -912,25 +896,32 @@ export default class DockRoot {
   syncChips(elements) {
     if (!this.editorEl) return;
     const chips = this.getChipNodes();
-    if (chips.length > elements.length) {
-      for (let i = chips.length - 1; i >= elements.length; i -= 1) {
-        const chip = chips[i];
+    // 1) Remove chips whose index is out of range or duplicates for same index
+    const seen = new Set();
+    chips.forEach((chip) => {
+      const idx = Number(chip.dataset.index || '-1');
+      const invalid = !(idx >= 0 && idx < elements.length);
+      const duplicate = seen.has(idx);
+      if (invalid || duplicate) {
         const next = chip.nextSibling;
         chip.remove();
-        if (next && next.nodeType === Node.TEXT_NODE && /^\u00A0?$/.test(next.textContent || '')) {
-          next.remove();
-        }
+        if (next && next.nodeType === Node.TEXT_NODE && /^\u00A0?$/.test(next.textContent || '')) next.remove();
+      } else {
+        seen.add(idx);
       }
-    } else if (elements.length > chips.length) {
-      for (let i = chips.length; i < elements.length; i += 1) {
+    });
+    // 2) Add chips for any missing indices
+    for (let i = 0; i < elements.length; i += 1) {
+      if (!this.editorEl.querySelector(`.chip[data-index="${i}"]`)) {
         this.appendChip(elements[i], i);
       }
     }
-    const updatedChips = this.getChipNodes();
-    updatedChips.forEach((chip, idx) => {
+    // 3) Decorate all according to current state
+    const updated = this.getChipNodes();
+    updated.forEach((chip) => {
+      const idx = Number(chip.dataset.index || '-1');
       const item = elements[idx];
-      if (!item) return;
-      this.decorateChip(chip, item, idx);
+      if (item) this.decorateChip(chip, item, idx);
     });
   }
 
@@ -978,6 +969,23 @@ export default class DockRoot {
     return Array.from(this.editorEl.querySelectorAll('.chip'));
   }
 
+  // If user manually deletes chips in the editor (e.g., Backspace), reconcile selection accordingly
+  reconcileSelectionWithChips() {
+    try {
+      const chips = this.getChipNodes();
+      const present = new Set(chips.map((c) => Number(c.dataset.index || '-1')).filter((i) => i >= 0));
+      const elements = (this.stateManager.get('selection.elements') || []);
+      if (!elements.length) return;
+      const toRemove = [];
+      for (let i = 0; i < elements.length; i += 1) {
+        if (!present.has(i)) toRemove.push(i);
+      }
+      if (!toRemove.length) return;
+      // Remove from highest to lowest to keep indices consistent
+      toRemove.sort((a, b) => b - a).forEach((idx) => this.eventBus.emit('element:removed', idx));
+    } catch (_) {}
+  }
+
   decorateChip(chip, item, index) {
     if (!chip || !item) return;
     chip.dataset.index = String(index);
@@ -1018,6 +1026,7 @@ export default class DockRoot {
   removeElementAt(index) {
     const list = (this.stateManager.get('selection.elements') || []).slice();
     if (index < 0 || index >= list.length) return;
+    try { this.eventBus.emit('element:pre-remove', { index, snapshot: list[index] }); } catch (_) {}
     list.splice(index, 1);
     this.stateManager.set('selection.elements', list);
     this.eventBus.emit('element:removed', index);

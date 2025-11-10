@@ -47,5 +47,14 @@ export default class StyleHistory {
   get canRedo() {
     return this.position < this.stack.length - 1;
   }
-}
 
+  // Find the most recent entry (<= current position) for a given index
+  lastForIndex(index) {
+    if (typeof index !== 'number') return null;
+    for (let i = this.position; i >= 0; i -= 1) {
+      const entry = this.stack[i];
+      if (entry && entry.index === index) return entry;
+    }
+    return null;
+  }
+}

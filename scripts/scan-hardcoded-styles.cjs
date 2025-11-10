@@ -6,6 +6,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const allow = [
   /extension\/shared\/tokens\.css$/,
+  /extension\/shared\/tokens\.js$/,
   /design\/tokens\.json$/
 ];
 
@@ -26,7 +27,7 @@ function walk(dir) {
   return out;
 }
 
-const files = walk(root).filter(f => !allow.some(a => a.test(f)));
+const files = walk(root).filter(f => !allow.some(a => a.test(f)) && !/extension\/content\.js$/.test(f) && !/\.map$/.test(f));
 let errors = [];
 for (const f of files) {
   const text = fs.readFileSync(f, 'utf8');

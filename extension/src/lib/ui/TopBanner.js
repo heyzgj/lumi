@@ -5,6 +5,7 @@
 export default class TopBanner {
   constructor() {
     this.banner = null;
+    this._rightOffset = '0px';
   }
 
   mount() {
@@ -37,6 +38,7 @@ export default class TopBanner {
   show(message) {
     if (!this.banner) this.mount();
     this.banner.textContent = message;
+    this.banner.style.right = this._rightOffset || '0px';
     this.banner.style.display = 'block';
   }
 
@@ -51,6 +53,13 @@ export default class TopBanner {
       this.hide();
     } else {
       this.show(message);
+    }
+  }
+
+  setRightOffset(px) {
+    this._rightOffset = typeof px === 'string' ? px : `${px || 0}px`;
+    if (this.banner && this.banner.style.display === 'block') {
+      this.banner.style.right = this._rightOffset;
     }
   }
 

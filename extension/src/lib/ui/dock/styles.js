@@ -128,48 +128,14 @@ export const DOCK_STYLES = `
     background: var(--surface-hover); 
     transform: scale(1.05);
   }
-  .header-btn.header-close {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-secondary);
-    font-size: 18px;
-  }
-  .header-btn.header-close:hover { 
-    color: var(--text); 
-    background: var(--surface-hover);
-  }
+  .header-btn.header-close { border:1px solid var(--border); background: color-mix(in srgb, var(--dock-bg) 94%, transparent); color: var(--text-secondary); font-size:18px; }
+  .header-btn.header-close:hover { color: var(--text); background: color-mix(in srgb, var(--dock-bg) 88%, transparent); }
 
-  .tabs {
-    display: flex;
-    gap: 6px;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .tab {
-    flex: 1;
-    text-align: center;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-    position: relative;
-  }
-  .tab:hover { 
-    color: var(--text); 
-    background: var(--surface-hover);
-  }
-  .tab.active { 
-    color: var(--primary); 
-    background: var(--glass-bg);
-    box-shadow: var(--shadow);
-    font-weight: 600;
-  }
+  .tabs { display:flex; gap:8px; padding:12px 16px 10px 16px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--dock-bg) 96%, transparent); backdrop-filter: blur(12px); }
+  .tab { flex:1; text-align:center; padding:8px 16px; font-size:12px; font-weight:500; color:var(--text-secondary); background:color-mix(in srgb, var(--dock-bg) 92%, transparent); border:1px solid var(--border); border-radius:999px; cursor:pointer; transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1); position:relative; box-shadow: 0 1px 0 rgba(0,0,0,0.02) inset; }
+  .tab:hover { color:var(--text); background: color-mix(in srgb, var(--dock-bg) 88%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .tab.active { color:var(--text); background: color-mix(in srgb, var(--dock-bg) 82%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 28%, transparent); box-shadow: 0 6px 18px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.06) inset; font-weight:600; }
+  .tab:focus-visible { outline:none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--dock-fg) 25%, transparent); }
 
   .body {
     flex: 1;
@@ -363,24 +329,20 @@ export const DOCK_STYLES = `
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }
-  .icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-    transition: background 0.15s ease, border 0.15s ease;
+  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: color-mix(in srgb, var(--dock-bg) 94%, transparent); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
+  .icon:hover { background: color-mix(in srgb, var(--dock-bg) 88%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .icon:active { transform: scale(0.98); }
+  .icon.active {
+    background: color-mix(in srgb, var(--dock-bg) 84%, transparent);
+    border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent);
+    color: var(--text);
   }
-  .icon:hover { background: color-mix(in srgb, var(--dock-bg) 88%, transparent); }
   .send {
     padding: 6px 18px;
     border-radius: 18px;
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--dock-fg) 92%, transparent);
-    color: var(--on-strong);
+    border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    background: var(--accent);
+    color: var(--on-accent);
     font-size: 12px;
     cursor: pointer;
   }
