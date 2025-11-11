@@ -1,6 +1,6 @@
 import RestoreHelper from './RestoreHelper.js';
 
-const TOPBAR_HEIGHT = 40;
+const TOPBAR_HEIGHT = 56;
 const TOPBAR_MARGIN = 12;
 const SCALE_MIN = 0.25;
 const SCALE_MAX = 2;

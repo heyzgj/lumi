@@ -385,7 +385,7 @@
   }
 `;
 
-  const TOKENS_CSS = ":root {\n  --dock-bg: rgba(255,255,255,0.88);\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 4px 12px rgba(0,0,0,0.05);\n  --radius-panel: 18px;\n  --radius-chip: 12px;\n}\n:root.dark-dock {\n  --dock-bg: rgba(22,22,24,0.88);\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 6px 16px rgba(0,0,0,0.35);\n  --radius-panel: 18px;\n  --radius-chip: 12px;\n}\n";
+  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 4px 12px rgba(0,0,0,0.05);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n}\n:root.dark-dock {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 6px 16px rgba(0,0,0,0.35);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n}\n";
 
   /**
    * DOM Utilities
@@ -1227,7 +1227,7 @@
         // Support accumulating screenshots; prefer array if present
         const existing = this.stateManager.get('selection.screenshots');
         const next = Array.isArray(existing) ? existing.slice() : [];
-        next.push({ dataUrl, bbox, id: Date.now() });
+        next.push({ dataUrl, bbox, id: Date.now(), createdAt: Date.now() });
         this.stateManager.set('selection.screenshots', next);
         
         this.eventBus.emit('screenshot:captured', { dataUrl, bbox });
@@ -1278,6 +1278,9 @@
 
     async init() {
       console.log('[EngineManager] Initializing...');
+      
+      // Initialize availability to unknown state (will be updated by HealthChecker)
+      this.stateManager.set('engine.available', { codex: false, claude: false });
       
       // Load saved engine preference
       const stored = await this.chromeBridge.storageGet(['engine']);
@@ -1338,10 +1341,8 @@
         return;
       }
 
-      this.stateManager.batch({
-        'engine.available.codex': next.codex,
-        'engine.available.claude': next.claude
-      });
+      // Update as a whole object so subscribers to 'engine.available' fire
+      this.stateManager.set('engine.available', next);
 
       console.log('[EngineManager] Engine availability updated:', next);
       this.eventBus.emit('engine:availability-updated', next);
@@ -1451,8 +1452,9 @@
           // Update engine availability through EngineManager (respects init state)
           this.engineManager.updateAvailability(codexAvailable, claudeAvailable);
         } else if (result.healthy) {
-          // Server healthy but no specific capabilities, assume codex available
-          this.engineManager.updateAvailability(true, false);
+          // Server healthy but no capabilities payload; keep previous availability
+          const prev = this.engineManager.getAvailableEngines() || {};
+          this.engineManager.updateAvailability(!!prev.codex, !!prev.claude);
         } else {
           // Server not healthy
           this.engineManager.updateAvailability(false, false);
@@ -1763,73 +1765,83 @@
         pageUrl: pageInfo.url,
         pageTitle: pageInfo.title,
         selectionMode: elements.length > 0 ? 'element' : 'screenshot',
-        viewport: {
-          width: window.innerWidth,
-          height: window.innerHeight
-        }
+        viewport: { width: window.innerWidth, height: window.innerHeight }
       };
 
       const { frameworks, styleStrategy } = detectFrameworkSignatures();
-      context.meta = {
-        frameworks,
-        styleStrategy
-      };
-      
-      // Add element context - support multiple elements
-      if (elements.length > 0) {
-        if (elements.length === 1) {
-          // Single element - keep original format
-          context.element = {
-            tagName: elements[0].element.tagName,
-            selector: elements[0].selector,
-            className: elements[0].element.className,
-            classList: getElementClassList(elements[0].element),
-            dataset: getElementDataset(elements[0].element),
-            ancestors: getAncestorTrail(elements[0].element),
-            id: elements[0].element.id,
-            outerHTML: elements[0].element.outerHTML,
-            textContent: getElementText(elements[0].element),
-            computedStyle: getComputedStyleSummary(elements[0].element)
-          };
-          context.bbox = elements[0].bbox;
-        } else {
-          // Multiple elements - send as array
-          context.elements = elements.map((item, index) => ({
-            index: index + 1,
-            tagName: item.element.tagName,
+      context.meta = { frameworks, styleStrategy };
+
+      const tagMap = {};
+
+      // Elements → tag mapping and rich context
+      if (Array.isArray(elements) && elements.length > 0) {
+        context.elements = elements.map((item, idx) => {
+          const tag = `@element${idx + 1}`;
+          tagMap[tag] = { type: 'element', index: idx };
+          const el = item.element;
+          return {
+            tag,
+            index: idx + 1,
             selector: item.selector,
-            className: item.element.className,
-            classList: getElementClassList(item.element),
-            dataset: getElementDataset(item.element),
-            ancestors: getAncestorTrail(item.element),
-            id: item.element.id,
-            outerHTML: item.element.outerHTML,
-            textContent: getElementText(item.element),
-            computedStyle: getComputedStyleSummary(item.element),
-            bbox: item.bbox
-          }));
-          context.elementCount = elements.length;
-        }
-      }
-      
-      // Add screenshot context (single + multiple)
-      if (screenshots && screenshots.length > 0) {
-        context.screenshots = screenshots.map((s, i) => ({ index: i + 1, bbox: s.bbox }));
-      }
-      if (screenshot) {
-        context.screenshot = screenshot;
+            tagName: el?.tagName,
+            className: el?.className,
+            classList: getElementClassList(el),
+            dataset: getElementDataset(el),
+            ancestors: getAncestorTrail(el),
+            id: el?.id,
+            outerHTML: el?.outerHTML,
+            textContent: getElementText(el),
+            computedStyle: getComputedStyleSummary(el),
+            bbox: item.bbox,
+            baseline: item.baseline || null,
+            edited: !!item.edited
+          };
+        });
+        context.elementCount = context.elements.length;
       }
 
-      // Include WYSIWYG edits if present
-      if (edits && edits.length) {
-        context.edits = edits.map(e => ({
-          index: e.index,
-          selector: e.selector,
-          changes: e.changes,
-          summary: e.summary
-        }));
+      // Screenshots → tag mapping
+      if (Array.isArray(screenshots) && screenshots.length > 0) {
+        context.screenshots = screenshots.map((s, i) => {
+          const tag = `@screenshot${i + 1}`;
+          tagMap[tag] = { type: 'screenshot', index: i };
+          return {
+            tag,
+            index: i + 1,
+            bbox: s.bbox,
+            dataUrl: s.dataUrl,
+            id: s.id,
+            createdAt: s.createdAt
+          };
+        });
       }
-      
+      if (screenshot) {
+        // Legacy single-shot field for CLI image path flow
+        context.screenshot = screenshot.dataUrl || screenshot;
+      }
+
+      // Include WYSIWYG edits with before/after derived from baseline
+      if (Array.isArray(edits) && edits.length) {
+        const elementByIndex = (i) => (context.elements || [])[i] || null;
+        context.edits = edits.map(e => {
+          const el = elementByIndex(e.index);
+          const base = el?.baseline || {};
+          const diffs = Object.entries(e.changes || {}).map(([prop, after]) => {
+            const before = (base.inline && base.inline[prop] !== undefined)
+              ? base.inline[prop]
+              : (prop === 'text' && typeof base.text === 'string' ? base.text : 'unset');
+            return { property: prop, before, after };
+          });
+          return {
+            tag: el?.tag || `@element${(e.index ?? 0) + 1}`,
+            selector: e.selector,
+            diffs,
+            summary: e.summary
+          };
+        });
+      }
+
+      context.tagMap = tagMap;
       return context;
     }
   }
@@ -1845,7 +1857,7 @@
   /* Design tokens (light) mapped to legacy variables for minimal churn */
   .dock {
     /* New tokens */
-    --dock-bg: rgba(255,255,255,0.88);
+    --dock-bg: #ffffff;
     --dock-stroke: rgba(0,0,0,0.08);
     --dock-fg: #111111;
     --dock-fg-2: #5F6368;
@@ -1853,13 +1865,15 @@
     --success: #10B981;
     --shadow: 0 4px 12px rgba(0,0,0,0.05);
     --radius-panel: 18px;
-    --radius-chip: 12px;
+    --radius-chip: 8px;
+    --header-height: 56px;
 
     /* Bridge to existing variable names used below */
     --glass-bg: var(--dock-bg);
     --glass-border: var(--dock-stroke);
-    --surface: color-mix(in srgb, var(--dock-bg) 96%, transparent);
-    --surface-hover: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    /* Solid surfaces derived from base to avoid background bleed */
+    --surface: #f7f7f8;
+    --surface-hover: #f0f0f3;
     --text: var(--dock-fg);
     --text-secondary: var(--dock-fg-2);
     --text-tertiary: var(--dock-fg-2);
@@ -1869,7 +1883,7 @@
   }
 
   .dock.dark {
-    --dock-bg: rgba(22,22,24,0.88);
+    --dock-bg: #161618;
     --dock-stroke: rgba(255,255,255,0.12);
     --dock-fg: #F5F5F7;
     --dock-fg-2: #B0B3B8;
@@ -1877,13 +1891,13 @@
     --success: #34D399;
     --shadow: 0 6px 16px rgba(0,0,0,0.35);
     --radius-panel: 18px;
-    --radius-chip: 12px;
+    --radius-chip: 8px;
 
     /* Bridge overrides */
     --glass-bg: var(--dock-bg);
     --glass-border: var(--dock-stroke);
-    --surface: color-mix(in srgb, var(--dock-bg) 96%, transparent);
-    --surface-hover: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    --surface: #1e1f22;
+    --surface-hover: #232528;
     --text: var(--dock-fg);
     --text-secondary: var(--dock-fg-2);
     --text-tertiary: var(--dock-fg-2);
@@ -1899,7 +1913,6 @@
     height: 100vh;
     width: 420px;
     background: var(--glass-bg);
-    backdrop-filter: blur(24px);
     text-align: left;
     border-left: 1px solid var(--glass-border);
     box-shadow: var(--shadow);
@@ -1910,7 +1923,7 @@
     z-index: 2147483646;
     transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1), backdrop-filter 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
-  .dock.compact { width: 56px; backdrop-filter: blur(12px); }
+  .dock.compact { width: 56px; }
   .dock.compact .project { display: none; }
   .dock.compact .tabs,
   .dock.compact .body,
@@ -1925,7 +1938,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
+    height: var(--header-height);
+    padding: 0 18px;
     border-bottom: 1px solid var(--glass-border);
   }
   .project {
@@ -1942,19 +1956,7 @@
     align-items: center;
     gap: 10px;
   }
-  .header-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-secondary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-  }
+  .header-btn { width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
   .header-btn svg {
     width: 18px;
     height: 18px;
@@ -1965,19 +1967,18 @@
   .header-btn.header-toggle svg.collapsed {
     transform: scaleX(-1);
   }
-  .header-btn:hover { 
-    color: var(--text); 
-    background: var(--surface-hover); 
-    transform: scale(1.05);
-  }
-  .header-btn.header-close { border:1px solid var(--border); background: color-mix(in srgb, var(--dock-bg) 94%, transparent); color: var(--text-secondary); font-size:18px; }
-  .header-btn.header-close:hover { color: var(--text); background: color-mix(in srgb, var(--dock-bg) 88%, transparent); }
+  .header-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .header-btn:active { transform: scale(0.98); }
+  .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--text-secondary); font-size:18px; }
+  .header-btn.header-close:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
 
-  .tabs { display:flex; gap:8px; padding:12px 16px 10px 16px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--dock-bg) 96%, transparent); backdrop-filter: blur(12px); }
-  .tab { flex:1; text-align:center; padding:8px 16px; font-size:12px; font-weight:500; color:var(--text-secondary); background:color-mix(in srgb, var(--dock-bg) 92%, transparent); border:1px solid var(--border); border-radius:999px; cursor:pointer; transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1); position:relative; box-shadow: 0 1px 0 rgba(0,0,0,0.02) inset; }
-  .tab:hover { color:var(--text); background: color-mix(in srgb, var(--dock-bg) 88%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
-  .tab.active { color:var(--text); background: color-mix(in srgb, var(--dock-bg) 82%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 28%, transparent); box-shadow: 0 6px 18px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,0.06) inset; font-weight:600; }
-  .tab:focus-visible { outline:none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--dock-fg) 25%, transparent); }
+  .tabs { display:flex; gap:18px; padding:0 16px; height: 44px; align-items:center; border-bottom:1px solid var(--border); background: var(--glass-bg); }
+  .tab { flex:0 0 auto; text-align:center; padding:0 2px; min-width:auto; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-radius:0; cursor:pointer; transition: color 0.15s ease; position:relative; }
+  .tab:hover { color:var(--text); }
+  .tab::after { content:''; position:absolute; left:20%; right:20%; bottom:-2px; height:2px; background: transparent; border-radius:1px; transition: background 0.2s ease; }
+  .tab.active { color:var(--text); font-weight:600; }
+  .tab.active::after { background: color-mix(in srgb, var(--dock-fg) 28%, transparent); }
+  .tab:focus-visible { outline:none; }
 
   .body {
     flex: 1;
@@ -1995,40 +1996,122 @@
   .chat-list { display: flex; flex-direction: column; gap: 20px; }
   .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
 
-  .chat-item { display: flex; gap: 12px; }
-  .chat-item.assistant { align-items: flex-start; color: var(--text-secondary); }
-  .chat-item.assistant .avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
-  }
-  .chat-item.assistant .bubble {
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--text-secondary);
-  }
-  .chat-item.assistant .summary {
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-  .chat-item.assistant .details {
-    margin-top: 4px;
-    font-size: 12px;
-    color: var(--hint);
-  }
-
-  .chat-item.user { justify-content: flex-end; }
-  .chat-item.user .bubble {
-    max-width: 70%;
+  /* Windsurf-style messages: no avatar, left border for status */
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 10px 16px;
+    border-radius: 8px;
+    border-left: 3px solid transparent;
+    margin-bottom: 8px;
+  }
+  .msg.assistant.success { border-left-color: var(--success); }
+  .msg.assistant.error { border-left-color: #EF4444; }
+  
+  .msg .summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .msg .summary .icon {
+    font-size: 16px;
+  }
+  .msg .summary .text {
+    flex: 1;
+  }
+  
+  .msg details {
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .msg details summary {
+    padding: 6px 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    user-select: none;
+    list-style: none;
+  }
+  .msg details summary::-webkit-details-marker { display: none; }
+  .msg details summary::before {
+    content: '▼ ';
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 10px;
+    transition: transform 0.15s;
+  }
+  .msg details[open] summary::before {
+    transform: rotate(180deg);
+  }
+  .msg details summary:hover {
+    color: var(--text);
+  }
+  .msg .details-content {
+    padding-top: 8px;
     font-size: 13px;
     line-height: 1.6;
     color: var(--text);
-    box-shadow: var(--shadow);
+  }
+  
+  /* File list inside details */
+  .msg .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+  }
+  .msg .file-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: var(--glass-bg);
+  }
+  .msg .file-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .msg .file-icon {
+    font-size: 14px;
+  }
+  .msg .file-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .msg .file-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* Markdown basics inside dock */
+  .md-p { margin: 6px 0; }
+  .md-h { margin: 10px 0 6px; font-weight: 600; }
+  .md-list { padding-left: 18px; margin: 6px 0; }
+  .md-code { background: #0f172a0d; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow:auto; }
+  .md-code-inline { background: #0f172a1a; border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .md a { color: var(--text); text-decoration: underline; }
+
+  /* Change list (collapsed by default, preview-only) */
+  .change-list { display: flex; flex-direction: column; gap: 8px; }
+  .change-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
+  .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+  .change-meta { font-size: 12px; color: var(--text-secondary); }
+
+  .msg.user {
+    background: var(--glass-bg);
+    border-left: 3px solid #3B82F6;
+  }
+  .msg.user .bubble {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
   }
 
   /* History */
@@ -2057,7 +2140,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-panel);
     background: var(--surface);
-    backdrop-filter: blur(18px);
     box-shadow: var(--shadow);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
@@ -2105,7 +2187,7 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    border-radius: 20px;
+    border-radius: 12px;
     border: 1px solid var(--border);
     background: var(--surface);
     padding: 10px 14px;
@@ -2131,10 +2213,10 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius-chip);
-    padding: 4px 10px;
+    padding: 2px 8px;
     font-size: 12px;
     color: var(--text-secondary);
   }
@@ -2145,7 +2227,7 @@
     height: 6px;
     border-radius: 50%;
     background: var(--success);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    box-shadow: 0 0 0 1px var(--surface);
   }
   .chip button { border: none; background: transparent; padding: 0; cursor: pointer; color: inherit; }
   .chip .x { margin-left: 4px; opacity: 0.7; }
@@ -2164,24 +2246,20 @@
     padding: 4px 12px;
     border-radius: 999px;
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--dock-bg) 92%, transparent);
+    background: var(--surface);
   }
   .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
   .engine.available .dot { background: var(--success); }
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }
-  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: color-mix(in srgb, var(--dock-bg) 94%, transparent); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
-  .icon:hover { background: color-mix(in srgb, var(--dock-bg) 88%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: var(--surface); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
+  .icon:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
   .icon:active { transform: scale(0.98); }
-  .icon.active {
-    background: color-mix(in srgb, var(--dock-bg) 84%, transparent);
-    border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent);
-    color: var(--text);
-  }
+  .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--text); }
   .send {
-    padding: 6px 18px;
-    border-radius: 18px;
+    padding: 6px 14px;
+    border-radius: 10px;
     border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
     background: var(--accent);
     color: var(--on-accent);
@@ -2198,6 +2276,192 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  // Minimal Markdown renderer to DOM nodes (safe subset, no HTML injection)
+  // Supports: headings, paragraphs, code fences, inline code, bold, italic, links, lists
+
+  function renderMarkdown(markdown, doc = document) {
+    const frag = doc.createDocumentFragment();
+    if (!markdown || typeof markdown !== 'string') return frag;
+
+    const blocks = splitIntoBlocks(markdown);
+    blocks.forEach((blk) => {
+      if (blk.type === 'code') {
+        const pre = doc.createElement('pre');
+        pre.className = 'md-code';
+        const code = doc.createElement('code');
+        if (blk.lang) code.dataset.lang = blk.lang;
+        code.textContent = blk.text;
+        pre.appendChild(code);
+        frag.appendChild(pre);
+        return;
+      }
+      if (blk.type === 'list') {
+        const ul = doc.createElement('ul');
+        ul.className = 'md-list';
+        blk.items.forEach((item) => {
+          const li = doc.createElement('li');
+          applyInline(li, item, doc);
+          ul.appendChild(li);
+        });
+        frag.appendChild(ul);
+        return;
+      }
+      if (blk.type === 'heading') {
+        const level = Math.min(6, Math.max(1, blk.level));
+        const el = doc.createElement('h' + level);
+        el.className = 'md-h';
+        applyInline(el, blk.text, doc);
+        frag.appendChild(el);
+        return;
+      }
+      const p = doc.createElement('p');
+      p.className = 'md-p';
+      applyInline(p, blk.text, doc);
+      frag.appendChild(p);
+    });
+    return frag;
+  }
+
+  function splitIntoBlocks(md) {
+    const lines = md.replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      // Fenced code block
+      const fence = line.match(/^```\s*([a-zA-Z0-9_-]+)?\s*$/);
+      if (fence) {
+        const lang = fence[1] || '';
+        let j = i + 1;
+        const buf = [];
+        while (j < lines.length && !/^```\s*$/.test(lines[j])) {
+          buf.push(lines[j]);
+          j++;
+        }
+        out.push({ type: 'code', lang, text: buf.join('\n') });
+        i = j + 1;
+        continue;
+      }
+      // Heading
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      if (h) {
+        out.push({ type: 'heading', level: h[1].length, text: h[2] || '' });
+        i++;
+        continue;
+      }
+      // List (only bullets for simplicity)
+      if (/^\s*[-*+]\s+/.test(line)) {
+        const items = [];
+        let j = i;
+        while (j < lines.length && /^\s*[-*+]\s+/.test(lines[j])) {
+          items.push(lines[j].replace(/^\s*[-*+]\s+/, ''));
+          j++;
+        }
+        out.push({ type: 'list', items });
+        i = j;
+        continue;
+      }
+      // Blank lines → paragraph separators
+      if (!line.trim()) {
+        i++;
+        continue;
+      }
+      // Paragraph: collect until blank line or other block
+      const buf = [line];
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() && !/^```/.test(lines[j]) && !/^(#{1,6})\s+/.test(lines[j]) && !/^\s*[-*+]\s+/.test(lines[j])) {
+        buf.push(lines[j]);
+        j++;
+      }
+      out.push({ type: 'paragraph', text: buf.join('\n') });
+      i = j;
+    }
+    return out;
+  }
+
+  function applyInline(el, text, doc) {
+    // Tokenize inline: code `..`, strong **..**, em *..*, links [text](url)
+    const tokens = tokenizeInline(text);
+    tokens.forEach(t => {
+      if (t.type === 'text') {
+        el.appendChild(doc.createTextNode(t.value));
+      } else if (t.type === 'code') {
+        const n = doc.createElement('code');
+        n.className = 'md-code-inline';
+        n.textContent = t.value;
+        el.appendChild(n);
+      } else if (t.type === 'strong') {
+        const n = doc.createElement('strong');
+        n.textContent = t.value;
+        el.appendChild(n);
+      } else if (t.type === 'em') {
+        const n = doc.createElement('em');
+        n.textContent = t.value;
+        el.appendChild(n);
+      } else if (t.type === 'link') {
+        const a = doc.createElement('a');
+        a.href = t.href;
+        a.textContent = t.text || t.href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        el.appendChild(a);
+      }
+    });
+  }
+
+  function tokenizeInline(text) {
+    const out = [];
+    let i = 0;
+    const s = String(text || '');
+    while (i < s.length) {
+      // code
+      if (s[i] === '`') {
+        const j = s.indexOf('`', i + 1);
+        if (j > i + 1) {
+          out.push({ type: 'code', value: s.slice(i + 1, j) });
+          i = j + 1;
+          continue;
+        }
+      }
+      // strong **
+      if (s[i] === '*' && s[i + 1] === '*') {
+        const j = s.indexOf('**', i + 2);
+        if (j > i + 2) {
+          out.push({ type: 'strong', value: s.slice(i + 2, j) });
+          i = j + 2;
+          continue;
+        }
+      }
+      // em *
+      if (s[i] === '*') {
+        const j = s.indexOf('*', i + 1);
+        if (j > i + 1) {
+          out.push({ type: 'em', value: s.slice(i + 1, j) });
+          i = j + 1;
+          continue;
+        }
+      }
+      // link [text](url)
+      if (s[i] === '[') {
+        const j = s.indexOf(']', i + 1);
+        if (j > i + 1 && s[j + 1] === '(') {
+          const k = s.indexOf(')', j + 2);
+          if (k > j + 2) {
+            const text = s.slice(i + 1, j);
+            const href = s.slice(j + 2, k);
+            out.push({ type: 'link', text, href });
+            i = k + 1;
+            continue;
+          }
+        }
+      }
+      // plain
+      out.push({ type: 'text', value: s[i] });
+      i++;
+    }
+    return out;
   }
 
   class DockRoot {
@@ -2487,6 +2751,7 @@
       this.stateManager.subscribe('engine.current', (engine) => this.updateEngine(engine));
       this.stateManager.subscribe('engine.available', () => this.updateEngineAvailability());
       this.stateManager.subscribe('selection.elements', (elements) => this.renderChips(elements || []));
+      this.stateManager.subscribe('selection.screenshots', () => this.renderChips(this.stateManager.get('selection.elements') || []));
       this.stateManager.subscribe('sessions.list', () => this.renderBody());
       this.stateManager.subscribe('sessions.currentId', () => this.renderBody());
       this.stateManager.subscribe('ui.dockTab', (tab) => this.setTab(tab, true));
@@ -2517,6 +2782,9 @@
         const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
         if (tab === 'history') this.renderHistory(); else this.renderChat();
       });
+
+      // Prepare screenshot preview containers
+      this.ensureShotPreviewContainers();
     }
 
     applySqueeze(isOpen) {
@@ -2620,32 +2888,138 @@
 
     renderChatMessage(msg) {
       if (msg.role === 'assistant') {
+        // New result card rendering if lumiResult is present
+        if (msg.result && typeof msg.result === 'object') {
+          return this.renderResultMessage(msg.result, msg.applied);
+        }
+        // Windsurf-style: no avatar, left border for status
         const item = document.createElement('div');
-        item.className = 'chat-item assistant';
-        const avatar = document.createElement('div');
-        avatar.className = 'avatar';
-        const body = document.createElement('div');
-        body.className = 'bubble';
+        item.className = 'msg assistant' + (msg.applied ? ' success' : ' error');
+        
         const summary = document.createElement('div');
         summary.className = 'summary';
-        summary.textContent = msg.summary || (msg.applied ? 'Applied ✓' : (msg.text || 'Response'));
-        body.appendChild(summary);
-        if (msg.details && msg.details.length) {
-          const details = document.createElement('div');
-          details.className = 'details';
-          details.textContent = msg.details.join(' ; ');
-          body.appendChild(details);
+        const icon = document.createElement('span');
+        icon.className = 'icon';
+        icon.textContent = msg.applied ? '✓' : '⚠';
+        const text = document.createElement('span');
+        text.className = 'text';
+        text.textContent = msg.text || (msg.applied ? 'Applied' : 'Request failed');
+        summary.appendChild(icon);
+        summary.appendChild(text);
+        item.appendChild(summary);
+        
+        // Render markdown if present
+        if (msg.text && /```|^#\s/m.test(msg.text)) {
+          const details = document.createElement('details');
+          const detailsSummary = document.createElement('summary');
+          detailsSummary.textContent = 'Show details';
+          details.appendChild(detailsSummary);
+          const content = document.createElement('div');
+          content.className = 'details-content md';
+          content.appendChild(renderMarkdown(msg.text, this.shadow?.ownerDocument || document));
+          details.appendChild(content);
+          item.appendChild(details);
+        } else if (msg.details && msg.details.length) {
+          const details = document.createElement('details');
+          const detailsSummary = document.createElement('summary');
+          detailsSummary.textContent = 'Show details';
+          details.appendChild(detailsSummary);
+          const content = document.createElement('div');
+          content.className = 'details-content';
+          content.textContent = msg.details.join(' ; ');
+          details.appendChild(content);
+          item.appendChild(details);
         }
-        item.appendChild(avatar);
-        item.appendChild(body);
         return item;
       }
+      // User message: no avatar, simple style
       const item = document.createElement('div');
-      item.className = 'chat-item user';
+      item.className = 'msg user';
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       bubble.textContent = msg.text;
       item.appendChild(bubble);
+      return item;
+    }
+
+    renderResultMessage(result, applied = false) {
+      const item = document.createElement('div');
+      item.className = 'msg assistant' + (applied ? ' success' : ' error');
+
+      // Windsurf-style summary
+      const summary = document.createElement('div');
+      summary.className = 'summary';
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = applied ? '✓' : '⚠';
+      const text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = result?.summary?.title || (applied ? 'Applied changes' : 'Request failed');
+      summary.appendChild(icon);
+      summary.appendChild(text);
+      item.appendChild(summary);
+
+      // Use native <details> for collapsible sections
+      const hasDetails = !!(result?.rawOutput && String(result.rawOutput).trim());
+      if (hasDetails) {
+        const details = document.createElement('details');
+        const detailsSummary = document.createElement('summary');
+        detailsSummary.textContent = 'Show details';
+        details.appendChild(detailsSummary);
+        
+        const content = document.createElement('div');
+        content.className = 'details-content';
+        const raw = String(result.rawOutput || '');
+        const isMd = /```|^#\s/m.test(raw);
+        if (isMd) {
+          content.appendChild(renderMarkdown(raw, this.shadow?.ownerDocument || document));
+        } else {
+          const p = document.createElement('p');
+          p.textContent = raw;
+          content.appendChild(p);
+        }
+        details.appendChild(content);
+        item.appendChild(details);
+      }
+
+      const fileCount = Array.isArray(result?.changes) ? result.changes.length : 0;
+      if (fileCount > 0) {
+        const details = document.createElement('details');
+        const detailsSummary = document.createElement('summary');
+        detailsSummary.textContent = `Show ${fileCount} file change${fileCount > 1 ? 's' : ''}`;
+        details.appendChild(detailsSummary);
+        
+        const list = document.createElement('div');
+        list.className = 'file-list';
+        result.changes.forEach((c) => {
+          const row = document.createElement('div');
+          row.className = 'file-item';
+          const header = document.createElement('div');
+          header.className = 'file-header';
+          const icon = document.createElement('span');
+          icon.className = 'file-icon';
+          icon.textContent = '📄';
+          const name = document.createElement('span');
+          name.className = 'file-name';
+          name.textContent = c.path;
+          header.appendChild(icon);
+          header.appendChild(name);
+          row.appendChild(header);
+          
+          // Show additions/deletions if available
+          if (c.additions || c.deletions) {
+            const meta = document.createElement('div');
+            meta.className = 'file-meta';
+            meta.textContent = `+${c.additions || 0} -${c.deletions || 0}`;
+            row.appendChild(meta);
+          }
+          
+          list.appendChild(row);
+        });
+        details.appendChild(list);
+        item.appendChild(details);
+      }
+
       return item;
     }
 
@@ -2841,6 +3215,20 @@
       this.editorEl.childNodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) {
           text += node.textContent || '';
+        } else if (node.classList?.contains('chip')) {
+          // Element chip
+          if (node.dataset.index !== undefined) {
+            const idx = Number(node.dataset.index);
+            text += `[@element${idx + 1}]`;
+          }
+          // Screenshot chip
+          else if (node.dataset.shotId !== undefined) {
+            const shots = this.stateManager.get('selection.screenshots') || [];
+            const shotIdx = shots.findIndex(s => String(s.id) === node.dataset.shotId);
+            if (shotIdx >= 0) {
+              text += `[@screenshot${shotIdx + 1}]`;
+            }
+          }
         }
       });
       return text;
@@ -2938,6 +3326,7 @@
 
     renderChips(elements) {
       this.syncChips(elements);
+      this.renderScreenshotChips();
       this.updatePlaceholder();
       this.updateSendState();
     }
@@ -3153,11 +3542,66 @@
       return chip;
     }
 
+    createScreenshotChip(shot) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.shotId = String(shot?.id || Date.now());
+      chip.contentEditable = 'false';
+
+      const labelBtn = document.createElement('button');
+      labelBtn.type = 'button';
+      labelBtn.className = 'chip-label';
+      // Provide distinct label like "@shot 1 (WxH)"
+      try {
+        const shots = this.stateManager.get('selection.screenshots') || [];
+        const idx = Math.max(0, shots.findIndex(s => s && s.id === shot.id));
+        const n = idx + 1;
+        const w = Math.round(shot?.bbox?.width || 0);
+        const h = Math.round(shot?.bbox?.height || 0);
+        labelBtn.textContent = (w && h) ? `@shot ${n} (${w}×${h})` : `@shot ${n}`;
+      } catch (_) {
+        labelBtn.textContent = '@shot';
+      }
+      labelBtn.title = 'Screenshot preview';
+
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'x';
+      close.textContent = '×';
+      close.title = 'Remove Screenshot';
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idRaw = chip.dataset.shotId;
+        const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
+        try { this.eventBus.emit('screenshot:remove', id); } catch (_) {}
+      });
+
+      chip.appendChild(labelBtn);
+      chip.appendChild(close);
+      // Hover preview and click-to-open
+      chip.addEventListener('mouseenter', () => this.showShotPreview(shot, chip));
+      chip.addEventListener('mouseleave', () => this.hideShotPreview());
+      labelBtn.addEventListener('click', (e) => { e.stopPropagation(); this.openShotLightbox(shot); });
+      return chip;
+    }
+
     appendChip(item, index) {
       if (!this.editorEl) return;
       const chip = this.createChipElement(item, index);
       this.editorEl.appendChild(chip);
       this.editorEl.appendChild(document.createTextNode('\u00A0'));
+    }
+
+    renderScreenshotChips() {
+      if (!this.editorEl) return;
+      // Remove existing screenshot chips
+      this.editorEl.querySelectorAll('.chip[data-shot-id]').forEach(n => n.remove());
+      const shots = this.stateManager.get('selection.screenshots') || [];
+      shots.forEach((shot) => {
+        const chip = this.createScreenshotChip(shot);
+        this.editorEl.appendChild(chip);
+        this.editorEl.appendChild(document.createTextNode('\u00A0'));
+      });
     }
 
     getChipNodes() {
@@ -3205,6 +3649,74 @@
       if (!this.editorEl) return;
       const hasContent = this.editorEl.textContent.trim().length > 0 || this.getChipNodes().length > 0;
       this.editorEl.classList.toggle('has-content', hasContent);
+    }
+
+    // Screenshot preview helpers
+    ensureShotPreviewContainers() {
+      if (!this.shadow) return;
+      const dock = this.shadow.getElementById('dock');
+      if (!dock) return;
+      if (!this.shotTooltip) {
+        const tip = document.createElement('div');
+        tip.id = 'shot-tooltip';
+        tip.style.cssText = 'position:absolute; display:none; z-index:10000; padding:6px; border:1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg); border-radius: 10px;';
+        const img = document.createElement('img');
+        img.style.cssText = 'display:block; max-width:200px; max-height:140px; border-radius:6px;';
+        tip.appendChild(img);
+        dock.appendChild(tip);
+        this.shotTooltip = tip;
+        this.shotTooltipImg = img;
+      }
+      if (!this.shotLightbox) {
+        const overlay = document.createElement('div');
+        overlay.id = 'shot-lightbox';
+        overlay.style.cssText = 'position:absolute; inset:0; z-index:10000; display:none; background: color-mix(in srgb, var(--dock-fg) 20%, transparent); align-items:center; justify-content:center;';
+        const box = document.createElement('div');
+        box.style.cssText = 'position:relative; max-width: calc(100% - 32px); max-height: calc(100% - 32px); padding:12px; background: var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow: var(--shadow-lg); display:flex; align-items:center; justify-content:center;';
+        const img = document.createElement('img');
+        img.style.cssText = 'max-width:100%; max-height:80vh; display:block; border-radius:8px;';
+        const close = document.createElement('button');
+        close.textContent = '×';
+        close.title = 'Close';
+        close.style.cssText = 'position:absolute; top:8px; right:8px; width:28px; height:28px; border-radius:14px; border:1px solid var(--border); background: var(--surface); color: var(--text-secondary); cursor:pointer;';
+        close.addEventListener('click', () => this.hideShotLightbox());
+        box.appendChild(close);
+        box.appendChild(img);
+        overlay.appendChild(box);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) this.hideShotLightbox(); });
+        dock.appendChild(overlay);
+        this.shotLightbox = overlay;
+        this.shotLightboxImg = img;
+      }
+    }
+
+    showShotPreview(shot, anchorEl) {
+      try { this.ensureShotPreviewContainers(); } catch (_) {}
+      if (!this.shotTooltip || !this.shotTooltipImg) return;
+      this.shotTooltipImg.src = shot.dataUrl;
+      const chipRect = anchorEl.getBoundingClientRect();
+      const dock = this.shadow.getElementById('dock');
+      const dockRect = dock ? dock.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+      const top = Math.max(8, chipRect.top - dockRect.top - 8 - 140);
+      const left = Math.min(dockRect.width - 220, Math.max(8, chipRect.left - dockRect.left));
+      this.shotTooltip.style.top = `${top}px`;
+      this.shotTooltip.style.left = `${left}px`;
+      this.shotTooltip.style.display = 'block';
+    }
+
+    hideShotPreview() {
+      if (this.shotTooltip) this.shotTooltip.style.display = 'none';
+    }
+
+    openShotLightbox(shot) {
+      try { this.ensureShotPreviewContainers(); } catch (_) {}
+      if (!this.shotLightbox || !this.shotLightboxImg) return;
+      this.shotLightboxImg.src = shot.dataUrl;
+      this.shotLightbox.style.display = 'flex';
+    }
+
+    hideShotLightbox() {
+      if (this.shotLightbox) this.shotLightbox.style.display = 'none';
     }
 
     sanitizeEditor() {
@@ -4252,7 +4764,7 @@
     }
   }
 
-  const TOPBAR_HEIGHT = 40;
+  const TOPBAR_HEIGHT = 56;
   const TOPBAR_MARGIN = 12;
   const SCALE_MIN = 0.25;
   const SCALE_MAX = 2;
@@ -4779,13 +5291,15 @@
       this.shadow = this.host.attachShadow({ mode: 'open' });
       this.shadow.innerHTML = `
       <style>
-        .bar { position: relative; height: 40px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; 
-          background: color-mix(in srgb, var(--dock-bg, rgba(22,22,24,0.88)) 92%, transparent);
+        .bar { position: relative; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+          background: var(--dock-bg, #ffffff);
           border-bottom: 1px solid var(--dock-stroke, rgba(0,0,0,0.08));
-          backdrop-filter: blur(18px);
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg, #111);
         }
-        select, button, input { font-size: 12px; border: 1px solid var(--dock-stroke, rgba(0,0,0,0.08)); border-radius: 8px; background: color-mix(in srgb, var(--dock-bg, #fff) 96%, transparent); color: inherit; padding: 4px 8px; }
+        select, input { font-size: 12px; border: 1px solid var(--dock-stroke, rgba(0,0,0,0.08)); border-radius: 8px; background: #f7f7f8; color: inherit; padding: 4px 8px; }
+        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: color-mix(in srgb, var(--dock-fg, #111) 70%, transparent); cursor: pointer; }
+        .btn:hover { color: var(--dock-fg, #111); border-color: color-mix(in srgb, var(--dock-fg, #111) 20%, transparent); }
+        .btn:active { transform: scale(0.98); }
         .spacer { flex: 1; }
         .field { display: inline-flex; align-items: center; gap: 6px; }
         .dim { width: 72px; }
@@ -4812,8 +5326,8 @@
             <option value="0.5">50%</option>
           </select>
         </label>
-        <button id="fitWidth" title="Fit to Width">Fit</button>
-        <button id="zoomReset" title="Reset to 100%">Reset</button>
+        <button id="fitWidth" class="btn" title="Fit to Width">Fit</button>
+        <button id="zoomReset" class="btn" title="Reset to 100%">Reset</button>
         <div class="spacer"></div>
       </div>
     `;
@@ -5014,17 +5528,8 @@
           session.lastAppliedOk = !!message.applied;
         }
       });
-    }
-
-    function formatEditDetails(edits = []) {
-      const details = [];
-      edits.forEach(entry => {
-        const changes = entry?.changes || {};
-        Object.entries(changes).forEach(([prop, value]) => {
-          details.push(`${prop} → ${value}`);
-        });
-      });
-      return details;
+      // Persist after each message append
+      persistSessions();
     }
 
     // Inject global styles
@@ -5114,18 +5619,9 @@
         // Do not insert plain-text tokens into Dock input; chips reflect selection state.
       });
 
-      // Handle remove event from legacy bubble (capture baseline before removal)
-      eventBus.on('element:remove', (index) => {
-        const elements = stateManager.get('selection.elements') || [];
-        if (index >= 0 && index < elements.length) {
-          try { eventBus.emit('element:pre-remove', { index, snapshot: elements[index] }); } catch (_) {}
-          const updated = elements.filter((_, i) => i !== index);
-          stateManager.set('selection.elements', updated);
-          eventBus.emit('element:removed', index);
-        }
-      });
+      // Legacy 'element:remove' handler removed (Bubble deprecated)
 
-      // Revert DOM to baseline when tag is removed
+      // Revert DOM to baseline when chip/tag is removed
       eventBus.on('element:pre-remove', ({ index, snapshot }) => {
         try {
           if (!snapshot || !snapshot.element) return;
@@ -5145,8 +5641,8 @@
               }
             });
           }
-          // 2) Restore text content if baseline captured it
-          if (snapshot.baseline && Object.prototype.hasOwnProperty.call(snapshot.baseline, 'text')) {
+          // 2) Restore text content only for leaf nodes with a string baseline
+          if (snapshot.baseline && typeof snapshot.baseline.text === 'string') {
             try { el.textContent = snapshot.baseline.text; } catch (_) {}
           }
           // 3) Restore key inline properties from baseline to guarantee full reset
@@ -5209,7 +5705,10 @@
       });
 
       eventBus.on('screenshot:captured', () => {
-        if (dockRoot) dockRoot.updateSendState();
+        if (dockRoot) {
+          try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+          dockRoot.updateSendState();
+        }
         const shots = stateManager.get('selection.screenshots') || [];
         const last = shots[shots.length - 1];
         if (last) {
@@ -5219,7 +5718,21 @@
       });
 
       eventBus.on('screenshot:removed', () => {
-        if (dockRoot) dockRoot.updateSendState();
+        if (dockRoot) {
+          try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+          dockRoot.updateSendState();
+        }
+      });
+
+      // Remove a specific screenshot by id
+      eventBus.on('screenshot:remove', (id) => {
+        const list = (stateManager.get('selection.screenshots') || []).slice();
+        const idx = list.findIndex(s => s && (s.id === id));
+        if (idx >= 0) {
+          list.splice(idx, 1);
+          stateManager.set('selection.screenshots', list);
+          eventBus.emit('screenshot:removed', id);
+        }
       });
 
       eventBus.on('screenshot:error', (error) => {
@@ -5350,18 +5863,17 @@
           return;
         }
         // Switching into element mode
-        screenshotSelector && screenshotSelector.deactivate();
-        if (useIframe) {
-          if (elementSelectorFrame) {
-            elementSelectorFrame.activate();
-          } else {
-            // Wait for existing iframe mount to finish; do not remount to avoid page refresh
-            pendingElementMode = true;
-            topBanner.update('Preparing responsive frame…');
-            setTimeout(() => topBanner.hide(), 1200);
-          }
+        if (screenshotSelector) screenshotSelector.deactivate();
+
+        // Prefer iframe stage when ready; otherwise fall back to top document immediately
+        const viewportEnabled = !!stateManager.get('ui.viewport.enabled');
+        if (useIframe && viewportEnabled && elementSelectorFrame) {
+          elementSelectorFrame.activate();
         } else {
-          elementSelector.activate();
+          // Immediate fallback to ensure user can select without waiting
+          try { elementSelector.activate(); } catch (_) {}
+          // If iframe stage is desired but not ready, arm a one-shot auto-activation when it becomes ready
+          pendingElementMode = !!useIframe;
         }
       });
 
@@ -5723,12 +6235,40 @@
         }
 
         const sessionId = stateManager.get('sessions.currentId');
+        // Pretty-print intent for transcript by replacing tokens with readable labels
+        const prettyIntent = (() => {
+          try {
+            const str = String(intent || '');
+            const arr = Array.isArray(elements) ? elements : [];
+            const shots = screenshots || [];
+            return str.replace(/\[@(element|screenshot)(\d+)\]/g, (m, type, num) => {
+              const idx = Math.max(0, Number(num) - 1);
+              if (type === 'element' && arr[idx] && arr[idx].element) {
+                const el = arr[idx].element;
+                const label = readableElementName(el);
+                return '@' + label;
+              }
+              if (type === 'screenshot' && shots[idx]) {
+                const s = shots[idx];
+                const w = Math.round(s?.bbox?.width || 0);
+                const h = Math.round(s?.bbox?.height || 0);
+                return (w && h) ? `@shot ${idx + 1} (${w}×${h})` : `@shot ${idx + 1}`;
+              }
+              return m;
+            });
+          } catch (_) {
+            return String(intent || '');
+          }
+        })();
+
         if (sessionId && intent && intent.trim()) {
           appendMessage(sessionId, {
             id: 'm' + Math.random().toString(36).slice(2),
             role: 'user',
-            text: intent.trim()
+            text: prettyIntent.trim()
           });
+          // Clear typed text immediately after sending for a clean slate
+          try { if (dockRoot) dockRoot.clearInput(); } catch (_) {}
         }
 
         stateManager.set('processing.active', true);
@@ -5740,25 +6280,49 @@
           };
 
           const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
+          // Capture the request context snapshot before clearing UI
+          const reqElements = elements;
+          const reqScreenshots = screenshots;
+          const reqEdits = edits;
+          
+          // Clear context immediately for a cleaner UX during processing
+          try { highlightManager.clearAll(); } catch (_) {}
+          try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+          stateManager.batch({
+            'selection.elements': [],
+            'selection.screenshots': [],
+            'wysiwyg.pending': null,
+            'wysiwyg.edits': [],
+            'wysiwyg.hasDiffs': false
+          });
+          try { dockRoot && dockRoot.clearChips(); } catch (_) {}
+          try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
           const result = await serverClient.execute(
             engine,
             intent,
-            elements,
+            reqElements,
             lastScreenshot,
             pageInfo,
-            screenshots,
-            edits
+            reqScreenshots,
+            reqEdits
           );
 
           if (sessionId) {
-            appendMessage(sessionId, {
+            const assistantMsg = {
               id: 'm' + Math.random().toString(36).slice(2),
               role: 'assistant',
-              text: result.success ? 'Applied ✓' : (result.error || 'Request failed'),
-              summary: result.success ? 'Applied ✓' : undefined,
-              details: result.success ? formatEditDetails(edits) : [],
               applied: !!result.success
-            });
+            };
+            if (result && result.lumiResult) {
+              assistantMsg.result = result.lumiResult;
+            } else if (typeof result?.output === 'string' && result.output.trim()) {
+              assistantMsg.text = result.output.trim();
+            } else if (typeof result?.message === 'string' && result.message.trim()) {
+              assistantMsg.text = result.message.trim();
+            } else {
+              assistantMsg.text = result.success ? 'Done' : (result.error || 'Request failed');
+            }
+            appendMessage(sessionId, assistantMsg);
             updateSessionById(sessionId, (session) => {
               session.snapshotTokens = selectionToTokens();
             });
@@ -5926,6 +6490,9 @@
       injectGlobalStyles();
       // Manual theming only; auto detection disabled
 
+      // Restore sessions before mounting UI
+      await restoreSessions();
+
       // Mount UI components
       // No top banner UI
       dockRoot = new DockRoot(eventBus, stateManager);
@@ -5991,6 +6558,7 @@
           const on = open !== false;
           viewportBar.setVisible(on);
           eventBus.emit('viewport:toggle', on);
+          persistUIState();  // Persist when dock open/close state changes
         });
         stateManager.subscribe('ui.theme', (mode) => {
           try { setDockThemeMode(mode); } catch (_) {}
@@ -6013,7 +6581,7 @@
         }
       });
 
-      // Initialize engine (restore saved preference) - this will trigger engine:selected
+      // Initialize engine (restore saved preference)
       await engineManager.init();
 
       // Start health checker
@@ -6049,6 +6617,58 @@
       console.error('[LUMI] Initialization failed:', error);
     });
   }
+    // Persist/restore sessions with ProjectId isolation
+    function getSessionsKey() {
+      const projectId = stateManager.get('projects.current')?.id || 'default';
+      const host = window.location.host;
+      return `lumi.sessions:${projectId}:${host}`;
+    }
+    
+    async function restoreSessions() {
+      try {
+        // Wait for projects to be loaded first
+        const maxWait = 500; // 500ms timeout
+        const start = Date.now();
+        while (!stateManager.get('projects.current') && (Date.now() - start < maxWait)) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        const key = getSessionsKey();
+        const data = await chromeBridge.storageGet([key]);
+        const payload = data && data[key];
+        if (!payload || !Array.isArray(payload.list) || !payload.list.length) return;
+        stateManager.batch({
+          'sessions.list': payload.list,
+          'sessions.currentId': payload.currentId || payload.list[0]?.id
+        });
+      } catch (err) {
+        console.error('[LUMI] Restore sessions failed:', err);
+      }
+    }
+    
+    function persistSessions() {
+      try {
+        const key = getSessionsKey();
+        const list = stateManager.get('sessions.list') || [];
+        const currentId = stateManager.get('sessions.currentId');
+        chromeBridge.storageSet({ [key]: { list, currentId, t: Date.now() } });
+      } catch (err) {
+        console.error('[LUMI] Persist sessions failed:', err);
+      }
+    }
+    
+    // Persist UI state (dock open/close)
+    function persistUIState() {
+      try {
+        const host = window.location.host;
+        const dockOpen = stateManager.get('ui.dockOpen');
+        chromeBridge.storageSet({
+          [`lumi.ui.state:${host}`]: { dockOpen, t: Date.now() }
+        });
+      } catch (err) {
+        console.error('[LUMI] Persist UI state failed:', err);
+      }
+    }
 
 })();
 //# sourceMappingURL=content.js.map

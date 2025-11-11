@@ -167,6 +167,17 @@ const LOG_PATH = path.join(CONFIG_DIR, 'server.log');
 let config = defaultConfig;
 let cliCapabilities = {};
 
+async function resolveCLIName(primary, fallbacks = []) {
+  const candidates = [primary, ...fallbacks];
+  for (const name of candidates) {
+    try {
+      const res = await runCommand(name, ['--version'], { timeout: 3000 });
+      if (res && res.exitCode === 0) return name;
+    } catch (_) {}
+  }
+  return null;
+}
+
 try {
   if (fs.existsSync(CONFIG_PATH)) {
     const rawConfig = readJson(CONFIG_PATH);
@@ -375,6 +386,27 @@ app.post('/config', (req, res) => {
   }
 });
 
+// Prompt preview (no CLI execution) for validation
+app.post('/preview', (req, res) => {
+  try {
+    const { context } = req.body || {};
+    if (!context || !context.intent) {
+      return res.status(400).json({ error: 'Missing context or context.intent' });
+    }
+    const prompt = buildPrompt(context);
+    res.json({
+      prompt,
+      summary: {
+        elements: Array.isArray(context.elements) ? context.elements.length : (context.element ? 1 : 0),
+        screenshots: Array.isArray(context.screenshots) ? context.screenshots.length : 0
+      }
+    });
+  } catch (error) {
+    logError('Preview error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/execute', async (req, res) => {
   const startTime = Date.now();
   const { engine, context } = req.body;
@@ -569,7 +601,8 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
     args.push(...extraArgs);
   }
 
-  const useStdin = !!(capabilities.supportsImage && screenshotPath);
+  const longPrompt = (prompt && prompt.length > 500) || /\n/.test(prompt || '');
+  const useStdin = longPrompt || !!(capabilities.supportsImage && screenshotPath);
   if (!useStdin) {
     args.push(prompt);
   }
@@ -578,9 +611,10 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
   log('Executing Codex:', cmdPreview);
   log('Using stdin for prompt:', useStdin);
   log('--- Codex started ---');
-  log('Working directory:', config.workingDirectory);
+  log('Working directory:', execOptions.cwd || config.workingDirectory);
 
-  const result = await runCommand('codex', args, {
+  const cd = await detectCLI('codex');
+  const result = await runCommand(cd.bin || 'codex', args, {
     timeout: 3600000,
     cwd: execOptions.cwd || config.workingDirectory,
     stdin: useStdin ? prompt : null
@@ -598,11 +632,14 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
     };
   }
 
+  const { parseToLumiResult } = require('./parse');
+  const lumiResult = parseToLumiResult('codex', result.stdout);
   return {
     success: true,
     output: result.stdout,
     stderr: result.stderr,
-    engine: 'codex'
+    engine: 'codex',
+    lumiResult
   };
 }
 
@@ -648,7 +685,8 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
 
   log('Executing Claude:', 'claude', args.slice(0, 4).join(' '), '...');
 
-  const result = await runCommand('claude', args, {
+  const cl = await detectCLI('claude');
+  const result = await runCommand(cl.bin || 'claude', args, {
     timeout: 3600000,
     cwd: execOptions.cwd || config.workingDirectory
   });
@@ -674,11 +712,14 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
     }
   }
 
+  const { parseToLumiResult } = require('./parse');
+  const lumiResult = parseToLumiResult('claude', output);
   return {
     success: true,
     output,
     stderr: result.stderr,
-    engine: 'claude'
+    engine: 'claude',
+    lumiResult
   };
 }
 
@@ -701,13 +742,20 @@ async function detectCLI(cliName) {
   };
 
   try {
-    const versionResult = await runCommand(cliName, ['--version'], { timeout: 5000 });
+    // Resolve the actual binary name for this CLI
+    const resolved = cliName === 'codex'
+      ? await resolveCLIName('codex', ['codex-cli', 'openai-codex'])
+      : await resolveCLIName('claude', ['claude-code']);
+    capabilities.bin = resolved || cliName;
+
+    const versionResult = await runCommand(capabilities.bin, ['--version'], { timeout: 5000 });
+    log(`Detected ${cliName} binary: ${capabilities.bin}`);
     if (versionResult.exitCode === 0) {
       capabilities.available = true;
       capabilities.version = versionResult.stdout.trim().split('\n')[0];
     }
 
-    const helpResult = await runCommand(cliName, ['--help'], { timeout: 5000 });
+    const helpResult = await runCommand(capabilities.bin, ['--help'], { timeout: 5000 });
     if (helpResult.exitCode === 0) {
       const helpText = helpResult.stdout + helpResult.stderr;
 
@@ -735,48 +783,75 @@ async function detectCLI(cliName) {
 }
 
 function buildPrompt(context) {
-  let prompt = `# Task\n${context.intent}\n\n`;
+  let prompt = `# User Intent\n${context.intent}\n\n`;
 
-  prompt += `# Context\n`;
+  // Context Reference Map
+  prompt += `# Context Reference Map\n`;
   prompt += `- Page: ${context.pageUrl}\n`;
   prompt += `- Title: ${context.pageTitle}\n`;
   prompt += `- Selection Mode: ${context.selectionMode}\n`;
 
-  if (context.selectionMode === 'element') {
-    const summaries = summarizeElements(context);
-    if (summaries.length > 0) {
-      prompt += `\n## Context Summary\n`;
-      summaries.forEach((summary, idx) => {
-        prompt += `- Element ${idx + 1}: ${summary}\n`;
-      });
-    }
+  if (Array.isArray(context.elements) && context.elements.length > 0) {
+    prompt += `\n## Selected Elements\n`;
+    context.elements.forEach(el => {
+      const words = (el.textContent || el.text || '').trim().split(/\s+/).filter(Boolean);
+      const textSummary = words.length > 0 ? `text: \"${words.slice(0, 6).join(' ')}${words.length > 6 ? '…' : ''}\"` : 'no text';
+      const desc = `${el.selector || el.tagName || 'element'} — ${textSummary}`;
+      prompt += `- **${el.tag}**: ${desc}\n`;
+    });
   }
 
-  if (context.selectionMode === 'element') {
-    if (Array.isArray(context.elements) && context.elements.length > 0) {
-      prompt += `\n## Selected Elements (${context.elements.length})\n`;
-      context.elements.forEach((el, idx) => {
-        prompt += `\n### Element ${idx + 1}\n`;
-        prompt += renderElementDetail(el);
-      });
-    } else if (context.element) {
-      prompt += `\n## Selected Element\n`;
-      prompt += renderElementDetail(context.element);
-    }
+  if (Array.isArray(context.screenshots) && context.screenshots.length > 0) {
+    prompt += `\n## Screenshots\n`;
+    context.screenshots.forEach(s => {
+      const w = Math.round(s?.bbox?.width || 0);
+      const h = Math.round(s?.bbox?.height || 0);
+      const x = Math.round(s?.bbox?.left || 0);
+      const y = Math.round(s?.bbox?.top || 0);
+      prompt += `- **${s.tag}**: ${w}×${h}px area at (${x}, ${y})\n`;
+    });
   }
 
+  // Visual Edits (Before → After)
+  if (Array.isArray(context.edits) && context.edits.length > 0) {
+    prompt += `\n# Visual Edits Applied\n`;
+    prompt += `User made the following changes via WYSIWYG editor:\n\n`;
+    context.edits.forEach((edit) => {
+      prompt += `## ${edit.tag} Edits\n`;
+      (edit.diffs || []).forEach(({ property, before, after }) => {
+        prompt += `- **${property}**: \`${String(before)}\` → \`${String(after)}\`\n`;
+      });
+      prompt += `\n`;
+    });
+  }
+
+  // Detailed Element Context (collapsible)
+  if (Array.isArray(context.elements) && context.elements.length > 0) {
+    prompt += `\n# Detailed Element Context\n`;
+    context.elements.forEach(el => {
+      prompt += `\n<details>\n<summary>${el.tag} — ${el.selector}</summary>\n\n`;
+      prompt += renderElementDetail(el);
+      prompt += `</details>\n`;
+    });
+  } else if (context.element) {
+    prompt += `\n## Selected Element\n`;
+    prompt += renderElementDetail(context.element);
+  }
+
+  // Legacy single bbox
   if (context.bbox) {
     prompt += `\n## Selection Area\n`;
     prompt += `- Position: (${Math.round(context.bbox.left)}, ${Math.round(context.bbox.top)})\n`;
     prompt += `- Size: ${Math.round(context.bbox.width)} × ${Math.round(context.bbox.height)}px\n`;
   }
 
+  // Instructions
   prompt += `\n# Instructions\n`;
-  prompt += `- Modify files directly to implement the requested changes\n`;
-  prompt += `- Focus only on the selected element and related code\n`;
-  prompt += `- Keep changes minimal - don't modify unrelated code\n`;
-  prompt += `- Maintain code quality and accessibility\n`;
-  prompt += `- Do not modify elements outside the listed selections\n`;
+  prompt += `- The user's intent may reference tags like ${context.elements?.[0]?.tag || '@element1'}\n`;
+  prompt += `- Use the Reference Map above to understand which element/screenshot each tag refers to\n`;
+  prompt += `- Apply changes ONLY to the referenced elements in the user's intent\n`;
+  prompt += `- For WYSIWYG edits, apply the exact before→after changes shown\n`;
+  prompt += `- Modify files directly; maintain code quality and accessibility\n`;
 
   return prompt;
 }

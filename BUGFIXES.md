@@ -234,3 +234,12 @@ scrollContainer.addEventListener('wheel', (e) => {
 3. 检查与其他扩展的兼容性
 4. 性能测试（特别是squeeze mode的动画性能）
 5. 用户测试新的tab和颜色系统是否符合预期
+### ✅ 9. 删除 Context Tag 导致容器内容被清空
+**问题**: 选中容器类元素后，在输入框内删除对应 chip/tag，页面上该容器的内容会被清空。
+**原因**:
+- 在处理 `element:pre-remove` 时，无论是否为叶子节点都尝试恢复 `textContent`。
+- 对于容器类元素，baseline 中 `text` 为 `null`，错误地将 `textContent` 设为 `null` 导致子节点被清空。
+**修复**:
+- 仅当 baseline 中 `text` 为字符串时才恢复 `textContent`（叶子节点）。
+- 同时移除了未使用的 legacy `element:remove` 事件处理。
+**文件**: `extension/src/content.js`

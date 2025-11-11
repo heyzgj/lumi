@@ -1,0 +1,45 @@
+{
+  "intent": "按照 [@element1] edit的进行修改，然后把 [@element2] 的图片变成三排的，以及按照 [@screenshot1] 的guideline对登录功能进行更改",
+  "pageUrl": "https://example.com",
+  "pageTitle": "Example",
+  "selectionMode": "element",
+  "elements": [
+    {
+      "tag": "@element1",
+      "index": 1,
+      "selector": "button.cta",
+      "tagName": "BUTTON",
+      "textContent": "Sign Up",
+      "bbox": { "left": 10, "top": 20, "width": 120, "height": 36 },
+      "baseline": { "text": "Sign Up", "inline": { "fontSize": "14px", "backgroundColor": "#3b82f6", "padding": "8px 16px" } }
+    },
+    {
+      "tag": "@element2",
+      "index": 2,
+      "selector": "div.gallery",
+      "tagName": "DIV",
+      "textContent": "Photo Grid of products"
+    }
+  ],
+  "screenshots": [
+    { "tag": "@screenshot1", "index": 1, "bbox": { "left": 0, "top": 0, "width": 1440, "height": 900 } }
+  ],
+  "edits": [
+    {
+      "tag": "@element1",
+      "selector": "button.cta",
+      "diffs": [
+        { "property": "fontSize", "before": "14px", "after": "18px" },
+        { "property": "backgroundColor", "before": "#3b82f6", "after": "#1e40af" },
+        { "property": "padding", "before": "8px 16px", "after": "12px 24px" }
+      ],
+      "summary": "Increase size and darken background"
+    }
+  ],
+  "tagMap": {
+    "@element1": { "type": "element", "index": 0 },
+    "@element2": { "type": "element", "index": 1 },
+    "@screenshot1": { "type": "screenshot", "index": 0 }
+  }
+}
+

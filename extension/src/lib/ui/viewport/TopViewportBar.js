@@ -18,13 +18,15 @@ export default class TopViewportBar {
     this.shadow = this.host.attachShadow({ mode: 'open' });
     this.shadow.innerHTML = `
       <style>
-        .bar { position: relative; height: 40px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; 
-          background: color-mix(in srgb, var(--dock-bg, rgba(22,22,24,0.88)) 92%, transparent);
+        .bar { position: relative; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+          background: var(--dock-bg, #ffffff);
           border-bottom: 1px solid var(--dock-stroke, rgba(0,0,0,0.08));
-          backdrop-filter: blur(18px);
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg, #111);
         }
-        select, button, input { font-size: 12px; border: 1px solid var(--dock-stroke, rgba(0,0,0,0.08)); border-radius: 8px; background: color-mix(in srgb, var(--dock-bg, #fff) 96%, transparent); color: inherit; padding: 4px 8px; }
+        select, input { font-size: 12px; border: 1px solid var(--dock-stroke, rgba(0,0,0,0.08)); border-radius: 8px; background: #f7f7f8; color: inherit; padding: 4px 8px; }
+        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: color-mix(in srgb, var(--dock-fg, #111) 70%, transparent); cursor: pointer; }
+        .btn:hover { color: var(--dock-fg, #111); border-color: color-mix(in srgb, var(--dock-fg, #111) 20%, transparent); }
+        .btn:active { transform: scale(0.98); }
         .spacer { flex: 1; }
         .field { display: inline-flex; align-items: center; gap: 6px; }
         .dim { width: 72px; }
@@ -51,8 +53,8 @@ export default class TopViewportBar {
             <option value="0.5">50%</option>
           </select>
         </label>
-        <button id="fitWidth" title="Fit to Width">Fit</button>
-        <button id="zoomReset" title="Reset to 100%">Reset</button>
+        <button id="fitWidth" class="btn" title="Fit to Width">Fit</button>
+        <button id="zoomReset" class="btn" title="Reset to 100%">Reset</button>
         <div class="spacer"></div>
       </div>
     `;

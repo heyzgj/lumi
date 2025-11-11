@@ -1,5 +1,5 @@
 :root {
-  --dock-bg: rgba(255,255,255,0.88);
+  --dock-bg: #ffffff;
   --dock-stroke: rgba(0,0,0,0.08);
   --dock-fg: #111111;
   --dock-fg-2: #5F6368;
@@ -10,10 +10,10 @@
   --on-strong: #ffffff;
   --shadow: 0 4px 12px rgba(0,0,0,0.05);
   --radius-panel: 18px;
-  --radius-chip: 12px;
+  --radius-chip: 8px;
 }
 :root.dark-dock {
-  --dock-bg: rgba(22,22,24,0.88);
+  --dock-bg: #161618;
   --dock-stroke: rgba(255,255,255,0.12);
   --dock-fg: #F5F5F7;
   --dock-fg-2: #B0B3B8;
@@ -24,5 +24,5 @@
   --on-strong: #ffffff;
   --shadow: 0 6px 16px rgba(0,0,0,0.35);
   --radius-panel: 18px;
-  --radius-chip: 12px;
+  --radius-chip: 8px;
 }

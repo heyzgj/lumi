@@ -401,7 +401,99 @@ function handleScreenshotCapture(sender, sendResponse) {
   }
 }
 
+// Auto-inject on mapped hosts
+const injectedTabs = new Set();
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hostMatches(pattern, host) {
+  if (!pattern || !host) return false;
+  const normalizedPattern = pattern.trim().toLowerCase();
+  const normalizedHost = host.trim().toLowerCase();
+  if (!normalizedPattern.includes('*')) {
+    return normalizedPattern === normalizedHost;
+  }
+  const regex = new RegExp('^' + normalizedPattern.split('*').map(escapeRegex).join('.*') + '$');
+  return regex.test(normalizedHost);
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Only inject when page has fully loaded
+  if (changeInfo.status !== 'complete') return;
+  
+  // Avoid duplicate injection
+  if (injectedTabs.has(tabId)) return;
+  
+  // Check if auto-inject is enabled
+  const { autoInject = true } = await chrome.storage.local.get('autoInject');
+  if (autoInject === false) return;
+  
+  // Check if host is mapped to a project
+  const settings = await refreshSettings();
+  const projects = settings.projects || [];
+  
+  try {
+    const url = new URL(tab.url);
+    const host = url.host;
+    
+    const mapped = projects.some(p => 
+      p.enabled && (p.hosts || []).some(pattern => hostMatches(pattern, host))
+    );
+    
+    if (!mapped) return;
+    
+    // Inject content script
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.js']
+    });
+    
+    injectedTabs.add(tabId);
+    console.log('[LUMI] Auto-injected content script for', host);
+    
+    // Check if Dock was open before refresh
+    const uiStateKey = `lumi.ui.state:${host}`;
+    const { [uiStateKey]: uiState } = await chrome.storage.local.get(uiStateKey);
+    
+    if (uiState?.dockOpen === true) {
+      // Wait a bit for content script to initialize
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tabId, { type: 'TOGGLE_BUBBLE' }).catch(() => {
+          // Ignore errors if content script not ready
+        });
+      }, 150);
+    }
+  } catch (err) {
+    console.error('[LUMI] Auto-inject failed:', err);
+  }
+});
+
+// Clean up closed tabs
+chrome.tabs.onRemoved.addListener((tabId) => {
+  injectedTabs.delete(tabId);
+});
+
+// Rebuild injected tabs on startup (in case extension was reloaded)
+chrome.runtime.onStartup.addListener(async () => {
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => !!window.LUMI_INJECTED
+      });
+      if (result?.result) {
+        injectedTabs.add(tab.id);
+      }
+    } catch (err) {
+      // Tab may not be accessible, ignore
+    }
+  }
+});
+
 // Check server on startup
 checkServerHealth();
 
-console.log('[LUMI] Background service worker initialized v3.0 (configurable server)');
+console.log('[LUMI] Background service worker initialized v3.1 (auto-inject + session persistence)');

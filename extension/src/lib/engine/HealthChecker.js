@@ -88,8 +88,9 @@ export default class HealthChecker {
         // Update engine availability through EngineManager (respects init state)
         this.engineManager.updateAvailability(codexAvailable, claudeAvailable);
       } else if (result.healthy) {
-        // Server healthy but no specific capabilities, assume codex available
-        this.engineManager.updateAvailability(true, false);
+        // Server healthy but no capabilities payload; keep previous availability
+        const prev = this.engineManager.getAvailableEngines() || {};
+        this.engineManager.updateAvailability(!!prev.codex, !!prev.claude);
       } else {
         // Server not healthy
         this.engineManager.updateAvailability(false, false);

@@ -136,7 +136,7 @@ export default class ScreenshotSelector {
       // Support accumulating screenshots; prefer array if present
       const existing = this.stateManager.get('selection.screenshots');
       const next = Array.isArray(existing) ? existing.slice() : [];
-      next.push({ dataUrl, bbox, id: Date.now() });
+      next.push({ dataUrl, bbox, id: Date.now(), createdAt: Date.now() });
       this.stateManager.set('selection.screenshots', next);
       
       this.eventBus.emit('screenshot:captured', { dataUrl, bbox });

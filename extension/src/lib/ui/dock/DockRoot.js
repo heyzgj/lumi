@@ -2,6 +2,7 @@ import { DOCK_STYLES } from './styles.js';
 // Manual theming is handled via ui.theme and setDockThemeMode in content
 import { readableElementName } from '../../utils/dom.js';
 import { escapeHtml } from './utils.js';
+import { renderMarkdown } from './MarkdownRenderer.js';
 
 export default class DockRoot {
   constructor(eventBus, stateManager) {
@@ -290,6 +291,7 @@ export default class DockRoot {
     this.stateManager.subscribe('engine.current', (engine) => this.updateEngine(engine));
     this.stateManager.subscribe('engine.available', () => this.updateEngineAvailability());
     this.stateManager.subscribe('selection.elements', (elements) => this.renderChips(elements || []));
+    this.stateManager.subscribe('selection.screenshots', () => this.renderChips(this.stateManager.get('selection.elements') || []));
     this.stateManager.subscribe('sessions.list', () => this.renderBody());
     this.stateManager.subscribe('sessions.currentId', () => this.renderBody());
     this.stateManager.subscribe('ui.dockTab', (tab) => this.setTab(tab, true));
@@ -320,6 +322,9 @@ export default class DockRoot {
       const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
       if (tab === 'history') this.renderHistory(); else this.renderChat();
     });
+
+    // Prepare screenshot preview containers
+    this.ensureShotPreviewContainers();
   }
 
   applySqueeze(isOpen) {
@@ -424,32 +429,138 @@ export default class DockRoot {
 
   renderChatMessage(msg) {
     if (msg.role === 'assistant') {
+      // New result card rendering if lumiResult is present
+      if (msg.result && typeof msg.result === 'object') {
+        return this.renderResultMessage(msg.result, msg.applied);
+      }
+      // Windsurf-style: no avatar, left border for status
       const item = document.createElement('div');
-      item.className = 'chat-item assistant';
-      const avatar = document.createElement('div');
-      avatar.className = 'avatar';
-      const body = document.createElement('div');
-      body.className = 'bubble';
+      item.className = 'msg assistant' + (msg.applied ? ' success' : ' error');
+      
       const summary = document.createElement('div');
       summary.className = 'summary';
-      summary.textContent = msg.summary || (msg.applied ? 'Applied ✓' : (msg.text || 'Response'));
-      body.appendChild(summary);
-      if (msg.details && msg.details.length) {
-        const details = document.createElement('div');
-        details.className = 'details';
-        details.textContent = msg.details.join(' ; ');
-        body.appendChild(details);
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = msg.applied ? '✓' : '⚠';
+      const text = document.createElement('span');
+      text.className = 'text';
+      text.textContent = msg.text || (msg.applied ? 'Applied' : 'Request failed');
+      summary.appendChild(icon);
+      summary.appendChild(text);
+      item.appendChild(summary);
+      
+      // Render markdown if present
+      if (msg.text && /```|^#\s/m.test(msg.text)) {
+        const details = document.createElement('details');
+        const detailsSummary = document.createElement('summary');
+        detailsSummary.textContent = 'Show details';
+        details.appendChild(detailsSummary);
+        const content = document.createElement('div');
+        content.className = 'details-content md';
+        content.appendChild(renderMarkdown(msg.text, this.shadow?.ownerDocument || document));
+        details.appendChild(content);
+        item.appendChild(details);
+      } else if (msg.details && msg.details.length) {
+        const details = document.createElement('details');
+        const detailsSummary = document.createElement('summary');
+        detailsSummary.textContent = 'Show details';
+        details.appendChild(detailsSummary);
+        const content = document.createElement('div');
+        content.className = 'details-content';
+        content.textContent = msg.details.join(' ; ');
+        details.appendChild(content);
+        item.appendChild(details);
       }
-      item.appendChild(avatar);
-      item.appendChild(body);
       return item;
     }
+    // User message: no avatar, simple style
     const item = document.createElement('div');
-    item.className = 'chat-item user';
+    item.className = 'msg user';
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.textContent = msg.text;
     item.appendChild(bubble);
+    return item;
+  }
+
+  renderResultMessage(result, applied = false) {
+    const item = document.createElement('div');
+    item.className = 'msg assistant' + (applied ? ' success' : ' error');
+
+    // Windsurf-style summary
+    const summary = document.createElement('div');
+    summary.className = 'summary';
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = applied ? '✓' : '⚠';
+    const text = document.createElement('span');
+    text.className = 'text';
+    text.textContent = result?.summary?.title || (applied ? 'Applied changes' : 'Request failed');
+    summary.appendChild(icon);
+    summary.appendChild(text);
+    item.appendChild(summary);
+
+    // Use native <details> for collapsible sections
+    const hasDetails = !!(result?.rawOutput && String(result.rawOutput).trim());
+    if (hasDetails) {
+      const details = document.createElement('details');
+      const detailsSummary = document.createElement('summary');
+      detailsSummary.textContent = 'Show details';
+      details.appendChild(detailsSummary);
+      
+      const content = document.createElement('div');
+      content.className = 'details-content';
+      const raw = String(result.rawOutput || '');
+      const isMd = /```|^#\s/m.test(raw);
+      if (isMd) {
+        content.appendChild(renderMarkdown(raw, this.shadow?.ownerDocument || document));
+      } else {
+        const p = document.createElement('p');
+        p.textContent = raw;
+        content.appendChild(p);
+      }
+      details.appendChild(content);
+      item.appendChild(details);
+    }
+
+    const fileCount = Array.isArray(result?.changes) ? result.changes.length : 0;
+    if (fileCount > 0) {
+      const details = document.createElement('details');
+      const detailsSummary = document.createElement('summary');
+      detailsSummary.textContent = `Show ${fileCount} file change${fileCount > 1 ? 's' : ''}`;
+      details.appendChild(detailsSummary);
+      
+      const list = document.createElement('div');
+      list.className = 'file-list';
+      result.changes.forEach((c) => {
+        const row = document.createElement('div');
+        row.className = 'file-item';
+        const header = document.createElement('div');
+        header.className = 'file-header';
+        const icon = document.createElement('span');
+        icon.className = 'file-icon';
+        icon.textContent = '📄';
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = c.path;
+        header.appendChild(icon);
+        header.appendChild(name);
+        row.appendChild(header);
+        
+        // Show additions/deletions if available
+        if (c.additions || c.deletions) {
+          const meta = document.createElement('div');
+          meta.className = 'file-meta';
+          meta.textContent = `+${c.additions || 0} -${c.deletions || 0}`;
+          row.appendChild(meta);
+        }
+        
+        list.appendChild(row);
+      });
+      details.appendChild(list);
+      item.appendChild(details);
+    }
+
     return item;
   }
 
@@ -645,6 +756,20 @@ export default class DockRoot {
     this.editorEl.childNodes.forEach((node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         text += node.textContent || '';
+      } else if (node.classList?.contains('chip')) {
+        // Element chip
+        if (node.dataset.index !== undefined) {
+          const idx = Number(node.dataset.index);
+          text += `[@element${idx + 1}]`;
+        }
+        // Screenshot chip
+        else if (node.dataset.shotId !== undefined) {
+          const shots = this.stateManager.get('selection.screenshots') || [];
+          const shotIdx = shots.findIndex(s => String(s.id) === node.dataset.shotId);
+          if (shotIdx >= 0) {
+            text += `[@screenshot${shotIdx + 1}]`;
+          }
+        }
       }
     });
     return text;
@@ -742,6 +867,7 @@ export default class DockRoot {
 
   renderChips(elements) {
     this.syncChips(elements);
+    this.renderScreenshotChips();
     this.updatePlaceholder();
     this.updateSendState();
   }
@@ -957,11 +1083,66 @@ export default class DockRoot {
     return chip;
   }
 
+  createScreenshotChip(shot) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.dataset.shotId = String(shot?.id || Date.now());
+    chip.contentEditable = 'false';
+
+    const labelBtn = document.createElement('button');
+    labelBtn.type = 'button';
+    labelBtn.className = 'chip-label';
+    // Provide distinct label like "@shot 1 (WxH)"
+    try {
+      const shots = this.stateManager.get('selection.screenshots') || [];
+      const idx = Math.max(0, shots.findIndex(s => s && s.id === shot.id));
+      const n = idx + 1;
+      const w = Math.round(shot?.bbox?.width || 0);
+      const h = Math.round(shot?.bbox?.height || 0);
+      labelBtn.textContent = (w && h) ? `@shot ${n} (${w}×${h})` : `@shot ${n}`;
+    } catch (_) {
+      labelBtn.textContent = '@shot';
+    }
+    labelBtn.title = 'Screenshot preview';
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'x';
+    close.textContent = '×';
+    close.title = 'Remove Screenshot';
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idRaw = chip.dataset.shotId;
+      const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
+      try { this.eventBus.emit('screenshot:remove', id); } catch (_) {}
+    });
+
+    chip.appendChild(labelBtn);
+    chip.appendChild(close);
+    // Hover preview and click-to-open
+    chip.addEventListener('mouseenter', () => this.showShotPreview(shot, chip));
+    chip.addEventListener('mouseleave', () => this.hideShotPreview());
+    labelBtn.addEventListener('click', (e) => { e.stopPropagation(); this.openShotLightbox(shot); });
+    return chip;
+  }
+
   appendChip(item, index) {
     if (!this.editorEl) return;
     const chip = this.createChipElement(item, index);
     this.editorEl.appendChild(chip);
     this.editorEl.appendChild(document.createTextNode('\u00A0'));
+  }
+
+  renderScreenshotChips() {
+    if (!this.editorEl) return;
+    // Remove existing screenshot chips
+    this.editorEl.querySelectorAll('.chip[data-shot-id]').forEach(n => n.remove());
+    const shots = this.stateManager.get('selection.screenshots') || [];
+    shots.forEach((shot) => {
+      const chip = this.createScreenshotChip(shot);
+      this.editorEl.appendChild(chip);
+      this.editorEl.appendChild(document.createTextNode('\u00A0'));
+    });
   }
 
   getChipNodes() {
@@ -1009,6 +1190,74 @@ export default class DockRoot {
     if (!this.editorEl) return;
     const hasContent = this.editorEl.textContent.trim().length > 0 || this.getChipNodes().length > 0;
     this.editorEl.classList.toggle('has-content', hasContent);
+  }
+
+  // Screenshot preview helpers
+  ensureShotPreviewContainers() {
+    if (!this.shadow) return;
+    const dock = this.shadow.getElementById('dock');
+    if (!dock) return;
+    if (!this.shotTooltip) {
+      const tip = document.createElement('div');
+      tip.id = 'shot-tooltip';
+      tip.style.cssText = 'position:absolute; display:none; z-index:10000; padding:6px; border:1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg); border-radius: 10px;';
+      const img = document.createElement('img');
+      img.style.cssText = 'display:block; max-width:200px; max-height:140px; border-radius:6px;';
+      tip.appendChild(img);
+      dock.appendChild(tip);
+      this.shotTooltip = tip;
+      this.shotTooltipImg = img;
+    }
+    if (!this.shotLightbox) {
+      const overlay = document.createElement('div');
+      overlay.id = 'shot-lightbox';
+      overlay.style.cssText = 'position:absolute; inset:0; z-index:10000; display:none; background: color-mix(in srgb, var(--dock-fg) 20%, transparent); align-items:center; justify-content:center;';
+      const box = document.createElement('div');
+      box.style.cssText = 'position:relative; max-width: calc(100% - 32px); max-height: calc(100% - 32px); padding:12px; background: var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow: var(--shadow-lg); display:flex; align-items:center; justify-content:center;';
+      const img = document.createElement('img');
+      img.style.cssText = 'max-width:100%; max-height:80vh; display:block; border-radius:8px;';
+      const close = document.createElement('button');
+      close.textContent = '×';
+      close.title = 'Close';
+      close.style.cssText = 'position:absolute; top:8px; right:8px; width:28px; height:28px; border-radius:14px; border:1px solid var(--border); background: var(--surface); color: var(--text-secondary); cursor:pointer;';
+      close.addEventListener('click', () => this.hideShotLightbox());
+      box.appendChild(close);
+      box.appendChild(img);
+      overlay.appendChild(box);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) this.hideShotLightbox(); });
+      dock.appendChild(overlay);
+      this.shotLightbox = overlay;
+      this.shotLightboxImg = img;
+    }
+  }
+
+  showShotPreview(shot, anchorEl) {
+    try { this.ensureShotPreviewContainers(); } catch (_) {}
+    if (!this.shotTooltip || !this.shotTooltipImg) return;
+    this.shotTooltipImg.src = shot.dataUrl;
+    const chipRect = anchorEl.getBoundingClientRect();
+    const dock = this.shadow.getElementById('dock');
+    const dockRect = dock ? dock.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+    const top = Math.max(8, chipRect.top - dockRect.top - 8 - 140);
+    const left = Math.min(dockRect.width - 220, Math.max(8, chipRect.left - dockRect.left));
+    this.shotTooltip.style.top = `${top}px`;
+    this.shotTooltip.style.left = `${left}px`;
+    this.shotTooltip.style.display = 'block';
+  }
+
+  hideShotPreview() {
+    if (this.shotTooltip) this.shotTooltip.style.display = 'none';
+  }
+
+  openShotLightbox(shot) {
+    try { this.ensureShotPreviewContainers(); } catch (_) {}
+    if (!this.shotLightbox || !this.shotLightboxImg) return;
+    this.shotLightboxImg.src = shot.dataUrl;
+    this.shotLightbox.style.display = 'flex';
+  }
+
+  hideShotLightbox() {
+    if (this.shotLightbox) this.shotLightbox.style.display = 'none';
   }
 
   sanitizeEditor() {

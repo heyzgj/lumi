@@ -3,7 +3,7 @@ export const DOCK_STYLES = `
   /* Design tokens (light) mapped to legacy variables for minimal churn */
   .dock {
     /* New tokens */
-    --dock-bg: rgba(255,255,255,0.88);
+    --dock-bg: #ffffff;
     --dock-stroke: rgba(0,0,0,0.08);
     --dock-fg: #111111;
     --dock-fg-2: #5F6368;
@@ -11,13 +11,15 @@ export const DOCK_STYLES = `
     --success: #10B981;
     --shadow: 0 4px 12px rgba(0,0,0,0.05);
     --radius-panel: 18px;
-    --radius-chip: 12px;
+    --radius-chip: 8px;
+    --header-height: 56px;
 
     /* Bridge to existing variable names used below */
     --glass-bg: var(--dock-bg);
     --glass-border: var(--dock-stroke);
-    --surface: color-mix(in srgb, var(--dock-bg) 96%, transparent);
-    --surface-hover: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    /* Solid surfaces derived from base to avoid background bleed */
+    --surface: #f7f7f8;
+    --surface-hover: #f0f0f3;
     --text: var(--dock-fg);
     --text-secondary: var(--dock-fg-2);
     --text-tertiary: var(--dock-fg-2);
@@ -27,7 +29,7 @@ export const DOCK_STYLES = `
   }
 
   .dock.dark {
-    --dock-bg: rgba(22,22,24,0.88);
+    --dock-bg: #161618;
     --dock-stroke: rgba(255,255,255,0.12);
     --dock-fg: #F5F5F7;
     --dock-fg-2: #B0B3B8;
@@ -35,13 +37,13 @@ export const DOCK_STYLES = `
     --success: #34D399;
     --shadow: 0 6px 16px rgba(0,0,0,0.35);
     --radius-panel: 18px;
-    --radius-chip: 12px;
+    --radius-chip: 8px;
 
     /* Bridge overrides */
     --glass-bg: var(--dock-bg);
     --glass-border: var(--dock-stroke);
-    --surface: color-mix(in srgb, var(--dock-bg) 96%, transparent);
-    --surface-hover: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    --surface: #1e1f22;
+    --surface-hover: #232528;
     --text: var(--dock-fg);
     --text-secondary: var(--dock-fg-2);
     --text-tertiary: var(--dock-fg-2);
@@ -57,7 +59,6 @@ export const DOCK_STYLES = `
     height: 100vh;
     width: 420px;
     background: var(--glass-bg);
-    backdrop-filter: blur(24px);
     text-align: left;
     border-left: 1px solid var(--glass-border);
     box-shadow: var(--shadow);
@@ -68,7 +69,7 @@ export const DOCK_STYLES = `
     z-index: 2147483646;
     transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1), backdrop-filter 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
-  .dock.compact { width: 56px; backdrop-filter: blur(12px); }
+  .dock.compact { width: 56px; }
   .dock.compact .project { display: none; }
   .dock.compact .tabs,
   .dock.compact .body,
@@ -83,7 +84,8 @@ export const DOCK_STYLES = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
+    height: var(--header-height);
+    padding: 0 18px;
     border-bottom: 1px solid var(--glass-border);
   }
   .project {
@@ -100,7 +102,7 @@ export const DOCK_STYLES = `
     align-items: center;
     gap: 10px;
   }
-  .header-btn { width:34px;height:34px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+  .header-btn { width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
   .header-btn svg {
     width: 18px;
     height: 18px;
@@ -116,10 +118,10 @@ export const DOCK_STYLES = `
   .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--text-secondary); font-size:18px; }
   .header-btn.header-close:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
 
-  .tabs { display:flex; gap:14px; padding:12px 16px 8px 16px; border-bottom:1px solid var(--border); background:transparent; }
-  .tab { flex:0 0 auto; text-align:center; padding:8px 2px; min-width:70px; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-radius:0; cursor:pointer; transition: color 0.15s ease; position:relative; }
+  .tabs { display:flex; gap:18px; padding:0 16px; height: 44px; align-items:center; border-bottom:1px solid var(--border); background: var(--glass-bg); }
+  .tab { flex:0 0 auto; text-align:center; padding:0 2px; min-width:auto; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-radius:0; cursor:pointer; transition: color 0.15s ease; position:relative; }
   .tab:hover { color:var(--text); }
-  .tab::after { content:''; position:absolute; left:0; right:0; bottom:-9px; height:2px; background: transparent; border-radius:1px; transition: background 0.2s ease; }
+  .tab::after { content:''; position:absolute; left:20%; right:20%; bottom:-2px; height:2px; background: transparent; border-radius:1px; transition: background 0.2s ease; }
   .tab.active { color:var(--text); font-weight:600; }
   .tab.active::after { background: color-mix(in srgb, var(--dock-fg) 28%, transparent); }
   .tab:focus-visible { outline:none; }
@@ -140,40 +142,122 @@ export const DOCK_STYLES = `
   .chat-list { display: flex; flex-direction: column; gap: 20px; }
   .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
 
-  .chat-item { display: flex; gap: 12px; }
-  .chat-item.assistant { align-items: flex-start; color: var(--text-secondary); }
-  .chat-item.assistant .avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
-  }
-  .chat-item.assistant .bubble {
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--text-secondary);
-  }
-  .chat-item.assistant .summary {
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-  .chat-item.assistant .details {
-    margin-top: 4px;
-    font-size: 12px;
-    color: var(--hint);
-  }
-
-  .chat-item.user { justify-content: flex-end; }
-  .chat-item.user .bubble {
-    max-width: 70%;
+  /* Windsurf-style messages: no avatar, left border for status */
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 10px 16px;
+    border-radius: 8px;
+    border-left: 3px solid transparent;
+    margin-bottom: 8px;
+  }
+  .msg.assistant.success { border-left-color: var(--success); }
+  .msg.assistant.error { border-left-color: #EF4444; }
+  
+  .msg .summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .msg .summary .icon {
+    font-size: 16px;
+  }
+  .msg .summary .text {
+    flex: 1;
+  }
+  
+  .msg details {
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .msg details summary {
+    padding: 6px 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    user-select: none;
+    list-style: none;
+  }
+  .msg details summary::-webkit-details-marker { display: none; }
+  .msg details summary::before {
+    content: '▼ ';
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 10px;
+    transition: transform 0.15s;
+  }
+  .msg details[open] summary::before {
+    transform: rotate(180deg);
+  }
+  .msg details summary:hover {
+    color: var(--text);
+  }
+  .msg .details-content {
+    padding-top: 8px;
     font-size: 13px;
     line-height: 1.6;
     color: var(--text);
-    box-shadow: var(--shadow);
+  }
+  
+  /* File list inside details */
+  .msg .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+  }
+  .msg .file-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: var(--glass-bg);
+  }
+  .msg .file-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .msg .file-icon {
+    font-size: 14px;
+  }
+  .msg .file-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .msg .file-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* Markdown basics inside dock */
+  .md-p { margin: 6px 0; }
+  .md-h { margin: 10px 0 6px; font-weight: 600; }
+  .md-list { padding-left: 18px; margin: 6px 0; }
+  .md-code { background: #0f172a0d; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow:auto; }
+  .md-code-inline { background: #0f172a1a; border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .md a { color: var(--text); text-decoration: underline; }
+
+  /* Change list (collapsed by default, preview-only) */
+  .change-list { display: flex; flex-direction: column; gap: 8px; }
+  .change-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
+  .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+  .change-meta { font-size: 12px; color: var(--text-secondary); }
+
+  .msg.user {
+    background: var(--glass-bg);
+    border-left: 3px solid #3B82F6;
+  }
+  .msg.user .bubble {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
   }
 
   /* History */
@@ -202,7 +286,6 @@ export const DOCK_STYLES = `
     border: 1px solid var(--border);
     border-radius: var(--radius-panel);
     background: var(--surface);
-    backdrop-filter: blur(18px);
     box-shadow: var(--shadow);
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
@@ -250,7 +333,7 @@ export const DOCK_STYLES = `
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    border-radius: 20px;
+    border-radius: 12px;
     border: 1px solid var(--border);
     background: var(--surface);
     padding: 10px 14px;
@@ -276,10 +359,10 @@ export const DOCK_STYLES = `
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius-chip);
-    padding: 4px 10px;
+    padding: 2px 8px;
     font-size: 12px;
     color: var(--text-secondary);
   }
@@ -290,7 +373,7 @@ export const DOCK_STYLES = `
     height: 6px;
     border-radius: 50%;
     background: var(--success);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dock-bg) 90%, transparent);
+    box-shadow: 0 0 0 1px var(--surface);
   }
   .chip button { border: none; background: transparent; padding: 0; cursor: pointer; color: inherit; }
   .chip .x { margin-left: 4px; opacity: 0.7; }
@@ -309,24 +392,20 @@ export const DOCK_STYLES = `
     padding: 4px 12px;
     border-radius: 999px;
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--dock-bg) 92%, transparent);
+    background: var(--surface);
   }
   .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
   .engine.available .dot { background: var(--success); }
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }
-  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: color-mix(in srgb, var(--dock-bg) 94%, transparent); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
-  .icon:hover { background: color-mix(in srgb, var(--dock-bg) 88%, transparent); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: var(--surface); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
+  .icon:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
   .icon:active { transform: scale(0.98); }
-  .icon.active {
-    background: color-mix(in srgb, var(--dock-bg) 84%, transparent);
-    border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent);
-    color: var(--text);
-  }
+  .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--text); }
   .send {
-    padding: 6px 18px;
-    border-radius: 18px;
+    padding: 6px 14px;
+    border-radius: 10px;
     border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
     background: var(--accent);
     color: var(--on-accent);

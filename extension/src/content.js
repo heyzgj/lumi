@@ -167,6 +167,8 @@ function bootstrap() {
         session.lastAppliedOk = !!message.applied;
       }
     });
+    // Persist after each message append
+    persistSessions();
   }
 
   function formatEditDetails(edits = []) {
@@ -267,18 +269,9 @@ function bootstrap() {
       // Do not insert plain-text tokens into Dock input; chips reflect selection state.
     });
 
-    // Handle remove event from legacy bubble (capture baseline before removal)
-    eventBus.on('element:remove', (index) => {
-      const elements = stateManager.get('selection.elements') || [];
-      if (index >= 0 && index < elements.length) {
-        try { eventBus.emit('element:pre-remove', { index, snapshot: elements[index] }); } catch (_) {}
-        const updated = elements.filter((_, i) => i !== index);
-        stateManager.set('selection.elements', updated);
-        eventBus.emit('element:removed', index);
-      }
-    });
+    // Legacy 'element:remove' handler removed (Bubble deprecated)
 
-    // Revert DOM to baseline when tag is removed
+    // Revert DOM to baseline when chip/tag is removed
     eventBus.on('element:pre-remove', ({ index, snapshot }) => {
       try {
         if (!snapshot || !snapshot.element) return;
@@ -298,8 +291,8 @@ function bootstrap() {
             }
           });
         }
-        // 2) Restore text content if baseline captured it
-        if (snapshot.baseline && Object.prototype.hasOwnProperty.call(snapshot.baseline, 'text')) {
+        // 2) Restore text content only for leaf nodes with a string baseline
+        if (snapshot.baseline && typeof snapshot.baseline.text === 'string') {
           try { el.textContent = snapshot.baseline.text; } catch (_) {}
         }
         // 3) Restore key inline properties from baseline to guarantee full reset
@@ -362,7 +355,10 @@ function bootstrap() {
     });
 
     eventBus.on('screenshot:captured', () => {
-      if (dockRoot) dockRoot.updateSendState();
+      if (dockRoot) {
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        dockRoot.updateSendState();
+      }
       const shots = stateManager.get('selection.screenshots') || [];
       const last = shots[shots.length - 1];
       if (last) {
@@ -372,7 +368,21 @@ function bootstrap() {
     });
 
     eventBus.on('screenshot:removed', () => {
-      if (dockRoot) dockRoot.updateSendState();
+      if (dockRoot) {
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        dockRoot.updateSendState();
+      }
+    });
+
+    // Remove a specific screenshot by id
+    eventBus.on('screenshot:remove', (id) => {
+      const list = (stateManager.get('selection.screenshots') || []).slice();
+      const idx = list.findIndex(s => s && (s.id === id));
+      if (idx >= 0) {
+        list.splice(idx, 1);
+        stateManager.set('selection.screenshots', list);
+        eventBus.emit('screenshot:removed', id);
+      }
     });
 
     eventBus.on('screenshot:error', (error) => {
@@ -503,18 +513,17 @@ function bootstrap() {
         return;
       }
       // Switching into element mode
-      screenshotSelector && screenshotSelector.deactivate();
-      if (useIframe) {
-        if (elementSelectorFrame) {
-          elementSelectorFrame.activate();
-        } else {
-          // Wait for existing iframe mount to finish; do not remount to avoid page refresh
-          pendingElementMode = true;
-          topBanner.update('Preparing responsive frame…');
-          setTimeout(() => topBanner.hide(), 1200);
-        }
+      if (screenshotSelector) screenshotSelector.deactivate();
+
+      // Prefer iframe stage when ready; otherwise fall back to top document immediately
+      const viewportEnabled = !!stateManager.get('ui.viewport.enabled');
+      if (useIframe && viewportEnabled && elementSelectorFrame) {
+        elementSelectorFrame.activate();
       } else {
-        elementSelector.activate();
+        // Immediate fallback to ensure user can select without waiting
+        try { elementSelector.activate(); } catch (_) {}
+        // If iframe stage is desired but not ready, arm a one-shot auto-activation when it becomes ready
+        pendingElementMode = !!useIframe;
       }
     });
 
@@ -876,12 +885,40 @@ function bootstrap() {
       }
 
       const sessionId = stateManager.get('sessions.currentId');
+      // Pretty-print intent for transcript by replacing tokens with readable labels
+      const prettyIntent = (() => {
+        try {
+          const str = String(intent || '');
+          const arr = Array.isArray(elements) ? elements : [];
+          const shots = screenshots || [];
+          return str.replace(/\[@(element|screenshot)(\d+)\]/g, (m, type, num) => {
+            const idx = Math.max(0, Number(num) - 1);
+            if (type === 'element' && arr[idx] && arr[idx].element) {
+              const el = arr[idx].element;
+              const label = readableElementName(el);
+              return '@' + label;
+            }
+            if (type === 'screenshot' && shots[idx]) {
+              const s = shots[idx];
+              const w = Math.round(s?.bbox?.width || 0);
+              const h = Math.round(s?.bbox?.height || 0);
+              return (w && h) ? `@shot ${idx + 1} (${w}×${h})` : `@shot ${idx + 1}`;
+            }
+            return m;
+          });
+        } catch (_) {
+          return String(intent || '');
+        }
+      })();
+
       if (sessionId && intent && intent.trim()) {
         appendMessage(sessionId, {
           id: 'm' + Math.random().toString(36).slice(2),
           role: 'user',
-          text: intent.trim()
+          text: prettyIntent.trim()
         });
+        // Clear typed text immediately after sending for a clean slate
+        try { if (dockRoot) dockRoot.clearInput(); } catch (_) {}
       }
 
       stateManager.set('processing.active', true);
@@ -893,25 +930,49 @@ function bootstrap() {
         };
 
         const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
+        // Capture the request context snapshot before clearing UI
+        const reqElements = elements;
+        const reqScreenshots = screenshots;
+        const reqEdits = edits;
+        
+        // Clear context immediately for a cleaner UX during processing
+        try { highlightManager.clearAll(); } catch (_) {}
+        try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+        stateManager.batch({
+          'selection.elements': [],
+          'selection.screenshots': [],
+          'wysiwyg.pending': null,
+          'wysiwyg.edits': [],
+          'wysiwyg.hasDiffs': false
+        });
+        try { dockRoot && dockRoot.clearChips(); } catch (_) {}
+        try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
         const result = await serverClient.execute(
           engine,
           intent,
-          elements,
+          reqElements,
           lastScreenshot,
           pageInfo,
-          screenshots,
-          edits
+          reqScreenshots,
+          reqEdits
         );
 
         if (sessionId) {
-          appendMessage(sessionId, {
+          const assistantMsg = {
             id: 'm' + Math.random().toString(36).slice(2),
             role: 'assistant',
-            text: result.success ? 'Applied ✓' : (result.error || 'Request failed'),
-            summary: result.success ? 'Applied ✓' : undefined,
-            details: result.success ? formatEditDetails(edits) : [],
             applied: !!result.success
-          });
+          };
+          if (result && result.lumiResult) {
+            assistantMsg.result = result.lumiResult;
+          } else if (typeof result?.output === 'string' && result.output.trim()) {
+            assistantMsg.text = result.output.trim();
+          } else if (typeof result?.message === 'string' && result.message.trim()) {
+            assistantMsg.text = result.message.trim();
+          } else {
+            assistantMsg.text = result.success ? 'Done' : (result.error || 'Request failed');
+          }
+          appendMessage(sessionId, assistantMsg);
           updateSessionById(sessionId, (session) => {
             session.snapshotTokens = selectionToTokens();
           });
@@ -1079,6 +1140,9 @@ function bootstrap() {
     injectGlobalStyles();
     // Manual theming only; auto detection disabled
 
+    // Restore sessions before mounting UI
+    await restoreSessions();
+
     // Mount UI components
     // No top banner UI
     dockRoot = new DockRoot(eventBus, stateManager);
@@ -1144,6 +1208,7 @@ function bootstrap() {
         const on = open !== false;
         viewportBar.setVisible(on);
         eventBus.emit('viewport:toggle', on);
+        persistUIState();  // Persist when dock open/close state changes
       });
       stateManager.subscribe('ui.theme', (mode) => {
         try { setDockThemeMode(mode); } catch (_) {}
@@ -1166,7 +1231,7 @@ function bootstrap() {
       }
     });
 
-    // Initialize engine (restore saved preference) - this will trigger engine:selected
+    // Initialize engine (restore saved preference)
     await engineManager.init();
 
     // Start health checker
@@ -1202,3 +1267,55 @@ function bootstrap() {
     console.error('[LUMI] Initialization failed:', error);
   });
 }
+  // Persist/restore sessions with ProjectId isolation
+  function getSessionsKey() {
+    const projectId = stateManager.get('projects.current')?.id || 'default';
+    const host = window.location.host;
+    return `lumi.sessions:${projectId}:${host}`;
+  }
+  
+  async function restoreSessions() {
+    try {
+      // Wait for projects to be loaded first
+      const maxWait = 500; // 500ms timeout
+      const start = Date.now();
+      while (!stateManager.get('projects.current') && (Date.now() - start < maxWait)) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      const key = getSessionsKey();
+      const data = await chromeBridge.storageGet([key]);
+      const payload = data && data[key];
+      if (!payload || !Array.isArray(payload.list) || !payload.list.length) return;
+      stateManager.batch({
+        'sessions.list': payload.list,
+        'sessions.currentId': payload.currentId || payload.list[0]?.id
+      });
+    } catch (err) {
+      console.error('[LUMI] Restore sessions failed:', err);
+    }
+  }
+  
+  function persistSessions() {
+    try {
+      const key = getSessionsKey();
+      const list = stateManager.get('sessions.list') || [];
+      const currentId = stateManager.get('sessions.currentId');
+      chromeBridge.storageSet({ [key]: { list, currentId, t: Date.now() } });
+    } catch (err) {
+      console.error('[LUMI] Persist sessions failed:', err);
+    }
+  }
+  
+  // Persist UI state (dock open/close)
+  function persistUIState() {
+    try {
+      const host = window.location.host;
+      const dockOpen = stateManager.get('ui.dockOpen');
+      chromeBridge.storageSet({
+        [`lumi.ui.state:${host}`]: { dockOpen, t: Date.now() }
+      });
+    } catch (err) {
+      console.error('[LUMI] Persist UI state failed:', err);
+    }
+  }

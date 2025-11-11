@@ -13,6 +13,9 @@ export default class EngineManager {
   async init() {
     console.log('[EngineManager] Initializing...');
     
+    // Initialize availability to unknown state (will be updated by HealthChecker)
+    this.stateManager.set('engine.available', { codex: false, claude: false });
+    
     // Load saved engine preference
     const stored = await this.chromeBridge.storageGet(['engine']);
     console.log('[EngineManager] Stored engine:', stored.engine);
@@ -72,10 +75,8 @@ export default class EngineManager {
       return;
     }
 
-    this.stateManager.batch({
-      'engine.available.codex': next.codex,
-      'engine.available.claude': next.claude
-    });
+    // Update as a whole object so subscribers to 'engine.available' fire
+    this.stateManager.set('engine.available', next);
 
     console.log('[EngineManager] Engine availability updated:', next);
     this.eventBus.emit('engine:availability-updated', next);
