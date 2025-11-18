@@ -5,6 +5,14 @@
 
 import { jest } from '@jest/globals';
 
+// Basic CSS.escape polyfill for jsdom
+if (!global.CSS) {
+  global.CSS = {};
+}
+if (!global.CSS.escape) {
+  global.CSS.escape = (str) => String(str).replace(/[^a-zA-Z0-9_\-]/g, (ch) => '\\' + ch);
+}
+
 // Mock Chrome APIs
 global.chrome = {
   runtime: {
@@ -54,4 +62,3 @@ global.console = {
   warn: jest.fn(),
   error: jest.fn()
 };
-

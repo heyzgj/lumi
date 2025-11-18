@@ -21,6 +21,7 @@ export default class DockRoot {
     this.launcher = null;
     this.savedRange = null;
     this.captureSelection = this.captureSelection.bind(this);
+    this._renderTimer = null;
   }
 
   updateTheme() {
@@ -200,6 +201,12 @@ export default class DockRoot {
     this.shadow.getElementById('shot-btn').addEventListener('click', () => this.eventBus.emit('mode:toggle-screenshot'));
     this.shadow.getElementById('new-session-btn').addEventListener('click', () => this.eventBus.emit('session:create'));
 
+    // Ensure immediate UI switch to Chat when creating/resuming sessions
+    try {
+      this.eventBus.on('session:create', () => this.setTab('chat'));
+      this.eventBus.on('session:resume', () => this.setTab('chat'));
+    } catch (_) {}
+
     this.engineSelect.addEventListener('change', () => {
       const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
       this.eventBus.emit('engine:select', value);
@@ -292,8 +299,6 @@ export default class DockRoot {
     this.stateManager.subscribe('engine.available', () => this.updateEngineAvailability());
     this.stateManager.subscribe('selection.elements', (elements) => this.renderChips(elements || []));
     this.stateManager.subscribe('selection.screenshots', () => this.renderChips(this.stateManager.get('selection.elements') || []));
-    this.stateManager.subscribe('sessions.list', () => this.renderBody());
-    this.stateManager.subscribe('sessions.currentId', () => this.renderBody());
     this.stateManager.subscribe('ui.dockTab', (tab) => this.setTab(tab, true));
     this.stateManager.subscribe('ui.dockOpen', (open) => this.setVisible(open !== false));
     // Keep state wired, but collapse/expand is disabled; always enforce 'normal'
@@ -314,10 +319,16 @@ export default class DockRoot {
     this.updateTheme();
 
     // Live updates for session changes (ensure History/UI refresh immediately)
-    this.stateManager.subscribe('sessions.list', () => {
-      const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
-      if (tab === 'history') this.renderHistory(); else this.renderChat();
-    });
+    const scheduleRender = () => {
+      if (this._renderTimer) return;
+      this._renderTimer = setTimeout(() => {
+        this._renderTimer = null;
+        const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
+        if (tab === 'history') this.renderHistory(); else this.renderChat();
+      }, 100);
+    };
+    this.stateManager.subscribe('sessions.list', scheduleRender);
+    // Switch session should re-render immediately to avoid stale content flash
     this.stateManager.subscribe('sessions.currentId', () => {
       const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
       if (tab === 'history') this.renderHistory(); else this.renderChat();
@@ -387,8 +398,11 @@ export default class DockRoot {
     });
     if (!fromState) {
       this.stateManager.set('ui.dockTab', name);
+      // Defer render to allow any related state (e.g., sessions.currentId) to commit first
+      setTimeout(() => this.renderBody(), 0);
+    } else {
+      this.renderBody();
     }
-    this.renderBody();
   }
 
   renderBody() {
@@ -429,49 +443,7 @@ export default class DockRoot {
 
   renderChatMessage(msg) {
     if (msg.role === 'assistant') {
-      // New result card rendering if lumiResult is present
-      if (msg.result && typeof msg.result === 'object') {
-        return this.renderResultMessage(msg.result, msg.applied);
-      }
-      // Windsurf-style: no avatar, left border for status
-      const item = document.createElement('div');
-      item.className = 'msg assistant' + (msg.applied ? ' success' : ' error');
-      
-      const summary = document.createElement('div');
-      summary.className = 'summary';
-      const icon = document.createElement('span');
-      icon.className = 'icon';
-      icon.textContent = msg.applied ? '✓' : '⚠';
-      const text = document.createElement('span');
-      text.className = 'text';
-      text.textContent = msg.text || (msg.applied ? 'Applied' : 'Request failed');
-      summary.appendChild(icon);
-      summary.appendChild(text);
-      item.appendChild(summary);
-      
-      // Render markdown if present
-      if (msg.text && /```|^#\s/m.test(msg.text)) {
-        const details = document.createElement('details');
-        const detailsSummary = document.createElement('summary');
-        detailsSummary.textContent = 'Show details';
-        details.appendChild(detailsSummary);
-        const content = document.createElement('div');
-        content.className = 'details-content md';
-        content.appendChild(renderMarkdown(msg.text, this.shadow?.ownerDocument || document));
-        details.appendChild(content);
-        item.appendChild(details);
-      } else if (msg.details && msg.details.length) {
-        const details = document.createElement('details');
-        const detailsSummary = document.createElement('summary');
-        detailsSummary.textContent = 'Show details';
-        details.appendChild(detailsSummary);
-        const content = document.createElement('div');
-        content.className = 'details-content';
-        content.textContent = msg.details.join(' ; ');
-        details.appendChild(content);
-        item.appendChild(details);
-      }
-      return item;
+      return this.renderAssistantMessage(msg);
     }
     // User message: no avatar, simple style
     const item = document.createElement('div');
@@ -483,85 +455,343 @@ export default class DockRoot {
     return item;
   }
 
-  renderResultMessage(result, applied = false) {
-    const item = document.createElement('div');
-    item.className = 'msg assistant' + (applied ? ' success' : ' error');
+  renderAssistantMessage(msg) {
+    const doc = this.shadow?.ownerDocument || document;
+    const item = doc.createElement('div');
+    item.className = 'msg assistant';
 
-    // Windsurf-style summary
-    const summary = document.createElement('div');
-    summary.className = 'summary';
-    const icon = document.createElement('span');
-    icon.className = 'icon';
-    icon.textContent = applied ? '✓' : '⚠';
-    const text = document.createElement('span');
-    text.className = 'text';
-    text.textContent = result?.summary?.title || (applied ? 'Applied changes' : 'Request failed');
-    summary.appendChild(icon);
-    summary.appendChild(text);
-    item.appendChild(summary);
+    const state = this.getAssistantState(msg);
+    const header = doc.createElement('div');
+    header.className = 'feed-header';
+    const label = doc.createElement('span');
+    let labelText = 'Finished';
+    if (state === 'queued' || state === 'streaming') {
+      labelText = 'Working';
+      label.className = 'working-label';
+      label.textContent = labelText;
+      const dots = doc.createElement('span');
+      dots.className = 'working-dots';
+      dots.textContent = '...';
+      label.appendChild(dots);
+    } else if (state === 'done-error') {
+      labelText = 'Finished with issues';
+      label.textContent = labelText;
+    } else {
+      label.textContent = labelText;
+    }
+    header.appendChild(label);
+    let toggleBtn = null;
 
-    // Use native <details> for collapsible sections
-    const hasDetails = !!(result?.rawOutput && String(result.rawOutput).trim());
-    if (hasDetails) {
-      const details = document.createElement('details');
-      const detailsSummary = document.createElement('summary');
-      detailsSummary.textContent = 'Show details';
-      details.appendChild(detailsSummary);
-      
-      const content = document.createElement('div');
-      content.className = 'details-content';
-      const raw = String(result.rawOutput || '');
-      const isMd = /```|^#\s/m.test(raw);
-      if (isMd) {
-        content.appendChild(renderMarkdown(raw, this.shadow?.ownerDocument || document));
-      } else {
-        const p = document.createElement('p');
-        p.textContent = raw;
-        content.appendChild(p);
+    const timeline = this.renderAssistantTimeline(msg, state);
+    if (timeline && (state === 'done' || state === 'done-error')) {
+      toggleBtn = doc.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'timeline-toggle';
+      toggleBtn.textContent = '▸';
+      header.appendChild(toggleBtn);
+    }
+    item.appendChild(header);
+
+    if (timeline) {
+      item.appendChild(timeline);
+      if (toggleBtn) {
+        const body = timeline.querySelector('.timeline-body');
+        const setOpen = (open) => {
+          timeline.classList.toggle('timeline-open', open);
+          if (body) body.style.display = open ? 'block' : 'none';
+          toggleBtn.textContent = open ? '▾' : '▸';
+        };
+        setOpen(state === 'streaming');
+        toggleBtn.addEventListener('click', () => setOpen(!timeline.classList.contains('timeline-open')));
       }
-      details.appendChild(content);
-      item.appendChild(details);
     }
 
-    const fileCount = Array.isArray(result?.changes) ? result.changes.length : 0;
-    if (fileCount > 0) {
-      const details = document.createElement('details');
-      const detailsSummary = document.createElement('summary');
-      detailsSummary.textContent = `Show ${fileCount} file change${fileCount > 1 ? 's' : ''}`;
-      details.appendChild(detailsSummary);
-      
-      const list = document.createElement('div');
-      list.className = 'file-list';
-      result.changes.forEach((c) => {
-        const row = document.createElement('div');
-        row.className = 'file-item';
-        const header = document.createElement('div');
-        header.className = 'file-header';
-        const icon = document.createElement('span');
-        icon.className = 'file-icon';
-        icon.textContent = '📄';
-        const name = document.createElement('span');
-        name.className = 'file-name';
-        name.textContent = c.path;
-        header.appendChild(icon);
-        header.appendChild(name);
-        row.appendChild(header);
-        
-        // Show additions/deletions if available
-        if (c.additions || c.deletions) {
-          const meta = document.createElement('div');
-          meta.className = 'file-meta';
-          meta.textContent = `+${c.additions || 0} -${c.deletions || 0}`;
-          row.appendChild(meta);
-        }
-        
-        list.appendChild(row);
-      });
-      details.appendChild(list);
-      item.appendChild(details);
-    }
+    const summary = this.renderAssistantSummary(msg);
+    if (summary) item.appendChild(summary);
 
     return item;
+  }
+
+  renderAssistantSummary(msg) {
+    const doc = this.shadow?.ownerDocument || document;
+    const result = msg.result || {};
+    const turnSummary = msg.turnSummary || null;
+    const resultChunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+
+    const title = turnSummary?.title
+      || result.title
+      || (resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
+      || '';
+    const description = (() => {
+      if (turnSummary && Array.isArray(turnSummary.bullets) && turnSummary.bullets.length) {
+        return turnSummary.bullets[0];
+      }
+      let text =
+        result.description ||
+        (resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
+        msg.text ||
+        '';
+      if (text) {
+        text = String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
+      }
+      return text || '';
+    })();
+
+    const container = doc.createElement('div');
+    container.className = 'assistant-summary';
+
+    // Meta line (files / commands / duration / tests)
+    if (turnSummary?.meta) {
+      const metaLine = doc.createElement('div');
+      metaLine.className = 'summary-meta';
+      const parts = [];
+      if (typeof turnSummary.meta.commandCount === 'number') parts.push(`${turnSummary.meta.commandCount} command${turnSummary.meta.commandCount === 1 ? '' : 's'}`);
+      if (typeof turnSummary.meta.durationMs === 'number') parts.push(this.formatDuration(turnSummary.meta.durationMs));
+      if (turnSummary.meta.testsStatus) parts.push(`tests ${turnSummary.meta.testsStatus}`);
+      metaLine.textContent = parts.filter(Boolean).join(' · ');
+      if (metaLine.textContent) container.appendChild(metaLine);
+    }
+
+    if (msg.streaming && !msg.done) {
+      container.appendChild(this.renderResultSkeleton(doc));
+      return container;
+    }
+
+    if (title) {
+      const titleEl = doc.createElement('div');
+      titleEl.className = 'summary-title';
+      titleEl.textContent = title;
+      container.appendChild(titleEl);
+    }
+    if (description) {
+      const desc = doc.createElement('div');
+      desc.className = 'summary-body';
+      // Render markdown when present
+      if (/```|^#\s/m.test(description)) {
+        desc.appendChild(renderMarkdown(description, doc));
+      } else {
+        desc.textContent = description;
+      }
+      container.appendChild(desc);
+    }
+    return container;
+  }
+
+  renderAssistantTimeline(msg, state) {
+    const timelineEntries = Array.isArray(msg.timelineEntries) ? msg.timelineEntries : [];
+    const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+    const hasTimeline = timelineEntries.length > 0 || chunks.length > 0;
+    if (!hasTimeline && state === 'done') return null;
+    const doc = this.shadow?.ownerDocument || document;
+    const wrapper = doc.createElement('div');
+    wrapper.className = 'assistant-timeline';
+    if (state === 'done' || state === 'done-error') {
+      wrapper.classList.add('collapsed');
+    }
+    const body = doc.createElement('div');
+    body.className = 'timeline-body';
+    if (state === 'streaming') {
+      body.style.display = 'block';
+      wrapper.classList.add('timeline-open');
+    } else {
+      body.style.display = 'none';
+    }
+    if (timelineEntries.length) {
+      body.appendChild(this.renderTimelineEntries(timelineEntries));
+    } else if (chunks.length) {
+      // fallback to old chunks rendering
+      body.appendChild(this.renderTimeline(chunks));
+    } else {
+      const placeholder = doc.createElement('div');
+      placeholder.className = 'timeline-placeholder';
+      placeholder.textContent = 'Execution events will appear here once processing begins.';
+      body.appendChild(placeholder);
+    }
+    wrapper.appendChild(body);
+    return wrapper;
+  }
+
+  getAssistantState(msg) {
+    const hasChunks = Array.isArray(msg.chunks) && msg.chunks.length > 0;
+    if (msg.streaming && !hasChunks) return 'queued';
+    if (msg.streaming && hasChunks) return 'streaming';
+    if (msg.applied === false) return 'done-error';
+    return 'done';
+  }
+
+  createStatusIcon(doc, state, msg) {
+    const span = doc.createElement('span');
+    span.className = 'icon';
+    // Keep status text only; icons intentionally minimal
+    if (state === 'done-error') {
+      span.textContent = '!';
+    }
+    return span;
+  }
+
+  renderResultSkeleton(doc) {
+    const skeleton = doc.createElement('div');
+    skeleton.className = 'result-skeleton';
+    for (let i = 0; i < 2; i++) {
+      const line = doc.createElement('div');
+      line.className = 'result-skeleton-line';
+      skeleton.appendChild(line);
+    }
+    return skeleton;
+  }
+
+  createSpinner(doc) {
+    const spinner = doc.createElement('span');
+    spinner.className = 'spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    return spinner;
+  }
+
+  formatDuration(ms) {
+    if (!ms || Number.isNaN(ms)) return '';
+    if (ms < 1000) return `${ms}ms`;
+    const seconds = ms / 1000;
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remain = seconds % 60;
+    return `${minutes}m ${remain.toFixed(0)}s`;
+  }
+
+  renderTimeline(chunks = []) {
+    const doc = this.shadow?.ownerDocument || document;
+    const list = doc.createElement('ul');
+    list.className = 'timeline-feed';
+    let logShown = 0;
+    chunks.forEach((c) => {
+      if (!c || typeof c !== 'object') return;
+      if (c.type === 'edit' && (!c.file || c.file === 'unknown')) return;
+      const row = doc.createElement('li');
+      row.className = 'timeline-item';
+      row.style.whiteSpace = 'pre-wrap';
+      row.style.lineHeight = '1.5';
+      let text = '';
+      switch (c.type) {
+        case 'thinking':
+          text = `Thinking: ${c.text || ''}`;
+          break;
+        case 'run':
+          text = `Run: ${c.cmd || ''}`;
+          break;
+        case 'edit': {
+          const meta = [];
+          if (typeof c.added === 'number') meta.push(`+${c.added}`);
+          if (typeof c.removed === 'number') meta.push(`-${c.removed}`);
+          text = `Edited ${c.file || 'file'} ${meta.join(' ')}`.trim();
+          break;
+        }
+        case 'log':
+          if (logShown >= 12) return;
+          logShown++;
+          text = c.text || '';
+          break;
+        case 'result':
+          text = c.resultSummary || c.text || '';
+          break;
+        case 'error':
+          text = `Error: ${c.message || c.text || ''}`;
+          break;
+        default:
+          text = c.text || '';
+      }
+      row.textContent = escapeHtml(String(text));
+      if (c.type === 'edit' && c.diff) {
+        row.appendChild(this.renderDiffDetails(doc, c.diff));
+      }
+      list.appendChild(row);
+    });
+    return list;
+  }
+
+  renderTimelineEntries(entries = []) {
+    const doc = this.shadow?.ownerDocument || document;
+    const container = doc.createElement('div');
+    container.className = 'timeline-entries';
+    const stageOrder = ['plan', 'act', 'edit', 'verify'];
+    const groups = stageOrder.map((stage) => ({ stage, rows: entries.filter((e) => e && e.stage === stage) }));
+    groups.forEach(({ stage, rows }) => {
+      if (!rows.length) return;
+      const section = doc.createElement('div');
+      section.className = 'timeline-stage';
+      const header = doc.createElement('div');
+      header.className = 'timeline-stage-header';
+      header.textContent = this.renderStageLabel(stage);
+      section.appendChild(header);
+      const list = doc.createElement('ul');
+      list.className = 'timeline-feed';
+      rows.forEach((e) => {
+        const li = doc.createElement('li');
+        li.className = 'timeline-item';
+        li.style.whiteSpace = 'pre-wrap';
+        li.style.lineHeight = '1.5';
+        const icon = this.renderEntryIcon(doc, e.kind);
+        if (icon) li.appendChild(icon);
+        const text = doc.createElement('span');
+        text.textContent = e.title || e.summary || e.body || '';
+        li.appendChild(text);
+        if (e.body && e.body !== e.title) {
+          const detail = doc.createElement('div');
+          detail.className = 'timeline-item-body';
+          detail.textContent = e.body;
+          li.appendChild(detail);
+        }
+        list.appendChild(li);
+      });
+      section.appendChild(list);
+      container.appendChild(section);
+    });
+    return container;
+  }
+
+  renderStageLabel(stage) {
+    switch (stage) {
+      case 'plan': return 'Plan';
+      case 'act': return 'Act';
+      case 'edit': return 'Edit';
+      case 'verify': return 'Verify';
+      default: return 'Timeline';
+    }
+  }
+
+  renderEntryIcon(doc, kind) {
+    const span = doc.createElement('span');
+    span.className = 'timeline-icon';
+    switch (kind) {
+      case 'plan': span.textContent = '•'; break;
+      case 'command': span.textContent = '›'; break;
+      case 'test': span.textContent = '✓'; break;
+      case 'file-change': span.textContent = '✎'; break;
+      case 'final-message': span.textContent = '✓'; break;
+      case 'error': span.textContent = '!'; break;
+      default: return null;
+    }
+    return span;
+  }
+
+  renderDiffDetails(doc, diffText = '') {
+    const details = doc.createElement('details');
+    details.className = 'diff-details';
+    const summary = doc.createElement('summary');
+    summary.textContent = 'Show diff';
+    details.appendChild(summary);
+    const body = doc.createElement('div');
+    body.className = 'diff-body';
+    diffText.split(/\r?\n/).forEach((line) => {
+      if (line === undefined || line === null) return;
+      const row = doc.createElement('div');
+      row.className = 'diff-line';
+      if (/^\+(?!\+\+)/.test(line)) row.classList.add('add');
+      else if (/^-(?!---)/.test(line)) row.classList.add('del');
+      else row.classList.add('ctx');
+      row.textContent = line || '\u00A0';
+      body.appendChild(row);
+    });
+    details.appendChild(body);
+    return details;
   }
 
   renderHistory() {
@@ -597,7 +827,6 @@ export default class DockRoot {
           <div class="history-meta">${this.timeAgo(session.updatedAt || session.createdAt)} • ${session.msgCount || 0}<span class="status-dot ${session.lastAppliedOk ? 'ok' : ''}"></span></div>
         </div>
         <div class="history-actions">
-          <button data-action="resume">Resume</button>
           <button data-action="rename">Rename</button>
           <button data-action="delete">Delete</button>
         </div>
@@ -616,9 +845,7 @@ export default class DockRoot {
       return;
     }
     const action = actionBtn.dataset.action;
-    if (action === 'resume') {
-      this.eventBus.emit('session:resume', sessionId);
-    } else if (action === 'rename') {
+    if (action === 'rename') {
       if (row.classList.contains('renaming')) return;
       this.startRename(row, sessionId);
     } else if (action === 'delete') {

@@ -5,9 +5,9 @@
   "scripts": {
     "prebuild": "node ../scripts/build-tokens.cjs",
     "build": "rollup -c",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "package": "npm run build && rm -f ../lumi-extension.zip && zip -r ../lumi-extension.zip background.js content.js manifest.json icons options.html options.css options.js popup.html popup.js"
   },
   "devDependencies": {

@@ -1996,19 +1996,24 @@
   .chat-list { display: flex; flex-direction: column; gap: 20px; }
   .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
 
-  /* Windsurf-style messages: no avatar, left border for status */
+  /* Amp-style messages: user has border, assistant plain */
   .msg {
     display: flex;
     flex-direction: column;
     gap: 8px;
     padding: 12px;
-    background: var(--surface);
-    border-radius: 8px;
-    border-left: 3px solid transparent;
     margin-bottom: 8px;
   }
-  .msg.assistant.success { border-left-color: var(--success); }
-  .msg.assistant.error { border-left-color: #EF4444; }
+  .msg.assistant {
+    background: transparent;
+    border: none;
+    padding-left: 0;
+  }
+  .msg.user {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
   
   .msg .summary {
     display: flex;
@@ -2055,6 +2060,203 @@
     font-size: 13px;
     line-height: 1.6;
     color: var(--text);
+  }
+  .assistant-result {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .assistant-result .summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .assistant-result .summary .meta {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .assistant-result .result-body {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .assistant-result .result-files {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .assistant-result .result-files-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .assistant-result .result-file-row {
+    font-size: 12px;
+    color: var(--text);
+  }
+  .assistant-result .result-file-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-left: 4px;
+  }
+  .assistant-timeline {
+    margin-top: 6px;
+  }
+  .timeline-feed {
+    margin: 0;
+    padding-left: 16px;
+    list-style-type: disc;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .timeline-feed .timeline-item {
+    margin: 4px 0;
+    color: var(--text);
+  }
+  .timeline-placeholder {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .feed-header {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .feed-header .working-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .feed-header .working-dots {
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: bottom;
+    width: 0;
+    animation: dock-dots 1s steps(3, end) infinite;
+  }
+  .assistant-summary {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .assistant-summary .summary-title {
+    font-weight: 400;
+    margin-bottom: 2px;
+    font-size: 13px;
+  }
+  .assistant-summary .summary-body {
+    color: var(--text);
+    font-weight: 400;
+    font-size: 13px;
+  }
+  .timeline-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .feed-header:hover .timeline-toggle {
+    opacity: 1;
+  }
+  .assistant-result .result-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .assistant-result .result-skeleton-line {
+    height: 10px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+    animation: dock-skeleton 1.4s ease infinite;
+  }
+  .assistant-result .spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border: 2px solid color-mix(in srgb, var(--text-secondary) 35%, transparent);
+    border-top-color: var(--text-secondary);
+    display: inline-block;
+    animation: dock-spin 0.9s linear infinite;
+  }
+  .assistant-timeline summary .spinner {
+    margin-left: 6px;
+    width: 12px;
+    height: 12px;
+    border-width: 2px;
+  }
+  .timeline-placeholder {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  @keyframes dock-dots {
+    0% { width: 0; }
+    33% { width: 0.4em; }
+    66% { width: 0.8em; }
+    100% { width: 1.2em; }
+  }
+  @keyframes dock-spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes dock-skeleton {
+    0% { opacity: 0.4; }
+    50% { opacity: 0.9; }
+    100% { opacity: 0.4; }
+  }
+  .diff-details {
+    margin-top: 6px;
+  }
+  .diff-details summary {
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .diff-body {
+    margin-top: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    overflow: auto;
+  }
+  .diff-line {
+    padding: 2px 10px;
+    white-space: pre-wrap;
+  }
+  .diff-line.add {
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    color: color-mix(in srgb, var(--success) 60%, var(--text));
+  }
+  .diff-line.del {
+    background: color-mix(in srgb, var(--error) 12%, transparent);
+    color: color-mix(in srgb, var(--error) 60%, var(--text));
+  }
+  .diff-line.ctx {
+    color: var(--text-secondary);
+  }
+  
+  /* Thinking section */
+  .msg .thinking-summary {
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+  .msg .thinking-content {
+    padding-top: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
   }
   
   /* File list inside details */
@@ -2104,10 +2306,6 @@
   .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
   .change-meta { font-size: 12px; color: var(--text-secondary); }
 
-  .msg.user {
-    background: var(--glass-bg);
-    border-left: 3px solid #3B82F6;
-  }
   .msg.user .bubble {
     font-size: 13px;
     line-height: 1.6;
@@ -2115,7 +2313,7 @@
   }
 
   /* History */
-  .history-list { display: flex; flex-direction: column; gap: 14px; }
+  .history-list { display: flex; flex-direction: column; gap: 18px; }
   .history-new {
     display: inline-flex;
     align-items: center;
@@ -2136,7 +2334,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 14px 18px;
+    padding: 16px 20px;
     border: 1px solid var(--border);
     border-radius: var(--radius-panel);
     background: var(--surface);
@@ -2481,6 +2679,7 @@
       this.launcher = null;
       this.savedRange = null;
       this.captureSelection = this.captureSelection.bind(this);
+      this._renderTimer = null;
     }
 
     updateTheme() {
@@ -2660,6 +2859,12 @@
       this.shadow.getElementById('shot-btn').addEventListener('click', () => this.eventBus.emit('mode:toggle-screenshot'));
       this.shadow.getElementById('new-session-btn').addEventListener('click', () => this.eventBus.emit('session:create'));
 
+      // Ensure immediate UI switch to Chat when creating/resuming sessions
+      try {
+        this.eventBus.on('session:create', () => this.setTab('chat'));
+        this.eventBus.on('session:resume', () => this.setTab('chat'));
+      } catch (_) {}
+
       this.engineSelect.addEventListener('change', () => {
         const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
         this.eventBus.emit('engine:select', value);
@@ -2752,8 +2957,6 @@
       this.stateManager.subscribe('engine.available', () => this.updateEngineAvailability());
       this.stateManager.subscribe('selection.elements', (elements) => this.renderChips(elements || []));
       this.stateManager.subscribe('selection.screenshots', () => this.renderChips(this.stateManager.get('selection.elements') || []));
-      this.stateManager.subscribe('sessions.list', () => this.renderBody());
-      this.stateManager.subscribe('sessions.currentId', () => this.renderBody());
       this.stateManager.subscribe('ui.dockTab', (tab) => this.setTab(tab, true));
       this.stateManager.subscribe('ui.dockOpen', (open) => this.setVisible(open !== false));
       // Keep state wired, but collapse/expand is disabled; always enforce 'normal'
@@ -2774,10 +2977,16 @@
       this.updateTheme();
 
       // Live updates for session changes (ensure History/UI refresh immediately)
-      this.stateManager.subscribe('sessions.list', () => {
-        const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
-        if (tab === 'history') this.renderHistory(); else this.renderChat();
-      });
+      const scheduleRender = () => {
+        if (this._renderTimer) return;
+        this._renderTimer = setTimeout(() => {
+          this._renderTimer = null;
+          const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
+          if (tab === 'history') this.renderHistory(); else this.renderChat();
+        }, 100);
+      };
+      this.stateManager.subscribe('sessions.list', scheduleRender);
+      // Switch session should re-render immediately to avoid stale content flash
       this.stateManager.subscribe('sessions.currentId', () => {
         const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
         if (tab === 'history') this.renderHistory(); else this.renderChat();
@@ -2846,8 +3055,11 @@
       });
       if (!fromState) {
         this.stateManager.set('ui.dockTab', name);
+        // Defer render to allow any related state (e.g., sessions.currentId) to commit first
+        setTimeout(() => this.renderBody(), 0);
+      } else {
+        this.renderBody();
       }
-      this.renderBody();
     }
 
     renderBody() {
@@ -2888,49 +3100,7 @@
 
     renderChatMessage(msg) {
       if (msg.role === 'assistant') {
-        // New result card rendering if lumiResult is present
-        if (msg.result && typeof msg.result === 'object') {
-          return this.renderResultMessage(msg.result, msg.applied);
-        }
-        // Windsurf-style: no avatar, left border for status
-        const item = document.createElement('div');
-        item.className = 'msg assistant' + (msg.applied ? ' success' : ' error');
-        
-        const summary = document.createElement('div');
-        summary.className = 'summary';
-        const icon = document.createElement('span');
-        icon.className = 'icon';
-        icon.textContent = msg.applied ? '✓' : '⚠';
-        const text = document.createElement('span');
-        text.className = 'text';
-        text.textContent = msg.text || (msg.applied ? 'Applied' : 'Request failed');
-        summary.appendChild(icon);
-        summary.appendChild(text);
-        item.appendChild(summary);
-        
-        // Render markdown if present
-        if (msg.text && /```|^#\s/m.test(msg.text)) {
-          const details = document.createElement('details');
-          const detailsSummary = document.createElement('summary');
-          detailsSummary.textContent = 'Show details';
-          details.appendChild(detailsSummary);
-          const content = document.createElement('div');
-          content.className = 'details-content md';
-          content.appendChild(renderMarkdown(msg.text, this.shadow?.ownerDocument || document));
-          details.appendChild(content);
-          item.appendChild(details);
-        } else if (msg.details && msg.details.length) {
-          const details = document.createElement('details');
-          const detailsSummary = document.createElement('summary');
-          detailsSummary.textContent = 'Show details';
-          details.appendChild(detailsSummary);
-          const content = document.createElement('div');
-          content.className = 'details-content';
-          content.textContent = msg.details.join(' ; ');
-          details.appendChild(content);
-          item.appendChild(details);
-        }
-        return item;
+        return this.renderAssistantMessage(msg);
       }
       // User message: no avatar, simple style
       const item = document.createElement('div');
@@ -2942,85 +3112,343 @@
       return item;
     }
 
-    renderResultMessage(result, applied = false) {
-      const item = document.createElement('div');
-      item.className = 'msg assistant' + (applied ? ' success' : ' error');
+    renderAssistantMessage(msg) {
+      const doc = this.shadow?.ownerDocument || document;
+      const item = doc.createElement('div');
+      item.className = 'msg assistant';
 
-      // Windsurf-style summary
-      const summary = document.createElement('div');
-      summary.className = 'summary';
-      const icon = document.createElement('span');
-      icon.className = 'icon';
-      icon.textContent = applied ? '✓' : '⚠';
-      const text = document.createElement('span');
-      text.className = 'text';
-      text.textContent = result?.summary?.title || (applied ? 'Applied changes' : 'Request failed');
-      summary.appendChild(icon);
-      summary.appendChild(text);
-      item.appendChild(summary);
+      const state = this.getAssistantState(msg);
+      const header = doc.createElement('div');
+      header.className = 'feed-header';
+      const label = doc.createElement('span');
+      let labelText = 'Finished';
+      if (state === 'queued' || state === 'streaming') {
+        labelText = 'Working';
+        label.className = 'working-label';
+        label.textContent = labelText;
+        const dots = doc.createElement('span');
+        dots.className = 'working-dots';
+        dots.textContent = '...';
+        label.appendChild(dots);
+      } else if (state === 'done-error') {
+        labelText = 'Finished with issues';
+        label.textContent = labelText;
+      } else {
+        label.textContent = labelText;
+      }
+      header.appendChild(label);
+      let toggleBtn = null;
 
-      // Use native <details> for collapsible sections
-      const hasDetails = !!(result?.rawOutput && String(result.rawOutput).trim());
-      if (hasDetails) {
-        const details = document.createElement('details');
-        const detailsSummary = document.createElement('summary');
-        detailsSummary.textContent = 'Show details';
-        details.appendChild(detailsSummary);
-        
-        const content = document.createElement('div');
-        content.className = 'details-content';
-        const raw = String(result.rawOutput || '');
-        const isMd = /```|^#\s/m.test(raw);
-        if (isMd) {
-          content.appendChild(renderMarkdown(raw, this.shadow?.ownerDocument || document));
-        } else {
-          const p = document.createElement('p');
-          p.textContent = raw;
-          content.appendChild(p);
+      const timeline = this.renderAssistantTimeline(msg, state);
+      if (timeline && (state === 'done' || state === 'done-error')) {
+        toggleBtn = doc.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'timeline-toggle';
+        toggleBtn.textContent = '▸';
+        header.appendChild(toggleBtn);
+      }
+      item.appendChild(header);
+
+      if (timeline) {
+        item.appendChild(timeline);
+        if (toggleBtn) {
+          const body = timeline.querySelector('.timeline-body');
+          const setOpen = (open) => {
+            timeline.classList.toggle('timeline-open', open);
+            if (body) body.style.display = open ? 'block' : 'none';
+            toggleBtn.textContent = open ? '▾' : '▸';
+          };
+          setOpen(state === 'streaming');
+          toggleBtn.addEventListener('click', () => setOpen(!timeline.classList.contains('timeline-open')));
         }
-        details.appendChild(content);
-        item.appendChild(details);
       }
 
-      const fileCount = Array.isArray(result?.changes) ? result.changes.length : 0;
-      if (fileCount > 0) {
-        const details = document.createElement('details');
-        const detailsSummary = document.createElement('summary');
-        detailsSummary.textContent = `Show ${fileCount} file change${fileCount > 1 ? 's' : ''}`;
-        details.appendChild(detailsSummary);
-        
-        const list = document.createElement('div');
-        list.className = 'file-list';
-        result.changes.forEach((c) => {
-          const row = document.createElement('div');
-          row.className = 'file-item';
-          const header = document.createElement('div');
-          header.className = 'file-header';
-          const icon = document.createElement('span');
-          icon.className = 'file-icon';
-          icon.textContent = '📄';
-          const name = document.createElement('span');
-          name.className = 'file-name';
-          name.textContent = c.path;
-          header.appendChild(icon);
-          header.appendChild(name);
-          row.appendChild(header);
-          
-          // Show additions/deletions if available
-          if (c.additions || c.deletions) {
-            const meta = document.createElement('div');
-            meta.className = 'file-meta';
-            meta.textContent = `+${c.additions || 0} -${c.deletions || 0}`;
-            row.appendChild(meta);
-          }
-          
-          list.appendChild(row);
-        });
-        details.appendChild(list);
-        item.appendChild(details);
-      }
+      const summary = this.renderAssistantSummary(msg);
+      if (summary) item.appendChild(summary);
 
       return item;
+    }
+
+    renderAssistantSummary(msg) {
+      const doc = this.shadow?.ownerDocument || document;
+      const result = msg.result || {};
+      const turnSummary = msg.turnSummary || null;
+      const resultChunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+
+      const title = turnSummary?.title
+        || result.title
+        || (resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
+        || '';
+      const description = (() => {
+        if (turnSummary && Array.isArray(turnSummary.bullets) && turnSummary.bullets.length) {
+          return turnSummary.bullets[0];
+        }
+        let text =
+          result.description ||
+          (resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
+          msg.text ||
+          '';
+        if (text) {
+          text = String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
+        }
+        return text || '';
+      })();
+
+      const container = doc.createElement('div');
+      container.className = 'assistant-summary';
+
+      // Meta line (files / commands / duration / tests)
+      if (turnSummary?.meta) {
+        const metaLine = doc.createElement('div');
+        metaLine.className = 'summary-meta';
+        const parts = [];
+        if (typeof turnSummary.meta.commandCount === 'number') parts.push(`${turnSummary.meta.commandCount} command${turnSummary.meta.commandCount === 1 ? '' : 's'}`);
+        if (typeof turnSummary.meta.durationMs === 'number') parts.push(this.formatDuration(turnSummary.meta.durationMs));
+        if (turnSummary.meta.testsStatus) parts.push(`tests ${turnSummary.meta.testsStatus}`);
+        metaLine.textContent = parts.filter(Boolean).join(' · ');
+        if (metaLine.textContent) container.appendChild(metaLine);
+      }
+
+      if (msg.streaming && !msg.done) {
+        container.appendChild(this.renderResultSkeleton(doc));
+        return container;
+      }
+
+      if (title) {
+        const titleEl = doc.createElement('div');
+        titleEl.className = 'summary-title';
+        titleEl.textContent = title;
+        container.appendChild(titleEl);
+      }
+      if (description) {
+        const desc = doc.createElement('div');
+        desc.className = 'summary-body';
+        // Render markdown when present
+        if (/```|^#\s/m.test(description)) {
+          desc.appendChild(renderMarkdown(description, doc));
+        } else {
+          desc.textContent = description;
+        }
+        container.appendChild(desc);
+      }
+      return container;
+    }
+
+    renderAssistantTimeline(msg, state) {
+      const timelineEntries = Array.isArray(msg.timelineEntries) ? msg.timelineEntries : [];
+      const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+      const hasTimeline = timelineEntries.length > 0 || chunks.length > 0;
+      if (!hasTimeline && state === 'done') return null;
+      const doc = this.shadow?.ownerDocument || document;
+      const wrapper = doc.createElement('div');
+      wrapper.className = 'assistant-timeline';
+      if (state === 'done' || state === 'done-error') {
+        wrapper.classList.add('collapsed');
+      }
+      const body = doc.createElement('div');
+      body.className = 'timeline-body';
+      if (state === 'streaming') {
+        body.style.display = 'block';
+        wrapper.classList.add('timeline-open');
+      } else {
+        body.style.display = 'none';
+      }
+      if (timelineEntries.length) {
+        body.appendChild(this.renderTimelineEntries(timelineEntries));
+      } else if (chunks.length) {
+        // fallback to old chunks rendering
+        body.appendChild(this.renderTimeline(chunks));
+      } else {
+        const placeholder = doc.createElement('div');
+        placeholder.className = 'timeline-placeholder';
+        placeholder.textContent = 'Execution events will appear here once processing begins.';
+        body.appendChild(placeholder);
+      }
+      wrapper.appendChild(body);
+      return wrapper;
+    }
+
+    getAssistantState(msg) {
+      const hasChunks = Array.isArray(msg.chunks) && msg.chunks.length > 0;
+      if (msg.streaming && !hasChunks) return 'queued';
+      if (msg.streaming && hasChunks) return 'streaming';
+      if (msg.applied === false) return 'done-error';
+      return 'done';
+    }
+
+    createStatusIcon(doc, state, msg) {
+      const span = doc.createElement('span');
+      span.className = 'icon';
+      // Keep status text only; icons intentionally minimal
+      if (state === 'done-error') {
+        span.textContent = '!';
+      }
+      return span;
+    }
+
+    renderResultSkeleton(doc) {
+      const skeleton = doc.createElement('div');
+      skeleton.className = 'result-skeleton';
+      for (let i = 0; i < 2; i++) {
+        const line = doc.createElement('div');
+        line.className = 'result-skeleton-line';
+        skeleton.appendChild(line);
+      }
+      return skeleton;
+    }
+
+    createSpinner(doc) {
+      const spinner = doc.createElement('span');
+      spinner.className = 'spinner';
+      spinner.setAttribute('aria-hidden', 'true');
+      return spinner;
+    }
+
+    formatDuration(ms) {
+      if (!ms || Number.isNaN(ms)) return '';
+      if (ms < 1000) return `${ms}ms`;
+      const seconds = ms / 1000;
+      if (seconds < 60) return `${seconds.toFixed(1)}s`;
+      const minutes = Math.floor(seconds / 60);
+      const remain = seconds % 60;
+      return `${minutes}m ${remain.toFixed(0)}s`;
+    }
+
+    renderTimeline(chunks = []) {
+      const doc = this.shadow?.ownerDocument || document;
+      const list = doc.createElement('ul');
+      list.className = 'timeline-feed';
+      let logShown = 0;
+      chunks.forEach((c) => {
+        if (!c || typeof c !== 'object') return;
+        if (c.type === 'edit' && (!c.file || c.file === 'unknown')) return;
+        const row = doc.createElement('li');
+        row.className = 'timeline-item';
+        row.style.whiteSpace = 'pre-wrap';
+        row.style.lineHeight = '1.5';
+        let text = '';
+        switch (c.type) {
+          case 'thinking':
+            text = `Thinking: ${c.text || ''}`;
+            break;
+          case 'run':
+            text = `Run: ${c.cmd || ''}`;
+            break;
+          case 'edit': {
+            const meta = [];
+            if (typeof c.added === 'number') meta.push(`+${c.added}`);
+            if (typeof c.removed === 'number') meta.push(`-${c.removed}`);
+            text = `Edited ${c.file || 'file'} ${meta.join(' ')}`.trim();
+            break;
+          }
+          case 'log':
+            if (logShown >= 12) return;
+            logShown++;
+            text = c.text || '';
+            break;
+          case 'result':
+            text = c.resultSummary || c.text || '';
+            break;
+          case 'error':
+            text = `Error: ${c.message || c.text || ''}`;
+            break;
+          default:
+            text = c.text || '';
+        }
+        row.textContent = escapeHtml(String(text));
+        if (c.type === 'edit' && c.diff) {
+          row.appendChild(this.renderDiffDetails(doc, c.diff));
+        }
+        list.appendChild(row);
+      });
+      return list;
+    }
+
+    renderTimelineEntries(entries = []) {
+      const doc = this.shadow?.ownerDocument || document;
+      const container = doc.createElement('div');
+      container.className = 'timeline-entries';
+      const stageOrder = ['plan', 'act', 'edit', 'verify'];
+      const groups = stageOrder.map((stage) => ({ stage, rows: entries.filter((e) => e && e.stage === stage) }));
+      groups.forEach(({ stage, rows }) => {
+        if (!rows.length) return;
+        const section = doc.createElement('div');
+        section.className = 'timeline-stage';
+        const header = doc.createElement('div');
+        header.className = 'timeline-stage-header';
+        header.textContent = this.renderStageLabel(stage);
+        section.appendChild(header);
+        const list = doc.createElement('ul');
+        list.className = 'timeline-feed';
+        rows.forEach((e) => {
+          const li = doc.createElement('li');
+          li.className = 'timeline-item';
+          li.style.whiteSpace = 'pre-wrap';
+          li.style.lineHeight = '1.5';
+          const icon = this.renderEntryIcon(doc, e.kind);
+          if (icon) li.appendChild(icon);
+          const text = doc.createElement('span');
+          text.textContent = e.title || e.summary || e.body || '';
+          li.appendChild(text);
+          if (e.body && e.body !== e.title) {
+            const detail = doc.createElement('div');
+            detail.className = 'timeline-item-body';
+            detail.textContent = e.body;
+            li.appendChild(detail);
+          }
+          list.appendChild(li);
+        });
+        section.appendChild(list);
+        container.appendChild(section);
+      });
+      return container;
+    }
+
+    renderStageLabel(stage) {
+      switch (stage) {
+        case 'plan': return 'Plan';
+        case 'act': return 'Act';
+        case 'edit': return 'Edit';
+        case 'verify': return 'Verify';
+        default: return 'Timeline';
+      }
+    }
+
+    renderEntryIcon(doc, kind) {
+      const span = doc.createElement('span');
+      span.className = 'timeline-icon';
+      switch (kind) {
+        case 'plan': span.textContent = '•'; break;
+        case 'command': span.textContent = '›'; break;
+        case 'test': span.textContent = '✓'; break;
+        case 'file-change': span.textContent = '✎'; break;
+        case 'final-message': span.textContent = '✓'; break;
+        case 'error': span.textContent = '!'; break;
+        default: return null;
+      }
+      return span;
+    }
+
+    renderDiffDetails(doc, diffText = '') {
+      const details = doc.createElement('details');
+      details.className = 'diff-details';
+      const summary = doc.createElement('summary');
+      summary.textContent = 'Show diff';
+      details.appendChild(summary);
+      const body = doc.createElement('div');
+      body.className = 'diff-body';
+      diffText.split(/\r?\n/).forEach((line) => {
+        if (line === undefined || line === null) return;
+        const row = doc.createElement('div');
+        row.className = 'diff-line';
+        if (/^\+(?!\+\+)/.test(line)) row.classList.add('add');
+        else if (/^-(?!---)/.test(line)) row.classList.add('del');
+        else row.classList.add('ctx');
+        row.textContent = line || '\u00A0';
+        body.appendChild(row);
+      });
+      details.appendChild(body);
+      return details;
     }
 
     renderHistory() {
@@ -3056,7 +3484,6 @@
           <div class="history-meta">${this.timeAgo(session.updatedAt || session.createdAt)} • ${session.msgCount || 0}<span class="status-dot ${session.lastAppliedOk ? 'ok' : ''}"></span></div>
         </div>
         <div class="history-actions">
-          <button data-action="resume">Resume</button>
           <button data-action="rename">Rename</button>
           <button data-action="delete">Delete</button>
         </div>
@@ -3075,9 +3502,7 @@
         return;
       }
       const action = actionBtn.dataset.action;
-      if (action === 'resume') {
-        this.eventBus.emit('session:resume', sessionId);
-      } else if (action === 'rename') {
+      if (action === 'rename') {
         if (row.classList.contains('renaming')) return;
         this.startRename(row, sessionId);
       } else if (action === 'delete') {
@@ -4726,6 +5151,110 @@
     }
   }
 
+  // Shared helpers for deriving timeline chunks from plain stdout/stderr
+
+  function isNoisyConsoleLine(t) {
+    try {
+      const s = String(t || '').trim();
+      if (!s) return true;
+      if (/^nvm is not compatible with the "npm_config_prefix"/i.test(s)) return true;
+      if (/^Run `unset npm_config_prefix`/i.test(s)) return true;
+      if (/^OpenAI Codex v[0-9.]+/i.test(s)) return true;
+      if (/^-{4,}$/.test(s)) return true;
+      if (/^workdir:/i.test(s)) return true;
+      if (/^model:/i.test(s)) return true;
+      if (/^provider:/i.test(s)) return true;
+      if (/^approval:/i.test(s)) return true;
+      if (/^sandbox:/i.test(s)) return true;
+      if (/^reasoning effort:/i.test(s)) return true;
+      if (/^reasoning summaries:/i.test(s)) return true;
+      if (/^session id:/i.test(s)) return true;
+      if (/^GET \/health\b/i.test(s)) return true;
+      if (/^Reading prompt from stdin\.\.\./i.test(s)) return true;
+      if (/^tokens used$/i.test(s)) return true;
+      if (/^Execute completed in \d+ms:/i.test(s)) return true;
+      if (/^user$/i.test(s)) return true;
+      if (/^\[@(element|screenshot)\d+\]/i.test(s)) return true;
+      if (/^#\s+User Intent\b/.test(s)) return true;
+      if (/^#\s+Context Reference Map\b/.test(s)) return true;
+      if (/^#\s+Detailed Element Context\b/.test(s)) return true;
+      if (/^#\s+Instructions\b/.test(s)) return true;
+      if (/^#\s+Selection Area\b/.test(s)) return true;
+      if (/^##\s+Selected Elements\b/.test(s)) return true;
+      if (/^##\s+Screenshots\b/.test(s)) return true;
+      if (/^- Page:\s+/i.test(s)) return true;
+      if (/^- Title:\s+/i.test(s)) return true;
+      if (/^- Selection Mode:\s+/i.test(s)) return true;
+      if (/^- \*\*@element[0-9]+\*\*/i.test(s)) return true;
+      if (/^- The user's intent may reference tags like /i.test(s)) return true;
+      if (/^- Use the Reference Map above/i.test(s)) return true;
+      if (/^- Apply changes ONLY to the referenced elements/i.test(s)) return true;
+      if (/^- For WYSIWYG edits, apply the exact before→after changes shown/i.test(s)) return true;
+      if (/^- Modify files directly; maintain code quality and accessibility/i.test(s)) return true;
+      if (/^<details>$/i.test(s)) return true;
+      if (/^<\/details>$/i.test(s)) return true;
+      if (/^<summary>/.test(s)) return true;
+      if (/^<\/summary>/.test(s)) return true;
+      if (/^HTML$/.test(s)) return true;
+      if (/^Styles$/.test(s)) return true;
+      if (/^[{}]$/.test(s)) return true;
+      if (/^\"[^"]+\":\s+/.test(s)) return true;
+      if (/^[0-9,]+$/.test(s)) return true;
+      if (/^```/.test(s)) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function deriveChunksFromText(stdout = '', stderr = '') {
+    const chunks = [];
+    const pushLog = (stream, text) => {
+      if (text && text.trim()) chunks.push({ type: 'log', stream, text: text.trim() });
+    };
+    const lines = (String(stderr || '') + '\n' + String(stdout || '')).split(/\r?\n/);
+    let expectRunNext = false;
+    let thinkingNext = false;
+    lines.forEach((raw) => {
+      const line = String(raw || '').replace(/\r$/, '');
+      const t = line.trim();
+      if (!t) return;
+      if (isNoisyConsoleLine(t)) return;
+      if (/^thinking$/i.test(t)) { thinkingNext = true; return; }
+      if (/^exec$/i.test(t)) { expectRunNext = true; return; }
+      {
+        const diff = t.match(/^diff --git a\/(.+?) b\/(.+)/);
+        if (diff && diff[2]) {
+          chunks.push({ type: 'edit', file: diff[2].trim() });
+          return;
+        }
+      }
+      if (thinkingNext) {
+        const m = t.match(/^\*\*(.+)\*\*$/);
+        const text = (m && m[1]) ? m[1].trim() : t;
+        thinkingNext = false;
+        if (/^Preparing final message summary$/i.test(text)) return;
+        chunks.push({ type: 'thinking', text });
+        return;
+      }
+      if (expectRunNext) {
+        chunks.push({ type: 'run', cmd: t });
+        expectRunNext = false;
+        return;
+      }
+      if (/^(bash\s+-lc\s+)/i.test(t)) { chunks.push({ type: 'run', cmd: t }); return; }
+      // edit 事件仅在能识别出具体文件时生成；unknown 不进入用户可见 timeline
+      if (/^(file update|apply_patch\()/i.test(t)) { return; }
+      {
+        const m = t.match(/^(M|A|D)\s+(.+)/);
+        if (m) { chunks.push({ type: 'edit', file: m[2].trim() }); return; }
+      }
+      if (/^\*\*\* Begin Patch/.test(t)) { return; }
+      pushLog('mixed', t);
+    });
+    return chunks;
+  }
+
   class RestoreHelper {
     constructor() {
       this.savedScroll = { x: 0, y: 0 };
@@ -5291,19 +5820,20 @@
       this.shadow = this.host.attachShadow({ mode: 'open' });
       this.shadow.innerHTML = `
       <style>
+        /* Uses design tokens from :root (see extension/shared/tokens.css) */
         .bar { position: relative; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
-          background: var(--dock-bg, #ffffff);
-          border-bottom: 1px solid var(--dock-stroke, rgba(0,0,0,0.08));
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg, #111);
+          background: var(--dock-bg);
+          border-bottom: 1px solid var(--dock-stroke);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg);
         }
-        select, input { font-size: 12px; border: 1px solid var(--dock-stroke, rgba(0,0,0,0.08)); border-radius: 8px; background: #f7f7f8; color: inherit; padding: 4px 8px; }
-        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: color-mix(in srgb, var(--dock-fg, #111) 70%, transparent); cursor: pointer; }
-        .btn:hover { color: var(--dock-fg, #111); border-color: color-mix(in srgb, var(--dock-fg, #111) 20%, transparent); }
+        select, input { font-size: 12px; border: 1px solid var(--dock-stroke); border-radius: 8px; background: var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent)); color: var(--dock-fg); padding: 4px 8px; }
+        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--dock-fg); opacity: 0.7; cursor: pointer; }
+        .btn:hover { opacity: 1; border-color: var(--dock-stroke); }
         .btn:active { transform: scale(0.98); }
         .spacer { flex: 1; }
         .field { display: inline-flex; align-items: center; gap: 6px; }
         .dim { width: 72px; }
-        .label { color: color-mix(in srgb, var(--dock-fg, #111) 65%, transparent); }
+        .label { color: var(--dock-fg); opacity: 0.65; }
       </style>
       <div class="bar" id="bar">
         <label class="field"><span class="label">Device</span>
@@ -5342,6 +5872,10 @@
       this.visible = !!visible;
       if (!this.host) this.mount();
       this.host.style.display = this.visible ? 'block' : 'none';
+    }
+
+    setTheme(mode) {
+      // No-op: theme is driven by root tokens via setDockThemeMode
     }
 
     destroy() {
@@ -5422,7 +5956,17 @@
     const serverClient = new ServerClient(chromeBridge);
 
     // Expose for DevTools-driven experiments in M1 (no UI yet)
-    try { window.__lumiEventBus = eventBus; } catch (_) {}
+    try {
+      window.__lumiEventBus = eventBus;
+      // Debug flag: _lumi_debug=1 or localStorage LUMI_DEBUG=1
+      (function(){
+        try {
+          const u = new URL(window.location.href);
+          if (u.searchParams.get('_lumi_debug') === '1') window.__LUMI_DEBUG = true;
+          if (localStorage.getItem('LUMI_DEBUG') === '1') window.__LUMI_DEBUG = true;
+        } catch (_) {}
+      })();
+    } catch (_) {}
 
     // If the script is accidentally loaded in page context (no runtime), bail out early
     if (!chromeBridge.isRuntimeAvailable()) {
@@ -5455,11 +5999,7 @@
     const viewportController = new ViewportController(eventBus, stateManager);
     viewportController.init();
     const viewportBar = new TopViewportBar(eventBus, stateManager);
-
-    // Default to iframe stage for true responsive behavior, but auto-disable on known blocked hosts
-    const HOST_IFRAME_BLOCKLIST = /(^|\.)google\.[a-z.]+$|(^|\.)apply\.ycombinator\.com$/i;
-    const blocked = HOST_IFRAME_BLOCKLIST.test(window.location.hostname);
-    stateManager.set('ui.viewport.useIframeStage', !blocked);
+    stateManager.set('ui.viewport.useIframeStage', false);
 
     ensureDefaultSession();
 
@@ -5475,7 +6015,8 @@
           msgCount: 0,
           lastAppliedOk: false,
           transcript: [],
-          snapshotTokens: []
+          snapshotTokens: [],
+          manualTitle: false
         };
         stateManager.batch({
           'sessions.list': [session],
@@ -5521,15 +6062,80 @@
     }
 
     function appendMessage(sessionId, message) {
+      const msg = { ...message };
+      if (!msg.id) msg.id = 'm' + Math.random().toString(36).slice(2);
       updateSessionById(sessionId, (session) => {
-        session.transcript.push({ ...message, timestamp: message.timestamp || Date.now() });
+        session.transcript.push({ ...msg, timestamp: msg.timestamp || Date.now() });
         session.updatedAt = Date.now();
-        if (message.role === 'assistant' && typeof message.applied === 'boolean') {
-          session.lastAppliedOk = !!message.applied;
+        // Auto-generate title from first user message (first 20 chars)
+        if (msg.role === 'user' && session.transcript.length === 1 && msg.text) {
+          const text = msg.text.trim();
+          session.title = text.length > 20 ? text.slice(0, 20) + '...' : text;
+          session.manualTitle = false;
+        }
+        if (msg.role === 'assistant' && typeof msg.applied === 'boolean') {
+          session.lastAppliedOk = !!msg.applied;
         }
       });
       // Persist after each message append
       persistSessions();
+      return msg.id;
+    }
+
+    function updateMessage(sessionId, messageId, mutator) {
+      const list = (stateManager.get('sessions.list') || []).map(session => {
+        if (session.id !== sessionId) return session;
+        const updated = {
+          ...session,
+          transcript: Array.isArray(session.transcript) ? session.transcript.map(m => ({ ...m })) : []
+        };
+        const idx = updated.transcript.findIndex(m => m && m.id === messageId);
+        if (idx >= 0) {
+          const m = { ...updated.transcript[idx] };
+          try { mutator(m); } catch (_) {}
+          applyAutoSummary(m);
+          updated.transcript[idx] = m;
+          updated.updatedAt = Date.now();
+        }
+        return updated;
+      });
+      stateManager.set('sessions.list', list);
+      persistSessions();
+    }
+
+    function applyAutoSummary(msg) {
+      try {
+        if (msg.role !== 'assistant') return;
+        const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+        const resultChunk = chunks.find((c) => c && c.type === 'result' && (c.resultSummary || c.text));
+        const editChunks = chunks.filter((c) => c && c.type === 'edit' && c.file);
+        const runChunk = chunks.find((c) => c && c.type === 'run' && c.cmd);
+
+        const summary = msg?.result?.summary;
+        const summaryTitle = typeof summary === 'string' ? summary : summary?.title;
+        const summaryDescription = typeof summary === 'string' ? '' : summary?.description;
+
+        let title = msg?.result?.title || summaryTitle || '';
+        if (!title) {
+          if (resultChunk?.resultSummary) title = resultChunk.resultSummary;
+          else if (editChunks.length === 1) title = `Edited ${editChunks[0].file}`;
+          else if (editChunks.length > 1) title = `Edited ${editChunks[0].file} and ${editChunks.length - 1} more`;
+          else if (runChunk?.cmd) title = `Ran ${runChunk.cmd}`;
+        }
+
+        let description = msg?.result?.description || summaryDescription || '';
+        if (!description) {
+          if (resultChunk?.text) description = resultChunk.text;
+          else if (editChunks.length) description = `Updated ${editChunks.length} file${editChunks.length > 1 ? 's' : ''}.`;
+          else if (runChunk?.cmd) description = `Executed ${runChunk.cmd}.`;
+        }
+
+        if (!msg.result) msg.result = {};
+        if (title) msg.result.title = title;
+        if (description) msg.result.description = description;
+      } catch (_) {
+        // ignore auto summary errors
+      }
     }
 
     // Inject global styles
@@ -5753,12 +6359,14 @@
           msgCount: 0,
           lastAppliedOk: false,
           transcript: [],
-          snapshotTokens: tokens
+          snapshotTokens: tokens,
+          manualTitle: !!titleSource.trim()
         };
         const list = [session, ...(stateManager.get('sessions.list') || [])];
         stateManager.batch({
           'sessions.list': list,
-          'sessions.currentId': id
+          'sessions.currentId': id,
+          'ui.dockTab': 'chat'
         });
         if (dockRoot) dockRoot.clearInput();
       });
@@ -5778,6 +6386,7 @@
         updateSessionById(id, (session) => {
           session.title = value;
           session.updatedAt = Date.now();
+          session.manualTitle = true;
         });
       });
 
@@ -5787,10 +6396,14 @@
         const currentId = stateManager.get('sessions.currentId');
         if (currentId === id) {
           const nextId = list[0]?.id || null;
-          stateManager.batch({
-            'sessions.currentId': nextId,
-            'ui.dockTab': nextId ? 'chat' : 'history'
-          });
+          const currentTab = stateManager.get('ui.dockTab') || 'chat';
+          const updates = {
+            'sessions.currentId': nextId
+          };
+          if (currentTab !== 'history') {
+            updates['ui.dockTab'] = nextId ? 'chat' : 'history';
+          }
+          stateManager.batch(updates);
           if (!nextId) ensureDefaultSession();
         }
       });
@@ -6273,30 +6886,40 @@
 
         stateManager.set('processing.active', true);
 
-        try {
-          const pageInfo = {
-            url: window.location.href,
-            title: document.title
-          };
+        // M0: append a placeholder assistant message to indicate processing
+        let streamMsgId = null;
+        if (sessionId) {
+          try {
+            streamMsgId = appendMessage(sessionId, {
+              role: 'assistant',
+              streaming: true,
+              done: false,
+              chunks: []
+            });
+          } catch (_) {}
+        }
 
-          const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
-          // Capture the request context snapshot before clearing UI
-          const reqElements = elements;
-          const reqScreenshots = screenshots;
-          const reqEdits = edits;
-          
-          // Clear context immediately for a cleaner UX during processing
-          try { highlightManager.clearAll(); } catch (_) {}
-          try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
-          stateManager.batch({
-            'selection.elements': [],
-            'selection.screenshots': [],
-            'wysiwyg.pending': null,
-            'wysiwyg.edits': [],
-            'wysiwyg.hasDiffs': false
-          });
-          try { dockRoot && dockRoot.clearChips(); } catch (_) {}
-          try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
+        // Build context snapshot
+        const pageInfo = { url: window.location.href, title: document.title };
+        const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
+        const reqElements = elements;
+        const reqScreenshots = screenshots;
+        const reqEdits = edits;
+
+        // Clear context immediately for a cleaner UX during processing
+        try { highlightManager.clearAll(); } catch (_) {}
+        try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+        stateManager.batch({
+          'selection.elements': [],
+          'selection.screenshots': [],
+          'wysiwyg.pending': null,
+          'wysiwyg.edits': [],
+          'wysiwyg.hasDiffs': false
+        });
+        try { dockRoot && dockRoot.clearChips(); } catch (_) {}
+        try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
+
+        try {
           const result = await serverClient.execute(
             engine,
             intent,
@@ -6308,21 +6931,45 @@
           );
 
           if (sessionId) {
-            const assistantMsg = {
-              id: 'm' + Math.random().toString(36).slice(2),
-              role: 'assistant',
-              applied: !!result.success
+            const applyToMsg = (msg) => {
+              msg.streaming = false;
+              msg.done = true;
+              msg.applied = !!result.success;
+              if (result && result.turnSummary) {
+                msg.turnSummary = result.turnSummary;
+              }
+              if (Array.isArray(result?.timelineEntries)) {
+                msg.timelineEntries = result.timelineEntries;
+              }
+              if (result && result.lumiResult) {
+                msg.result = result.lumiResult;
+              } else if (typeof result?.output === 'string' && result.output.trim()) {
+                msg.text = result.output.trim();
+              } else if (typeof result?.message === 'string' && result.message.trim()) {
+                msg.text = result.message.trim();
+              } else {
+                msg.text = result.success ? 'Done' : (result.error || 'Request failed');
+              }
+              if (Array.isArray(result?.chunks) && result.chunks.length) {
+                msg.chunks = result.chunks.slice();
+              } else if (!Array.isArray(msg.chunks) || msg.chunks.length === 0) {
+                try {
+                  const fallbackChunks = deriveChunksFromText(result.output || '', result.stderr || '');
+                  if (Array.isArray(fallbackChunks) && fallbackChunks.length) {
+                    msg.chunks = fallbackChunks;
+                  }
+                } catch (_) {
+                  // ignore fallback errors
+                }
+              }
             };
-            if (result && result.lumiResult) {
-              assistantMsg.result = result.lumiResult;
-            } else if (typeof result?.output === 'string' && result.output.trim()) {
-              assistantMsg.text = result.output.trim();
-            } else if (typeof result?.message === 'string' && result.message.trim()) {
-              assistantMsg.text = result.message.trim();
+            if (streamMsgId) {
+              updateMessage(sessionId, streamMsgId, applyToMsg);
             } else {
-              assistantMsg.text = result.success ? 'Done' : (result.error || 'Request failed');
+              // Fallback: append as a new message
+              const mid = appendMessage(sessionId, { role: 'assistant' });
+              updateMessage(sessionId, mid, applyToMsg);
             }
-            appendMessage(sessionId, assistantMsg);
             updateSessionById(sessionId, (session) => {
               session.snapshotTokens = selectionToTokens();
             });
@@ -6352,6 +6999,14 @@
           console.error('[Content] Submit failed:', error);
           topBanner.update('Network error: ' + error.message);
           setTimeout(() => topBanner.hide(), 2200);
+          if (sessionId && streamMsgId) {
+            updateMessage(sessionId, streamMsgId, (msg) => {
+              msg.streaming = false;
+              msg.done = true;
+              msg.applied = false;
+              msg.text = 'Network error: ' + error.message;
+            });
+          }
         } finally {
           stateManager.set('processing.active', false);
           if (dockRoot) dockRoot.updateSendState();
@@ -6525,12 +7180,15 @@
         setDockThemeMode('light');
       } catch (_) {}
 
-      // Apply initial viewport visibility (flag off by default)
+      // Apply initial viewport visibility, synced with dock state
       try {
         const enabled = !!stateManager.get('ui.viewport.enabled');
-        viewportController.setEnabled(enabled);
+        const dockOpen = stateManager.get('ui.dockOpen') !== false;
+        const on = enabled && dockOpen; // viewport should follow dock on refresh
+        viewportController.setEnabled(on);
         viewportBar.mount();
-        viewportBar.setVisible(enabled);
+        viewportBar.setVisible(on);
+        stateManager.set('ui.viewport.enabled', on);
       } catch (_) {}
 
       // Keep highlight layer in sync with viewport canvas scroll (inline stage)
@@ -6552,32 +7210,33 @@
         syncScrollTarget();
       } catch (_) {}
 
-      // Top bar follows dock visibility, and viewport toggles with dock
+      // Viewport follows dock visibility (they work together as one unit)
       try {
         stateManager.subscribe('ui.dockOpen', (open) => {
           const on = open !== false;
           viewportBar.setVisible(on);
+          viewportController.setEnabled(on);  // Sync viewport controller with dock
           eventBus.emit('viewport:toggle', on);
           persistUIState();  // Persist when dock open/close state changes
         });
         stateManager.subscribe('ui.theme', (mode) => {
           try { setDockThemeMode(mode); } catch (_) {}
+          try { viewportBar.setTheme(mode); } catch (_) {}
         });
       } catch (_) {}
 
       // (moved into bindEvents scope as setupIframeSelectionLocal)
 
-      // Listen for background messages
+      // Listen for background messages (toggle only)
       chromeBridge.onMessage((message) => {
+        if (!message || !message.type) return;
         if (message.type === 'TOGGLE_BUBBLE') {
           eventBus.emit('bubble:toggle');
-          // Ensure viewport bar is visible with dock
           try {
             const open = stateManager.get('ui.dockOpen') !== false;
-            if (open) {
-              eventBus.emit('viewport:toggle', true);
-            }
+            if (open) eventBus.emit('viewport:toggle', true);
           } catch (_) {}
+          return;
         }
       });
 
@@ -6612,35 +7271,48 @@
       console.log('[LUMI] Initialized successfully');
     }
 
-    // Start the application
-    init().catch(error => {
-      console.error('[LUMI] Initialization failed:', error);
-    });
-  }
-    // Persist/restore sessions with ProjectId isolation
+    // Persist/restore sessions (simplified: host-only key to avoid race conditions)
     function getSessionsKey() {
-      const projectId = stateManager.get('projects.current')?.id || 'default';
       const host = window.location.host;
-      return `lumi.sessions:${projectId}:${host}`;
+      return `lumi.sessions:${host}`;
     }
     
     async function restoreSessions() {
       try {
-        // Wait for projects to be loaded first
-        const maxWait = 500; // 500ms timeout
-        const start = Date.now();
-        while (!stateManager.get('projects.current') && (Date.now() - start < maxWait)) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        
         const key = getSessionsKey();
+        console.log('[LUMI] Restoring sessions from key:', key);
         const data = await chromeBridge.storageGet([key]);
         const payload = data && data[key];
-        if (!payload || !Array.isArray(payload.list) || !payload.list.length) return;
+        console.log('[LUMI] Restored payload:', payload);
+
+        if (!payload || !Array.isArray(payload.list) || !payload.list.length) {
+          console.log('[LUMI] No sessions to restore');
+          return;
+        }
+
+        const normalizedList = payload.list.map((session) => {
+          if (!Array.isArray(session?.transcript)) return session;
+          const transcript = session.transcript.map((m) => {
+            if (!m || m.role !== 'assistant') return m;
+            if (m.streaming && !m.done) {
+              return {
+                ...m,
+                streaming: false,
+                done: true,
+                applied: typeof m.applied === 'boolean' ? m.applied : false,
+                text: m.text || 'Request was interrupted before completion.'
+              };
+            }
+            return m;
+          });
+          return { ...session, transcript };
+        });
+
         stateManager.batch({
-          'sessions.list': payload.list,
+          'sessions.list': normalizedList,
           'sessions.currentId': payload.currentId || payload.list[0]?.id
         });
+        console.log('[LUMI] Sessions restored:', payload.list.length, 'sessions');
       } catch (err) {
         console.error('[LUMI] Restore sessions failed:', err);
       }
@@ -6651,7 +7323,10 @@
         const key = getSessionsKey();
         const list = stateManager.get('sessions.list') || [];
         const currentId = stateManager.get('sessions.currentId');
-        chromeBridge.storageSet({ [key]: { list, currentId, t: Date.now() } });
+        const payload = { list, currentId, t: Date.now() };
+        
+        console.log('[LUMI] Persisting sessions to key:', key, 'count:', list.length);
+        chromeBridge.storageSet({ [key]: payload });
       } catch (err) {
         console.error('[LUMI] Persist sessions failed:', err);
       }
@@ -6669,6 +7344,12 @@
         console.error('[LUMI] Persist UI state failed:', err);
       }
     }
+
+    // Start the application
+    init().catch(error => {
+      console.error('[LUMI] Initialization failed:', error);
+    });
+  }
 
 })();
 //# sourceMappingURL=content.js.map

@@ -26,6 +26,11 @@ const DEFAULT_SETTINGS = {
 
 let serverUrl = DEFAULT_SERVER_URL;
 let serverHealthy = false;
+let BG_DEBUG = false;
+
+function bgLog(...args) {
+  try { if (BG_DEBUG) console.info('[LUMI BG]', ...args); } catch (_) {}
+}
 
 function sanitizeUrl(url) {
   if (!url || typeof url !== 'string') return DEFAULT_SERVER_URL;
@@ -129,6 +134,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[STORAGE_KEY]) {
     const next = changes[STORAGE_KEY].newValue || DEFAULT_SETTINGS;
     serverUrl = sanitizeUrl(next.serverUrl);
+  }
+  if (area === 'local' && changes.lumiDebug) {
+    BG_DEBUG = !!changes.lumiDebug.newValue;
+    bgLog('lumiDebug toggled:', BG_DEBUG);
   }
 });
 
@@ -307,6 +316,7 @@ async function handleApplySettings(payload = {}) {
 chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) => {
   const { type } = message;
   console.log('[LUMI] Message received:', type);
+  bgLog('onMessage', type);
 
   if (type === 'CHECK_SERVER') {
     checkServerHealth()
@@ -331,6 +341,7 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
 
   if (type === 'SEND_TO_SERVER') {
     const { engine, context } = message.payload || {};
+    bgLog('SEND_TO_SERVER', { engine, intent: context?.intent?.slice?.(0, 60) });
     forwardToServer(engine, context)
       .then((result) => sendResponse(result))
       .catch((error) => {
@@ -420,10 +431,16 @@ function hostMatches(pattern, host) {
 }
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Clear injection flag when navigation starts (page refresh/reload)
+  if (changeInfo.status === 'loading') {
+    injectedTabs.delete(tabId);
+    return;
+  }
+  
   // Only inject when page has fully loaded
   if (changeInfo.status !== 'complete') return;
   
-  // Avoid duplicate injection
+  // Avoid duplicate injection within same page lifecycle
   if (injectedTabs.has(tabId)) return;
   
   // Check if auto-inject is enabled
@@ -453,18 +470,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     injectedTabs.add(tabId);
     console.log('[LUMI] Auto-injected content script for', host);
     
-    // Check if Dock was open before refresh
-    const uiStateKey = `lumi.ui.state:${host}`;
-    const { [uiStateKey]: uiState } = await chrome.storage.local.get(uiStateKey);
-    
-    if (uiState?.dockOpen === true) {
-      // Wait a bit for content script to initialize
-      setTimeout(() => {
-        chrome.tabs.sendMessage(tabId, { type: 'TOGGLE_BUBBLE' }).catch(() => {
-          // Ignore errors if content script not ready
-        });
-      }, 150);
-    }
+    // Don't auto-open Dock on refresh - let user click icon to open
   } catch (err) {
     console.error('[LUMI] Auto-inject failed:', err);
   }

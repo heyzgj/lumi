@@ -18,19 +18,20 @@ export default class TopViewportBar {
     this.shadow = this.host.attachShadow({ mode: 'open' });
     this.shadow.innerHTML = `
       <style>
+        /* Uses design tokens from :root (see extension/shared/tokens.css) */
         .bar { position: relative; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
-          background: var(--dock-bg, #ffffff);
-          border-bottom: 1px solid var(--dock-stroke, rgba(0,0,0,0.08));
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg, #111);
+          background: var(--dock-bg);
+          border-bottom: 1px solid var(--dock-stroke);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg);
         }
-        select, input { font-size: 12px; border: 1px solid var(--dock-stroke, rgba(0,0,0,0.08)); border-radius: 8px; background: #f7f7f8; color: inherit; padding: 4px 8px; }
-        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: color-mix(in srgb, var(--dock-fg, #111) 70%, transparent); cursor: pointer; }
-        .btn:hover { color: var(--dock-fg, #111); border-color: color-mix(in srgb, var(--dock-fg, #111) 20%, transparent); }
+        select, input { font-size: 12px; border: 1px solid var(--dock-stroke); border-radius: 8px; background: var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent)); color: var(--dock-fg); padding: 4px 8px; }
+        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--dock-fg); opacity: 0.7; cursor: pointer; }
+        .btn:hover { opacity: 1; border-color: var(--dock-stroke); }
         .btn:active { transform: scale(0.98); }
         .spacer { flex: 1; }
         .field { display: inline-flex; align-items: center; gap: 6px; }
         .dim { width: 72px; }
-        .label { color: color-mix(in srgb, var(--dock-fg, #111) 65%, transparent); }
+        .label { color: var(--dock-fg); opacity: 0.65; }
       </style>
       <div class="bar" id="bar">
         <label class="field"><span class="label">Device</span>
@@ -69,6 +70,10 @@ export default class TopViewportBar {
     this.visible = !!visible;
     if (!this.host) this.mount();
     this.host.style.display = this.visible ? 'block' : 'none';
+  }
+
+  setTheme(mode) {
+    // No-op: theme is driven by root tokens via setDockThemeMode
   }
 
   destroy() {

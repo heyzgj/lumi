@@ -39,6 +39,7 @@ import { setDockThemeMode } from './lib/ui/dock/theme.js';
 import DockEditModal from './lib/ui/dock/DockEditModal.js';
 import StyleApplier from './lib/engine/StyleApplier.js';
 import StyleHistory from './lib/engine/StyleHistory.js';
+import { deriveChunksFromText } from './lib/engine/deriveChunksFromText.js';
 // Viewport (M0 scaffolding)
 import ViewportController from './lib/ui/viewport/ViewportController.js';
 import TopViewportBar from './lib/ui/viewport/TopViewportBar.js';
@@ -61,7 +62,17 @@ function bootstrap() {
   const serverClient = new ServerClient(chromeBridge);
 
   // Expose for DevTools-driven experiments in M1 (no UI yet)
-  try { window.__lumiEventBus = eventBus; } catch (_) {}
+  try {
+    window.__lumiEventBus = eventBus;
+    // Debug flag: _lumi_debug=1 or localStorage LUMI_DEBUG=1
+    (function(){
+      try {
+        const u = new URL(window.location.href);
+        if (u.searchParams.get('_lumi_debug') === '1') window.__LUMI_DEBUG = true;
+        if (localStorage.getItem('LUMI_DEBUG') === '1') window.__LUMI_DEBUG = true;
+      } catch (_) {}
+    })();
+  } catch (_) {}
 
   // If the script is accidentally loaded in page context (no runtime), bail out early
   if (!chromeBridge.isRuntimeAvailable()) {
@@ -96,9 +107,10 @@ function bootstrap() {
   const viewportBar = new TopViewportBar(eventBus, stateManager);
 
   // Default to iframe stage for true responsive behavior, but auto-disable on known blocked hosts
+  // Prefer inline stage by default so DOM edits reflect accurately; enable iframe only on request
   const HOST_IFRAME_BLOCKLIST = /(^|\.)google\.[a-z.]+$|(^|\.)apply\.ycombinator\.com$/i;
   const blocked = HOST_IFRAME_BLOCKLIST.test(window.location.hostname);
-  stateManager.set('ui.viewport.useIframeStage', !blocked);
+  stateManager.set('ui.viewport.useIframeStage', false);
 
   ensureDefaultSession();
 
@@ -114,7 +126,8 @@ function bootstrap() {
         msgCount: 0,
         lastAppliedOk: false,
         transcript: [],
-        snapshotTokens: []
+        snapshotTokens: [],
+        manualTitle: false
       };
       stateManager.batch({
         'sessions.list': [session],
@@ -160,15 +173,80 @@ function bootstrap() {
   }
 
   function appendMessage(sessionId, message) {
+    const msg = { ...message };
+    if (!msg.id) msg.id = 'm' + Math.random().toString(36).slice(2);
     updateSessionById(sessionId, (session) => {
-      session.transcript.push({ ...message, timestamp: message.timestamp || Date.now() });
+      session.transcript.push({ ...msg, timestamp: msg.timestamp || Date.now() });
       session.updatedAt = Date.now();
-      if (message.role === 'assistant' && typeof message.applied === 'boolean') {
-        session.lastAppliedOk = !!message.applied;
+      // Auto-generate title from first user message (first 20 chars)
+      if (msg.role === 'user' && session.transcript.length === 1 && msg.text) {
+        const text = msg.text.trim();
+        session.title = text.length > 20 ? text.slice(0, 20) + '...' : text;
+        session.manualTitle = false;
+      }
+      if (msg.role === 'assistant' && typeof msg.applied === 'boolean') {
+        session.lastAppliedOk = !!msg.applied;
       }
     });
     // Persist after each message append
     persistSessions();
+    return msg.id;
+  }
+
+  function updateMessage(sessionId, messageId, mutator) {
+    const list = (stateManager.get('sessions.list') || []).map(session => {
+      if (session.id !== sessionId) return session;
+      const updated = {
+        ...session,
+        transcript: Array.isArray(session.transcript) ? session.transcript.map(m => ({ ...m })) : []
+      };
+      const idx = updated.transcript.findIndex(m => m && m.id === messageId);
+      if (idx >= 0) {
+        const m = { ...updated.transcript[idx] };
+        try { mutator(m); } catch (_) {}
+        applyAutoSummary(m);
+        updated.transcript[idx] = m;
+        updated.updatedAt = Date.now();
+      }
+      return updated;
+    });
+    stateManager.set('sessions.list', list);
+    persistSessions();
+  }
+
+  function applyAutoSummary(msg) {
+    try {
+      if (msg.role !== 'assistant') return;
+      const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+      const resultChunk = chunks.find((c) => c && c.type === 'result' && (c.resultSummary || c.text));
+      const editChunks = chunks.filter((c) => c && c.type === 'edit' && c.file);
+      const runChunk = chunks.find((c) => c && c.type === 'run' && c.cmd);
+
+      const summary = msg?.result?.summary;
+      const summaryTitle = typeof summary === 'string' ? summary : summary?.title;
+      const summaryDescription = typeof summary === 'string' ? '' : summary?.description;
+
+      let title = msg?.result?.title || summaryTitle || '';
+      if (!title) {
+        if (resultChunk?.resultSummary) title = resultChunk.resultSummary;
+        else if (editChunks.length === 1) title = `Edited ${editChunks[0].file}`;
+        else if (editChunks.length > 1) title = `Edited ${editChunks[0].file} and ${editChunks.length - 1} more`;
+        else if (runChunk?.cmd) title = `Ran ${runChunk.cmd}`;
+      }
+
+      let description = msg?.result?.description || summaryDescription || '';
+      if (!description) {
+        if (resultChunk?.text) description = resultChunk.text;
+        else if (editChunks.length) description = `Updated ${editChunks.length} file${editChunks.length > 1 ? 's' : ''}.`;
+        else if (runChunk?.cmd) description = `Executed ${runChunk.cmd}.`;
+      }
+
+      if (!msg.result) msg.result = {};
+      if (title) msg.result.title = title;
+      if (description) msg.result.description = description;
+    } catch (_) {
+      // ignore auto summary errors
+    }
   }
 
   function formatEditDetails(edits = []) {
@@ -403,12 +481,14 @@ function bootstrap() {
         msgCount: 0,
         lastAppliedOk: false,
         transcript: [],
-        snapshotTokens: tokens
+        snapshotTokens: tokens,
+        manualTitle: !!titleSource.trim()
       };
       const list = [session, ...(stateManager.get('sessions.list') || [])];
       stateManager.batch({
         'sessions.list': list,
-        'sessions.currentId': id
+        'sessions.currentId': id,
+        'ui.dockTab': 'chat'
       });
       if (dockRoot) dockRoot.clearInput();
     });
@@ -428,6 +508,7 @@ function bootstrap() {
       updateSessionById(id, (session) => {
         session.title = value;
         session.updatedAt = Date.now();
+        session.manualTitle = true;
       });
     });
 
@@ -437,10 +518,14 @@ function bootstrap() {
       const currentId = stateManager.get('sessions.currentId');
       if (currentId === id) {
         const nextId = list[0]?.id || null;
-        stateManager.batch({
-          'sessions.currentId': nextId,
-          'ui.dockTab': nextId ? 'chat' : 'history'
-        });
+        const currentTab = stateManager.get('ui.dockTab') || 'chat';
+        const updates = {
+          'sessions.currentId': nextId
+        };
+        if (currentTab !== 'history') {
+          updates['ui.dockTab'] = nextId ? 'chat' : 'history';
+        }
+        stateManager.batch(updates);
         if (!nextId) ensureDefaultSession();
       }
     });
@@ -923,30 +1008,40 @@ function bootstrap() {
 
       stateManager.set('processing.active', true);
 
-      try {
-        const pageInfo = {
-          url: window.location.href,
-          title: document.title
-        };
+      // M0: append a placeholder assistant message to indicate processing
+      let streamMsgId = null;
+      if (sessionId) {
+        try {
+          streamMsgId = appendMessage(sessionId, {
+            role: 'assistant',
+            streaming: true,
+            done: false,
+            chunks: []
+          });
+        } catch (_) {}
+      }
 
-        const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
-        // Capture the request context snapshot before clearing UI
-        const reqElements = elements;
-        const reqScreenshots = screenshots;
-        const reqEdits = edits;
-        
-        // Clear context immediately for a cleaner UX during processing
-        try { highlightManager.clearAll(); } catch (_) {}
-        try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
-        stateManager.batch({
-          'selection.elements': [],
-          'selection.screenshots': [],
-          'wysiwyg.pending': null,
-          'wysiwyg.edits': [],
-          'wysiwyg.hasDiffs': false
-        });
-        try { dockRoot && dockRoot.clearChips(); } catch (_) {}
-        try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
+      // Build context snapshot
+      const pageInfo = { url: window.location.href, title: document.title };
+      const lastScreenshot = screenshots.length ? screenshots[screenshots.length - 1] : null;
+      const reqElements = elements;
+      const reqScreenshots = screenshots;
+      const reqEdits = edits;
+
+      // Clear context immediately for a cleaner UX during processing
+      try { highlightManager.clearAll(); } catch (_) {}
+      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+      stateManager.batch({
+        'selection.elements': [],
+        'selection.screenshots': [],
+        'wysiwyg.pending': null,
+        'wysiwyg.edits': [],
+        'wysiwyg.hasDiffs': false
+      });
+      try { dockRoot && dockRoot.clearChips(); } catch (_) {}
+      try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
+
+      try {
         const result = await serverClient.execute(
           engine,
           intent,
@@ -958,21 +1053,45 @@ function bootstrap() {
         );
 
         if (sessionId) {
-          const assistantMsg = {
-            id: 'm' + Math.random().toString(36).slice(2),
-            role: 'assistant',
-            applied: !!result.success
+          const applyToMsg = (msg) => {
+            msg.streaming = false;
+            msg.done = true;
+            msg.applied = !!result.success;
+            if (result && result.turnSummary) {
+              msg.turnSummary = result.turnSummary;
+            }
+            if (Array.isArray(result?.timelineEntries)) {
+              msg.timelineEntries = result.timelineEntries;
+            }
+            if (result && result.lumiResult) {
+              msg.result = result.lumiResult;
+            } else if (typeof result?.output === 'string' && result.output.trim()) {
+              msg.text = result.output.trim();
+            } else if (typeof result?.message === 'string' && result.message.trim()) {
+              msg.text = result.message.trim();
+            } else {
+              msg.text = result.success ? 'Done' : (result.error || 'Request failed');
+            }
+            if (Array.isArray(result?.chunks) && result.chunks.length) {
+              msg.chunks = result.chunks.slice();
+            } else if (!Array.isArray(msg.chunks) || msg.chunks.length === 0) {
+              try {
+                const fallbackChunks = deriveChunksFromText(result.output || '', result.stderr || '');
+                if (Array.isArray(fallbackChunks) && fallbackChunks.length) {
+                  msg.chunks = fallbackChunks;
+                }
+              } catch (_) {
+                // ignore fallback errors
+              }
+            }
           };
-          if (result && result.lumiResult) {
-            assistantMsg.result = result.lumiResult;
-          } else if (typeof result?.output === 'string' && result.output.trim()) {
-            assistantMsg.text = result.output.trim();
-          } else if (typeof result?.message === 'string' && result.message.trim()) {
-            assistantMsg.text = result.message.trim();
+          if (streamMsgId) {
+            updateMessage(sessionId, streamMsgId, applyToMsg);
           } else {
-            assistantMsg.text = result.success ? 'Done' : (result.error || 'Request failed');
+            // Fallback: append as a new message
+            const mid = appendMessage(sessionId, { role: 'assistant' });
+            updateMessage(sessionId, mid, applyToMsg);
           }
-          appendMessage(sessionId, assistantMsg);
           updateSessionById(sessionId, (session) => {
             session.snapshotTokens = selectionToTokens();
           });
@@ -1002,6 +1121,14 @@ function bootstrap() {
         console.error('[Content] Submit failed:', error);
         topBanner.update('Network error: ' + error.message);
         setTimeout(() => topBanner.hide(), 2200);
+        if (sessionId && streamMsgId) {
+          updateMessage(sessionId, streamMsgId, (msg) => {
+            msg.streaming = false;
+            msg.done = true;
+            msg.applied = false;
+            msg.text = 'Network error: ' + error.message;
+          });
+        }
       } finally {
         stateManager.set('processing.active', false);
         if (dockRoot) dockRoot.updateSendState();
@@ -1175,12 +1302,15 @@ function bootstrap() {
       setDockThemeMode('light');
     } catch (_) {}
 
-    // Apply initial viewport visibility (flag off by default)
+    // Apply initial viewport visibility, synced with dock state
     try {
       const enabled = !!stateManager.get('ui.viewport.enabled');
-      viewportController.setEnabled(enabled);
+      const dockOpen = stateManager.get('ui.dockOpen') !== false;
+      const on = enabled && dockOpen; // viewport should follow dock on refresh
+      viewportController.setEnabled(on);
       viewportBar.mount();
-      viewportBar.setVisible(enabled);
+      viewportBar.setVisible(on);
+      stateManager.set('ui.viewport.enabled', on);
     } catch (_) {}
 
     // Keep highlight layer in sync with viewport canvas scroll (inline stage)
@@ -1202,32 +1332,33 @@ function bootstrap() {
       syncScrollTarget();
     } catch (_) {}
 
-    // Top bar follows dock visibility, and viewport toggles with dock
+    // Viewport follows dock visibility (they work together as one unit)
     try {
       stateManager.subscribe('ui.dockOpen', (open) => {
         const on = open !== false;
         viewportBar.setVisible(on);
+        viewportController.setEnabled(on);  // Sync viewport controller with dock
         eventBus.emit('viewport:toggle', on);
         persistUIState();  // Persist when dock open/close state changes
       });
       stateManager.subscribe('ui.theme', (mode) => {
         try { setDockThemeMode(mode); } catch (_) {}
+        try { viewportBar.setTheme(mode); } catch (_) {}
       });
     } catch (_) {}
 
     // (moved into bindEvents scope as setupIframeSelectionLocal)
 
-    // Listen for background messages
+    // Listen for background messages (toggle only)
     chromeBridge.onMessage((message) => {
+      if (!message || !message.type) return;
       if (message.type === 'TOGGLE_BUBBLE') {
         eventBus.emit('bubble:toggle');
-        // Ensure viewport bar is visible with dock
         try {
           const open = stateManager.get('ui.dockOpen') !== false;
-          if (open) {
-            eventBus.emit('viewport:toggle', true);
-          }
+          if (open) eventBus.emit('viewport:toggle', true);
         } catch (_) {}
+        return;
       }
     });
 
@@ -1262,35 +1393,48 @@ function bootstrap() {
     console.log('[LUMI] Initialized successfully');
   }
 
-  // Start the application
-  init().catch(error => {
-    console.error('[LUMI] Initialization failed:', error);
-  });
-}
-  // Persist/restore sessions with ProjectId isolation
+  // Persist/restore sessions (simplified: host-only key to avoid race conditions)
   function getSessionsKey() {
-    const projectId = stateManager.get('projects.current')?.id || 'default';
     const host = window.location.host;
-    return `lumi.sessions:${projectId}:${host}`;
+    return `lumi.sessions:${host}`;
   }
   
   async function restoreSessions() {
     try {
-      // Wait for projects to be loaded first
-      const maxWait = 500; // 500ms timeout
-      const start = Date.now();
-      while (!stateManager.get('projects.current') && (Date.now() - start < maxWait)) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
       const key = getSessionsKey();
+      console.log('[LUMI] Restoring sessions from key:', key);
       const data = await chromeBridge.storageGet([key]);
       const payload = data && data[key];
-      if (!payload || !Array.isArray(payload.list) || !payload.list.length) return;
+      console.log('[LUMI] Restored payload:', payload);
+
+      if (!payload || !Array.isArray(payload.list) || !payload.list.length) {
+        console.log('[LUMI] No sessions to restore');
+        return;
+      }
+
+      const normalizedList = payload.list.map((session) => {
+        if (!Array.isArray(session?.transcript)) return session;
+        const transcript = session.transcript.map((m) => {
+          if (!m || m.role !== 'assistant') return m;
+          if (m.streaming && !m.done) {
+            return {
+              ...m,
+              streaming: false,
+              done: true,
+              applied: typeof m.applied === 'boolean' ? m.applied : false,
+              text: m.text || 'Request was interrupted before completion.'
+            };
+          }
+          return m;
+        });
+        return { ...session, transcript };
+      });
+
       stateManager.batch({
-        'sessions.list': payload.list,
+        'sessions.list': normalizedList,
         'sessions.currentId': payload.currentId || payload.list[0]?.id
       });
+      console.log('[LUMI] Sessions restored:', payload.list.length, 'sessions');
     } catch (err) {
       console.error('[LUMI] Restore sessions failed:', err);
     }
@@ -1301,7 +1445,10 @@ function bootstrap() {
       const key = getSessionsKey();
       const list = stateManager.get('sessions.list') || [];
       const currentId = stateManager.get('sessions.currentId');
-      chromeBridge.storageSet({ [key]: { list, currentId, t: Date.now() } });
+      const payload = { list, currentId, t: Date.now() };
+      
+      console.log('[LUMI] Persisting sessions to key:', key, 'count:', list.length);
+      chromeBridge.storageSet({ [key]: payload });
     } catch (err) {
       console.error('[LUMI] Persist sessions failed:', err);
     }
@@ -1319,3 +1466,9 @@ function bootstrap() {
       console.error('[LUMI] Persist UI state failed:', err);
     }
   }
+
+  // Start the application
+  init().catch(error => {
+    console.error('[LUMI] Initialization failed:', error);
+  });
+}
