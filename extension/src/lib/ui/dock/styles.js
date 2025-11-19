@@ -156,9 +156,12 @@ export const DOCK_STYLES = `
     padding-left: 0;
   }
   .msg.user {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: color-mix(in srgb, var(--dock-fg) 3%, transparent);
+    border: none;
+    border-left: 3px solid color-mix(in srgb, var(--dock-fg) 25%, transparent);
+    border-radius: 0;
+    padding-left: 14px;
+    padding-right: 8px;
   }
   
   .msg .summary {
@@ -251,14 +254,20 @@ export const DOCK_STYLES = `
   }
   .timeline-feed {
     margin: 0;
-    padding-left: 16px;
-    list-style-type: disc;
+    padding-left: 0;
+    list-style-type: none;
     color: var(--text);
     font-size: 13px;
   }
   .timeline-feed .timeline-item {
-    margin: 4px 0;
+    margin: 8px 0;
+    padding-left: 12px;
+    border-left: 1px solid transparent;
     color: var(--text);
+    transition: border-color 0.2s ease;
+  }
+  .timeline-feed .timeline-item:hover {
+    border-left-color: var(--border);
   }
   .timeline-placeholder {
     font-size: 12px;
@@ -287,19 +296,26 @@ export const DOCK_STYLES = `
     animation: dock-dots 1s steps(3, end) infinite;
   }
   .assistant-summary {
-    margin-top: 8px;
+    margin-top: 12px;
     font-size: 13px;
     color: var(--text);
   }
+  .assistant-summary .summary-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    opacity: 0.7;
+  }
   .assistant-summary .summary-title {
     font-weight: 400;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     font-size: 13px;
   }
   .assistant-summary .summary-body {
     color: var(--text);
     font-weight: 400;
     font-size: 13px;
+    line-height: 1.6;
   }
   .timeline-toggle {
     background: transparent;

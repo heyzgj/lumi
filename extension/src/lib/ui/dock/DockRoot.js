@@ -3,6 +3,7 @@ import { DOCK_STYLES } from './styles.js';
 import { readableElementName } from '../../utils/dom.js';
 import { escapeHtml } from './utils.js';
 import { renderMarkdown } from './MarkdownRenderer.js';
+import { buildTimelineFromChunks } from './client-timeline.js';
 
 export default class DockRoot {
   constructor(eventBus, stateManager) {
@@ -426,12 +427,7 @@ export default class DockRoot {
     if (!this.chatPane) return;
     const pane = this.chatPane;
     pane.innerHTML = '';
-
-    const project = this.stateManager.get('projects.current');
-    const projectId = project ? project.id : null;
-    const allSessions = this.stateManager.get('sessions.list') || [];
-    const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
-
+    const sessions = this.stateManager.get('sessions.list') || [];
     const currentId = this.stateManager.get('sessions.currentId');
     const session = sessions.find(s => s.id === currentId) || sessions[0];
     if (!session || session.transcript.length === 0) {
@@ -545,16 +541,19 @@ export default class DockRoot {
     const container = doc.createElement('div');
     container.className = 'assistant-summary';
 
-    // Meta line (files / commands / duration / tests)
+    // Meta line (duration / tests only)
     if (turnSummary?.meta) {
       const metaLine = doc.createElement('div');
       metaLine.className = 'summary-meta';
       const parts = [];
-      if (typeof turnSummary.meta.commandCount === 'number') parts.push(`${turnSummary.meta.commandCount} command${turnSummary.meta.commandCount === 1 ? '' : 's'}`);
       if (typeof turnSummary.meta.durationMs === 'number') parts.push(this.formatDuration(turnSummary.meta.durationMs));
       if (turnSummary.meta.testsStatus) parts.push(`tests ${turnSummary.meta.testsStatus}`);
-      metaLine.textContent = parts.filter(Boolean).join(' · ');
-      if (metaLine.textContent) container.appendChild(metaLine);
+
+      const text = parts.filter(Boolean).join(' · ');
+      if (text) {
+        metaLine.textContent = text;
+        container.appendChild(metaLine);
+      }
     }
 
     if (msg.streaming && !msg.done) {
@@ -583,8 +582,17 @@ export default class DockRoot {
   }
 
   renderAssistantTimeline(msg, state) {
-    const timelineEntries = Array.isArray(msg.timelineEntries) ? msg.timelineEntries : [];
+    let timelineEntries = Array.isArray(msg.timelineEntries) ? msg.timelineEntries : [];
     const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+
+    // If no server-provided entries yet (streaming), build them client-side
+    if (timelineEntries.length === 0 && chunks.length > 0) {
+      const built = buildTimelineFromChunks(chunks);
+      if (built && built.timeline) {
+        timelineEntries = built.timeline;
+      }
+    }
+
     const hasTimeline = timelineEntries.length > 0 || chunks.length > 0;
     if (!hasTimeline && state === 'done') return null;
     const doc = this.shadow?.ownerDocument || document;
@@ -612,9 +620,7 @@ export default class DockRoot {
       placeholder.textContent = 'Execution events will appear here once processing begins.';
       body.appendChild(placeholder);
     }
-    if (chunks.length) {
-      body.appendChild(this.renderRawLogs(chunks));
-    }
+    // Raw logs removed per user request
     wrapper.appendChild(body);
     return wrapper;
   }
@@ -740,59 +746,64 @@ export default class DockRoot {
     const doc = this.shadow?.ownerDocument || document;
     const container = doc.createElement('div');
     container.className = 'timeline-entries';
-    const stageOrder = ['plan', 'act', 'edit', 'verify'];
-    const groups = stageOrder.map((stage) => ({ stage, rows: entries.filter((e) => e && e.stage === stage) }));
-    groups.forEach(({ stage, rows }) => {
-      if (!rows.length) return;
-      const section = doc.createElement('div');
-      section.className = 'timeline-stage';
-      const header = doc.createElement('div');
-      header.className = 'timeline-stage-header';
-      header.textContent = this.renderStageLabel(stage);
-      section.appendChild(header);
-      const list = doc.createElement('ul');
-      list.className = 'timeline-feed';
-      rows.forEach((e) => {
-        const li = doc.createElement('li');
-        li.className = 'timeline-item';
-        li.style.whiteSpace = 'pre-wrap';
-        li.style.lineHeight = '1.5';
-        const icon = this.renderEntryIcon(doc, e.kind);
-        if (icon) li.appendChild(icon);
-        const text = doc.createElement('span');
-        text.textContent = e.title || e.summary || e.body || '';
-        li.appendChild(text);
-        if (e.body && e.body !== e.title) {
-          const detail = doc.createElement('div');
-          detail.className = 'timeline-item-body';
-          detail.textContent = e.body;
-          li.appendChild(detail);
-        }
-        list.appendChild(li);
-      });
-      section.appendChild(list);
-      container.appendChild(section);
+
+    const list = doc.createElement('ul');
+    list.className = 'timeline-feed';
+
+    entries.forEach((e) => {
+      const li = doc.createElement('li');
+      li.className = 'timeline-item';
+      li.style.whiteSpace = 'pre-wrap';
+      li.style.lineHeight = '1.5';
+
+      // No icon - minimalist design
+
+      const text = doc.createElement('span');
+      text.textContent = e.title || e.summary || '';
+      li.appendChild(text);
+
+      if (e.body && e.body !== e.title) {
+        const details = doc.createElement('details');
+        details.className = 'timeline-item-details';
+        const summary = doc.createElement('summary');
+        summary.textContent = 'Show output';
+        summary.style.cursor = 'pointer';
+        summary.style.opacity = '0.7';
+        summary.style.fontSize = '0.9em';
+        summary.style.marginTop = '4px';
+        details.appendChild(summary);
+
+        const detailBody = doc.createElement('div');
+        detailBody.className = 'timeline-item-body';
+        detailBody.textContent = e.body;
+        detailBody.style.marginTop = '4px';
+        detailBody.style.padding = '8px';
+        detailBody.style.background = 'var(--bg-subtle, rgba(0,0,0,0.03))';
+        detailBody.style.borderRadius = '4px';
+        detailBody.style.fontFamily = 'monospace';
+        detailBody.style.fontSize = '0.9em';
+        detailBody.style.overflowX = 'auto';
+        details.appendChild(detailBody);
+
+        li.appendChild(details);
+      }
+
+      list.appendChild(li);
     });
+
+    container.appendChild(list);
     return container;
   }
 
-  renderStageLabel(stage) {
-    switch (stage) {
-      case 'plan': return 'Plan';
-      case 'act': return 'Act';
-      case 'edit': return 'Edit';
-      case 'verify': return 'Verify';
-      default: return 'Timeline';
-    }
-  }
+
 
   renderEntryIcon(doc, kind) {
     const span = doc.createElement('span');
     span.className = 'timeline-icon';
     switch (kind) {
-      case 'plan': span.textContent = '•'; break;
+      case 'thinking': span.textContent = '💭'; break;
       case 'command': span.textContent = '›'; break;
-      case 'test': span.textContent = '✓'; break;
+      case 'test': span.textContent = '🧪'; break;
       case 'file-change': span.textContent = '✎'; break;
       case 'final-message': span.textContent = '✓'; break;
       case 'error': span.textContent = '!'; break;
@@ -835,11 +846,7 @@ export default class DockRoot {
     newBtn.addEventListener('click', () => this.eventBus.emit('session:create'));
     pane.appendChild(newBtn);
 
-    const project = this.stateManager.get('projects.current');
-    const projectId = project ? project.id : null;
-    const allSessions = this.stateManager.get('sessions.list') || [];
-    const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
-
+    const sessions = this.stateManager.get('sessions.list') || [];
     const currentId = this.stateManager.get('sessions.currentId');
     if (!sessions.length) {
       const empty = document.createElement('div');

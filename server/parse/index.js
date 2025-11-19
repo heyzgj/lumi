@@ -4,18 +4,11 @@ const { parseCodexJsonOutput } = require('./codex-json');
 const { parseClaudeStreamJson } = require('./claude-stream-json');
 
 // ---------------------------------------------------------------------------
-// Timeline / Summary helpers (v1 minimal model)
+// Timeline / Summary helpers (v1 chronological model)
 // ---------------------------------------------------------------------------
 
-const TurnStage = {
-  PLAN: 'plan',
-  ACT: 'act',
-  EDIT: 'edit',
-  VERIFY: 'verify'
-};
-
 const EntryKind = {
-  PLAN: 'plan',
+  THINKING: 'thinking',
   COMMAND: 'command',
   FILE_CHANGE: 'file-change',
   TEST: 'test',
@@ -39,7 +32,7 @@ function stripFileCount(text = '') {
 }
 
 /**
- * Build a minimal timeline and summary from Chunk[]
+ * Build a linear, chronological timeline from Chunk[]
  * @param {Array} chunks raw chunk array
  * @param {Object} timing optional timing info { durationMs?: number }
  * @returns {{ summary: any, timeline: any[] }}
@@ -50,184 +43,157 @@ function buildTimelineFromChunks(chunks = [], timing = {}) {
   let counter = 0;
   const nextId = (kind) => `${kind || 'entry'}_${++counter}`;
 
-  // Plan (first thinking/todo-like chunk)
-  const planChunk = chunkArray.find((c) => c && c.type === 'thinking') || null;
-  if (planChunk && (planChunk.text || planChunk.resultSummary)) {
-    entries.push({
-      id: nextId(EntryKind.PLAN),
-      stage: TurnStage.PLAN,
-      kind: EntryKind.PLAN,
-      status: EntryStatus.DONE,
-      title: 'Plan',
-      body: planChunk.resultSummary || planChunk.text || '',
-      sourceChunkIds: planChunk.id ? [planChunk.id] : undefined
-    });
-  }
-
-  // Commands/logs — group into summary entries instead of raw stream
-  const runChunks = chunkArray.filter((c) => c && (c.type === 'run' || c.type === 'log'));
-  const runCommands = runChunks.filter((c) => c.type === 'run');
-  const runLogs = runChunks.filter((c) => c.type === 'log' && c.text).map((c) => c.text.trim()).filter(Boolean);
-
-  const pickLogs = (list) => list.slice(0, 8).join('\n') || undefined; // keep short; raw logs live elsewhere
-
+  // Helper to detect command types
   const isTestCommand = (cmd = '') => /(?:npm|pnpm|yarn)\s+test\b|pytest\b|go test\b/i.test(cmd);
-  const isSearchCommand = (cmd = '') => /\brg\b|\bgrep\b|\bfind\b|\bfd\b/i.test(cmd);
-  const isInspectCommand = (cmd = '') => /\bsed\b|\bcat\b|\bnl\b|\bhead\b|\btail\b/i.test(cmd);
-  const isNoiseCommand = (cmd = '') => /^\s*ls\b/i.test(cmd);
 
-  const testRuns = runCommands.filter((c) => isTestCommand(c.cmd));
-  const searchRuns = runCommands.filter((c) => isSearchCommand(c.cmd));
-  const inspectRuns = runCommands.filter((c) => isInspectCommand(c.cmd));
-  const otherRuns = runCommands.filter(
-    (c) => !isTestCommand(c.cmd) && !isSearchCommand(c.cmd) && !isInspectCommand(c.cmd) && !isNoiseCommand(c.cmd)
-  );
+  // Iterate chunks sequentially
+  for (let i = 0; i < chunkArray.length; i++) {
+    const c = chunkArray[i];
+    if (!c) continue;
 
-  if (searchRuns.length) {
-    const title = searchRuns[0].cmd || 'Searched project';
-    entries.push({
-      id: nextId(EntryKind.COMMAND),
-      stage: TurnStage.ACT,
-      kind: EntryKind.COMMAND,
-      status: EntryStatus.DONE,
-      title,
-      body: pickLogs(runLogs),
-      sourceChunkIds: searchRuns.map((c) => c.id).filter(Boolean)
-    });
+    if (c.type === 'thinking') {
+      if (c.text || c.resultSummary) {
+        entries.push({
+          id: nextId(EntryKind.THINKING),
+          kind: EntryKind.THINKING,
+          status: EntryStatus.DONE,
+          title: c.text || 'Thinking...',
+          body: c.resultSummary || undefined,
+          sourceChunkIds: c.id ? [c.id] : undefined
+        });
+      }
+    } else if (c.type === 'run') {
+      // Look ahead for logs/errors associated with this run
+      const logs = [];
+      let status = EntryStatus.DONE;
+      let errorMsg = null;
+
+      // Consume subsequent logs/errors until next non-log chunk
+      let j = i + 1;
+      while (j < chunkArray.length) {
+        const next = chunkArray[j];
+        if (next.type === 'log') {
+          if (next.text) logs.push(next.text);
+          j++;
+        } else if (next.type === 'error' && next.runId === c.id) {
+          // Error specifically linked to this run
+          status = EntryStatus.FAILED;
+          errorMsg = next.text;
+          j++;
+        } else {
+          break;
+        }
+      }
+      // Advance main loop
+      i = j - 1;
+
+      const kind = isTestCommand(c.cmd) ? EntryKind.TEST : EntryKind.COMMAND;
+      entries.push({
+        id: nextId(kind),
+        kind,
+        status,
+        title: c.cmd || 'Run command',
+        body: errorMsg ? `${errorMsg}\n${logs.join('\n')}` : logs.join('\n'),
+        sourceChunkIds: c.id ? [c.id] : undefined
+      });
+
+    } else if (c.type === 'edit') {
+      // Aggregate consecutive edits
+      const files = [c.file];
+      const sourceIds = c.id ? [c.id] : [];
+
+      let j = i + 1;
+      while (j < chunkArray.length) {
+        const next = chunkArray[j];
+        if (next.type === 'edit') {
+          files.push(next.file);
+          if (next.id) sourceIds.push(next.id);
+          j++;
+        } else {
+          break;
+        }
+      }
+      i = j - 1;
+
+      const uniqueFiles = Array.from(new Set(files.filter(Boolean)));
+      entries.push({
+        id: nextId(EntryKind.FILE_CHANGE),
+        kind: EntryKind.FILE_CHANGE,
+        status: EntryStatus.DONE,
+        title: uniqueFiles.length === 1
+          ? `Edited ${uniqueFiles[0]}`
+          : `Edited ${uniqueFiles.length} files`,
+        files: uniqueFiles,
+        sourceChunkIds: sourceIds
+      });
+
+    } else if (c.type === 'result') {
+      if (c.resultSummary || c.text) {
+        entries.push({
+          id: nextId(EntryKind.FINAL),
+          kind: EntryKind.FINAL,
+          status: EntryStatus.DONE,
+          title: 'Result',
+          body: stripFileCount(c.resultSummary || c.text || ''),
+          sourceChunkIds: c.id ? [c.id] : undefined
+        });
+      }
+    } else if (c.type === 'error') {
+      // Standalone error (not consumed by run)
+      entries.push({
+        id: nextId(EntryKind.ERROR),
+        kind: EntryKind.ERROR,
+        status: EntryStatus.FAILED,
+        title: 'Error',
+        body: c.message || c.text || '',
+        sourceChunkIds: c.id ? [c.id] : undefined
+      });
+    }
   }
 
-  if (inspectRuns.length) {
-    entries.push({
-      id: nextId(EntryKind.COMMAND),
-      stage: TurnStage.ACT,
-      kind: EntryKind.COMMAND,
-      status: EntryStatus.DONE,
-      title: 'Inspected files',
-      body: pickLogs(runLogs),
-      sourceChunkIds: inspectRuns.map((c) => c.id).filter(Boolean)
-    });
-  }
+  // --- TurnSummary Generation (Metadata) ---
 
-  if (otherRuns.length) {
-    const title = otherRuns[0].cmd || 'Run command';
-    entries.push({
-      id: nextId(EntryKind.COMMAND),
-      stage: TurnStage.ACT,
-      kind: EntryKind.COMMAND,
-      status: EntryStatus.DONE,
-      title,
-      body: pickLogs(runLogs),
-      sourceChunkIds: otherRuns.map((c) => c.id).filter(Boolean)
-    });
-  }
-
-  if (testRuns.length) {
-    const title = testRuns[0].cmd || 'Run tests';
-    entries.push({
-      id: nextId(EntryKind.TEST),
-      stage: TurnStage.VERIFY,
-      kind: EntryKind.TEST,
-      status: EntryStatus.DONE,
-      title,
-      body: pickLogs(runLogs),
-      sourceChunkIds: testRuns.map((c) => c.id).filter(Boolean)
-    });
-  }
-
-  // File changes
-  const editChunks = chunkArray.filter((c) => c && c.type === 'edit' && c.file && c.file !== 'unknown');
-  if (editChunks.length) {
-    const files = Array.from(
-      new Set(editChunks.map((c) => (c.file || '').trim()).filter(Boolean))
-    );
-    entries.push({
-      id: nextId(EntryKind.FILE_CHANGE),
-      stage: TurnStage.EDIT,
-      kind: EntryKind.FILE_CHANGE,
-      status: EntryStatus.DONE,
-      title: files.length ? `Edited ${files.length} file(s)` : 'Modified code',
-      files,
-      body: files.join('\n') || undefined,
-      sourceChunkIds: editChunks.map((c) => c.id).filter(Boolean)
-    });
-  }
-
-  // Final message
-  const resultChunk = [...chunkArray].reverse().find((c) => c && c.type === 'result');
-  if (resultChunk && (resultChunk.resultSummary || resultChunk.text)) {
-    entries.push({
-      id: nextId(EntryKind.FINAL),
-      stage: TurnStage.VERIFY,
-      kind: EntryKind.FINAL,
-      status: EntryStatus.DONE,
-      title: 'Result',
-      body: stripFileCount(resultChunk.resultSummary || resultChunk.text || ''),
-      sourceChunkIds: resultChunk.id ? [resultChunk.id] : undefined
-    });
-  }
-
-  // Error
-  const errorChunk = chunkArray.find((c) => c && c.type === 'error');
-  if (errorChunk && (errorChunk.message || errorChunk.text)) {
-    entries.push({
-      id: nextId(EntryKind.ERROR),
-      stage: TurnStage.VERIFY,
-      kind: EntryKind.ERROR,
-      status: EntryStatus.FAILED,
-      title: 'Error',
-      body: errorChunk.message || errorChunk.text || '',
-      sourceChunkIds: errorChunk.id ? [errorChunk.id] : undefined
-    });
-  }
-
-  // Summary
-  const hasError = entries.some((e) => e.kind === EntryKind.ERROR);
+  const hasError = entries.some((e) => e.status === EntryStatus.FAILED || e.kind === EntryKind.ERROR);
   const testEntries = entries.filter((e) => e.kind === EntryKind.TEST);
 
-  let testsStatus = 'not_run';
+  let testsStatus = null; // Default to null (don't show)
   if (testEntries.length) {
-    testsStatus = hasError ? 'failed' : 'passed'; // v1 heuristic
+    // If any test command failed, we consider tests failed
+    const anyTestFailed = testEntries.some(e => e.status === EntryStatus.FAILED);
+    testsStatus = anyTestFailed ? 'failed' : 'passed';
   }
 
   let status = 'success';
   if (hasError) status = 'failed';
 
-  const hasCommand = entries.some((e) => e.kind === EntryKind.COMMAND || e.kind === EntryKind.TEST);
-  let hasEdit = entries.some((e) => e.kind === EntryKind.FILE_CHANGE);
+  const commandCount = entries.filter((e) => e.kind === EntryKind.COMMAND || e.kind === EntryKind.TEST).length;
+  const editEntries = entries.filter((e) => e.kind === EntryKind.FILE_CHANGE);
+  const fileCount = new Set(editEntries.flatMap(e => e.files || [])).size;
 
-  // Heuristic: if final result summary clearly describes edits (e.g., starts with "Updated"),
-  // treat this turn as having edits even when we don't yet have explicit edit chunks.
-  const resultChunk = [...chunkArray].reverse().find((c) => c && c.type === 'result');
-  const resultText = resultChunk && (resultChunk.resultSummary || resultChunk.text || '');
-  if (!hasEdit && resultText) {
-    const t = String(resultText);
-    if (/^\s*(Updated|Modified|Refactored|Renamed)\b/i.test(t)) {
-      hasEdit = true;
-    }
-  }
-
-  let title = 'Ran assistant once';
-  if (hasCommand && hasEdit) title = 'Ran command and modified files';
-  else if (hasEdit) title = 'Modified files';
-  else if (hasCommand) title = 'Ran command';
+  // Title Heuristic - simplified to reduce noise
+  let title = null;
+  // Only show title if it adds value beyond "Ran command"
+  if (hasError) title = 'Execution failed';
+  else if (testsStatus === 'failed') title = 'Tests failed';
 
   const summary = {
     status,
     title,
     meta: {
-      commandCount: entries.filter((e) => e.kind === EntryKind.COMMAND || e.kind === EntryKind.TEST).length,
       durationMs: typeof timing.durationMs === 'number' ? timing.durationMs : undefined,
       testsStatus
     },
     bullets: []
   };
 
-  if (resultChunk && (resultChunk.resultSummary || resultChunk.text)) {
-    let text = stripFileCount(resultChunk.resultSummary || resultChunk.text);
-    if (text) summary.bullets.push(text.slice(0, 200));
+  // Extract bullets from final result or edits
+  const finalEntry = entries.findLast(e => e.kind === EntryKind.FINAL);
+  if (finalEntry && finalEntry.body) {
+    summary.bullets.push(finalEntry.body.slice(0, 200));
   }
-  if (testsStatus === 'not_run') {
-    summary.bullets.push('No automated tests were run');
+
+  if (testsStatus === 'not_run' && commandCount > 0) {
+    // Optional: hint about tests
   }
 
   return { summary, timeline: entries };
@@ -256,7 +222,6 @@ module.exports = {
   parseCodexJsonOutput,
   parseClaudeStreamJson,
   buildTimelineFromChunks,
-  TurnStage,
   EntryKind,
   EntryStatus
 };

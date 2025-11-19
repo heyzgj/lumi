@@ -15,6 +15,16 @@ function codexEventToChunks(event, stamp) {
   };
   if (!event || typeof event !== 'object') return output;
 
+  // Filter out noise events that shouldn't appear in UI
+  const noiseEvents = ['thread.started', 'thread.completed', 'turn.started', 'turn.completed'];
+  if (noiseEvents.includes(event.type)) {
+    return output;
+  }
+  // Also filter item.started unless it's command_execution (which we handle below)
+  if (event.type === 'item.started' && event.item?.type !== 'command_execution') {
+    return output;
+  }
+
   if (event.type === 'item.completed' && event.item?.type === 'reasoning') {
     if (event.item.text) {
       output.chunks.push(

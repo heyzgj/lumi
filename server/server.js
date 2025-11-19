@@ -184,7 +184,7 @@ async function resolveCLIName(primary, fallbacks = []) {
     try {
       const res = await runCommand(name, ['--version'], { timeout: 3000 });
       if (res && res.exitCode === 0) return name;
-    } catch (_) {}
+    } catch (_) { }
   }
   return null;
 }
@@ -516,7 +516,7 @@ app.post('/execute/stream', async (req, res) => {
   };
   const finish = (payload = {}) => {
     writeEvent({ type: 'done', ...payload });
-    try { res.end(); } catch (_) {}
+    try { res.end(); } catch (_) { }
   };
 
   if (!context || !context.intent) {
@@ -556,7 +556,7 @@ app.post('/execute/stream', async (req, res) => {
   let activeProc = null;
   req.on('close', () => {
     if (activeProc) {
-      try { activeProc.kill('SIGKILL'); } catch (_) {}
+      try { activeProc.kill('SIGKILL'); } catch (_) { }
     }
   });
 
@@ -624,13 +624,13 @@ function runCommand(command, args = [], options = {}) {
     proc.stdout.on('data', (data) => {
       const chunk = data.toString();
       stdout += chunk;
-      try { log(`[stdout] ${chunk.slice(0, 2000)}`); } catch (_) {}
+      try { log(`[stdout] ${chunk.slice(0, 2000)}`); } catch (_) { }
     });
 
     proc.stderr.on('data', (data) => {
       const chunk = data.toString();
       stderr += chunk;
-      try { log(`[stderr] ${chunk.slice(0, 2000)}`); } catch (_) {}
+      try { log(`[stderr] ${chunk.slice(0, 2000)}`); } catch (_) { }
     });
 
     proc.on('error', (error) => {
@@ -991,7 +991,8 @@ async function streamCodex(context, screenshotPath, execOptions = {}, emit = {})
 
   log('--- Codex stream ended ---');
 
-  const outputPayload = aggregatedText.join('\n') || stdoutBuffer;
+  // In --json mode, only use aggregatedText (no fallback to raw stdout)
+  const outputPayload = aggregatedText.join('\n');
   const lumiResult = parseToLumiResult('codex', outputPayload);
   if (summary) {
     if (!lumiResult.summary) lumiResult.summary = {};

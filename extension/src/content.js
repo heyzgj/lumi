@@ -114,26 +114,14 @@ function bootstrap() {
   const blocked = HOST_IFRAME_BLOCKLIST.test(window.location.hostname);
   stateManager.set('ui.viewport.useIframeStage', false);
 
-  // Re-run ensureDefaultSession when project changes to ensure we have a valid session for the new context
-  stateManager.subscribe('projects.current', () => {
-    ensureDefaultSession();
-  });
-
   ensureDefaultSession();
 
   function ensureDefaultSession() {
-    const project = stateManager.get('projects.current');
-    const projectId = project ? project.id : null;
-    const allSessions = stateManager.get('sessions.list') || [];
-    
-    // Filter sessions for current project (strict match: null matches null)
-    const projectSessions = allSessions.filter(s => s.projectId === projectId);
-
-    if (projectSessions.length === 0) {
+    const sessions = stateManager.get('sessions.list') || [];
+    if (!Array.isArray(sessions) || sessions.length === 0) {
       const id = generateSessionId();
       const session = {
         id,
-        projectId,
         title: 'New Session',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -144,16 +132,15 @@ function bootstrap() {
         manualTitle: false
       };
       stateManager.batch({
-        'sessions.list': [session, ...allSessions],
+        'sessions.list': [session],
         'sessions.currentId': id
       });
-    } else {
-      // If currentId is not in the project sessions, switch to the first one
-      const currentId = stateManager.get('sessions.currentId');
-      const currentBelongs = projectSessions.some(s => s.id === currentId);
-      if (!currentId || !currentBelongs) {
-        stateManager.set('sessions.currentId', projectSessions[0].id);
-      }
+      return;
+    }
+
+    const currentId = stateManager.get('sessions.currentId');
+    if (!currentId) {
+      stateManager.set('sessions.currentId', sessions[0].id);
     }
   }
 
@@ -596,14 +583,11 @@ function bootstrap() {
     });
 
     eventBus.on('session:create', () => {
-      const project = stateManager.get('projects.current');
-      const projectId = project ? project.id : null;
       const tokens = selectionToTokens();
       const titleSource = dockRoot ? dockRoot.getInputValue() : '';
       const id = generateSessionId();
       const session = {
         id,
-        projectId,
         title: titleSource.trim() || 'New Session',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -619,6 +603,7 @@ function bootstrap() {
         'sessions.currentId': id,
         'ui.dockTab': 'chat'
       });
+      persistSessions();
       if (dockRoot) dockRoot.clearInput();
     });
 
@@ -629,6 +614,7 @@ function bootstrap() {
         'sessions.currentId': id,
         'ui.dockTab': 'chat'
       });
+      persistSessions();
     });
 
     eventBus.on('session:rename', ({ id, title }) => {
@@ -639,6 +625,7 @@ function bootstrap() {
         session.updatedAt = Date.now();
         session.manualTitle = true;
       });
+      persistSessions();
     });
 
     eventBus.on('session:delete', (id) => {
@@ -657,6 +644,7 @@ function bootstrap() {
         stateManager.batch(updates);
         if (!nextId) ensureDefaultSession();
       }
+      persistSessions();
     });
 
     // Context tag click events (stage-aware highlight refresh)

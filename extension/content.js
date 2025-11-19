@@ -2044,9 +2044,12 @@
     padding-left: 0;
   }
   .msg.user {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: color-mix(in srgb, var(--dock-fg) 3%, transparent);
+    border: none;
+    border-left: 3px solid color-mix(in srgb, var(--dock-fg) 25%, transparent);
+    border-radius: 0;
+    padding-left: 14px;
+    padding-right: 8px;
   }
   
   .msg .summary {
@@ -2139,14 +2142,20 @@
   }
   .timeline-feed {
     margin: 0;
-    padding-left: 16px;
-    list-style-type: disc;
+    padding-left: 0;
+    list-style-type: none;
     color: var(--text);
     font-size: 13px;
   }
   .timeline-feed .timeline-item {
-    margin: 4px 0;
+    margin: 8px 0;
+    padding-left: 12px;
+    border-left: 1px solid transparent;
     color: var(--text);
+    transition: border-color 0.2s ease;
+  }
+  .timeline-feed .timeline-item:hover {
+    border-left-color: var(--border);
   }
   .timeline-placeholder {
     font-size: 12px;
@@ -2175,19 +2184,26 @@
     animation: dock-dots 1s steps(3, end) infinite;
   }
   .assistant-summary {
-    margin-top: 8px;
+    margin-top: 12px;
     font-size: 13px;
     color: var(--text);
   }
+  .assistant-summary .summary-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    opacity: 0.7;
+  }
   .assistant-summary .summary-title {
     font-weight: 400;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     font-size: 13px;
   }
   .assistant-summary .summary-body {
     color: var(--text);
     font-weight: 400;
     font-size: 13px;
+    line-height: 1.6;
   }
   .timeline-toggle {
     background: transparent;
@@ -2715,6 +2731,197 @@
     return out;
   }
 
+  /**
+   * Client-side timeline builder for streaming updates
+   * Ported from server/parse/index.js to allow real-time UI updates
+   */
+
+  const EntryKind = {
+      THINKING: 'thinking',
+      COMMAND: 'command',
+      FILE_CHANGE: 'file-change',
+      TEST: 'test',
+      FINAL: 'final-message',
+      ERROR: 'error'
+  };
+
+  const EntryStatus = {
+      DONE: 'done',
+      FAILED: 'failed'
+  };
+
+  function stripFileCount(text = '') {
+      try {
+          return String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
+      } catch (_) {
+          return text;
+      }
+  }
+
+  /**
+   * Build a linear, chronological timeline from Chunk[]
+   * @param {Array} chunks raw chunk array
+   * @param {Object} timing optional timing info { durationMs?: number }
+   * @returns {{ summary: any, timeline: any[] }}
+   */
+  function buildTimelineFromChunks(chunks = [], timing = {}) {
+      const entries = [];
+      const chunkArray = Array.isArray(chunks) ? chunks : [];
+      let counter = 0;
+      const nextId = (kind) => `${kind || 'entry'}_${++counter}`;
+
+      // Helper to detect command types
+      const isTestCommand = (cmd = '') => /(?:npm|pnpm|yarn)\s+test\b|pytest\b|go test\b/i.test(cmd);
+
+      // Iterate chunks sequentially
+      for (let i = 0; i < chunkArray.length; i++) {
+          const c = chunkArray[i];
+          if (!c) continue;
+
+          if (c.type === 'thinking') {
+              if (c.text || c.resultSummary) {
+                  entries.push({
+                      id: nextId(EntryKind.THINKING),
+                      kind: EntryKind.THINKING,
+                      status: EntryStatus.DONE,
+                      title: c.text || 'Thinking...',
+                      body: c.resultSummary || undefined,
+                      sourceChunkIds: c.id ? [c.id] : undefined
+                  });
+              }
+          } else if (c.type === 'run') {
+              // Look ahead for logs/errors associated with this run
+              const logs = [];
+              let status = EntryStatus.DONE;
+              let errorMsg = null;
+
+              // Consume subsequent logs/errors until next non-log chunk
+              let j = i + 1;
+              while (j < chunkArray.length) {
+                  const next = chunkArray[j];
+                  if (next.type === 'log') {
+                      if (next.text) logs.push(next.text);
+                      j++;
+                  } else if (next.type === 'error' && next.runId === c.id) {
+                      // Error specifically linked to this run
+                      status = EntryStatus.FAILED;
+                      errorMsg = next.text;
+                      j++;
+                  } else {
+                      break;
+                  }
+              }
+              // Advance main loop
+              i = j - 1;
+
+              const kind = isTestCommand(c.cmd) ? EntryKind.TEST : EntryKind.COMMAND;
+              entries.push({
+                  id: nextId(kind),
+                  kind,
+                  status,
+                  title: c.cmd || 'Run command',
+                  body: errorMsg ? `${errorMsg}\n${logs.join('\n')}` : logs.join('\n'),
+                  sourceChunkIds: c.id ? [c.id] : undefined
+              });
+
+          } else if (c.type === 'edit') {
+              // Aggregate consecutive edits
+              const files = [c.file];
+              const sourceIds = c.id ? [c.id] : [];
+
+              let j = i + 1;
+              while (j < chunkArray.length) {
+                  const next = chunkArray[j];
+                  if (next.type === 'edit') {
+                      files.push(next.file);
+                      if (next.id) sourceIds.push(next.id);
+                      j++;
+                  } else {
+                      break;
+                  }
+              }
+              i = j - 1;
+
+              const uniqueFiles = Array.from(new Set(files.filter(Boolean)));
+              entries.push({
+                  id: nextId(EntryKind.FILE_CHANGE),
+                  kind: EntryKind.FILE_CHANGE,
+                  status: EntryStatus.DONE,
+                  title: uniqueFiles.length === 1
+                      ? `Edited ${uniqueFiles[0]}`
+                      : `Edited ${uniqueFiles.length} files`,
+                  files: uniqueFiles,
+                  sourceChunkIds: sourceIds
+              });
+
+          } else if (c.type === 'result') {
+              if (c.resultSummary || c.text) {
+                  entries.push({
+                      id: nextId(EntryKind.FINAL),
+                      kind: EntryKind.FINAL,
+                      status: EntryStatus.DONE,
+                      title: 'Result',
+                      body: stripFileCount(c.resultSummary || c.text || ''),
+                      sourceChunkIds: c.id ? [c.id] : undefined
+                  });
+              }
+          } else if (c.type === 'error') {
+              // Standalone error (not consumed by run)
+              entries.push({
+                  id: nextId(EntryKind.ERROR),
+                  kind: EntryKind.ERROR,
+                  status: EntryStatus.FAILED,
+                  title: 'Error',
+                  body: c.message || c.text || '',
+                  sourceChunkIds: c.id ? [c.id] : undefined
+              });
+          }
+      }
+
+      // --- TurnSummary Generation (Metadata) ---
+
+      const hasError = entries.some((e) => e.status === EntryStatus.FAILED || e.kind === EntryKind.ERROR);
+      const testEntries = entries.filter((e) => e.kind === EntryKind.TEST);
+
+      let testsStatus = null; // Default to null (don't show)
+      if (testEntries.length) {
+          // If any test command failed, we consider tests failed
+          const anyTestFailed = testEntries.some(e => e.status === EntryStatus.FAILED);
+          testsStatus = anyTestFailed ? 'failed' : 'passed';
+      }
+
+      let status = 'success';
+      if (hasError) status = 'failed';
+
+      entries.filter((e) => e.kind === EntryKind.COMMAND || e.kind === EntryKind.TEST).length;
+      const editEntries = entries.filter((e) => e.kind === EntryKind.FILE_CHANGE);
+      new Set(editEntries.flatMap(e => e.files || [])).size;
+
+      // Title Heuristic - simplified to reduce noise
+      let title = null;
+      // Only show title if it adds value beyond "Ran command"
+      if (hasError) title = 'Execution failed';
+      else if (testsStatus === 'failed') title = 'Tests failed';
+
+      const summary = {
+          status,
+          title,
+          meta: {
+              durationMs: typeof timing.durationMs === 'number' ? timing.durationMs : undefined,
+              testsStatus
+          },
+          bullets: []
+      };
+
+      // Extract bullets from final result or edits
+      const finalEntry = entries.findLast(e => e.kind === EntryKind.FINAL);
+      if (finalEntry && finalEntry.body) {
+          summary.bullets.push(finalEntry.body.slice(0, 200));
+      }
+
+      return { summary, timeline: entries };
+  }
+
   class DockRoot {
     constructor(eventBus, stateManager) {
       this.eventBus = eventBus;
@@ -3136,12 +3343,7 @@
       if (!this.chatPane) return;
       const pane = this.chatPane;
       pane.innerHTML = '';
-
-      const project = this.stateManager.get('projects.current');
-      const projectId = project ? project.id : null;
-      const allSessions = this.stateManager.get('sessions.list') || [];
-      const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
-
+      const sessions = this.stateManager.get('sessions.list') || [];
       const currentId = this.stateManager.get('sessions.currentId');
       const session = sessions.find(s => s.id === currentId) || sessions[0];
       if (!session || session.transcript.length === 0) {
@@ -3255,16 +3457,19 @@
       const container = doc.createElement('div');
       container.className = 'assistant-summary';
 
-      // Meta line (files / commands / duration / tests)
+      // Meta line (duration / tests only)
       if (turnSummary?.meta) {
         const metaLine = doc.createElement('div');
         metaLine.className = 'summary-meta';
         const parts = [];
-        if (typeof turnSummary.meta.commandCount === 'number') parts.push(`${turnSummary.meta.commandCount} command${turnSummary.meta.commandCount === 1 ? '' : 's'}`);
         if (typeof turnSummary.meta.durationMs === 'number') parts.push(this.formatDuration(turnSummary.meta.durationMs));
         if (turnSummary.meta.testsStatus) parts.push(`tests ${turnSummary.meta.testsStatus}`);
-        metaLine.textContent = parts.filter(Boolean).join(' · ');
-        if (metaLine.textContent) container.appendChild(metaLine);
+
+        const text = parts.filter(Boolean).join(' · ');
+        if (text) {
+          metaLine.textContent = text;
+          container.appendChild(metaLine);
+        }
       }
 
       if (msg.streaming && !msg.done) {
@@ -3293,8 +3498,17 @@
     }
 
     renderAssistantTimeline(msg, state) {
-      const timelineEntries = Array.isArray(msg.timelineEntries) ? msg.timelineEntries : [];
+      let timelineEntries = Array.isArray(msg.timelineEntries) ? msg.timelineEntries : [];
       const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+
+      // If no server-provided entries yet (streaming), build them client-side
+      if (timelineEntries.length === 0 && chunks.length > 0) {
+        const built = buildTimelineFromChunks(chunks);
+        if (built && built.timeline) {
+          timelineEntries = built.timeline;
+        }
+      }
+
       const hasTimeline = timelineEntries.length > 0 || chunks.length > 0;
       if (!hasTimeline && state === 'done') return null;
       const doc = this.shadow?.ownerDocument || document;
@@ -3322,9 +3536,7 @@
         placeholder.textContent = 'Execution events will appear here once processing begins.';
         body.appendChild(placeholder);
       }
-      if (chunks.length) {
-        body.appendChild(this.renderRawLogs(chunks));
-      }
+      // Raw logs removed per user request
       wrapper.appendChild(body);
       return wrapper;
     }
@@ -3450,59 +3662,64 @@
       const doc = this.shadow?.ownerDocument || document;
       const container = doc.createElement('div');
       container.className = 'timeline-entries';
-      const stageOrder = ['plan', 'act', 'edit', 'verify'];
-      const groups = stageOrder.map((stage) => ({ stage, rows: entries.filter((e) => e && e.stage === stage) }));
-      groups.forEach(({ stage, rows }) => {
-        if (!rows.length) return;
-        const section = doc.createElement('div');
-        section.className = 'timeline-stage';
-        const header = doc.createElement('div');
-        header.className = 'timeline-stage-header';
-        header.textContent = this.renderStageLabel(stage);
-        section.appendChild(header);
-        const list = doc.createElement('ul');
-        list.className = 'timeline-feed';
-        rows.forEach((e) => {
-          const li = doc.createElement('li');
-          li.className = 'timeline-item';
-          li.style.whiteSpace = 'pre-wrap';
-          li.style.lineHeight = '1.5';
-          const icon = this.renderEntryIcon(doc, e.kind);
-          if (icon) li.appendChild(icon);
-          const text = doc.createElement('span');
-          text.textContent = e.title || e.summary || e.body || '';
-          li.appendChild(text);
-          if (e.body && e.body !== e.title) {
-            const detail = doc.createElement('div');
-            detail.className = 'timeline-item-body';
-            detail.textContent = e.body;
-            li.appendChild(detail);
-          }
-          list.appendChild(li);
-        });
-        section.appendChild(list);
-        container.appendChild(section);
+
+      const list = doc.createElement('ul');
+      list.className = 'timeline-feed';
+
+      entries.forEach((e) => {
+        const li = doc.createElement('li');
+        li.className = 'timeline-item';
+        li.style.whiteSpace = 'pre-wrap';
+        li.style.lineHeight = '1.5';
+
+        // No icon - minimalist design
+
+        const text = doc.createElement('span');
+        text.textContent = e.title || e.summary || '';
+        li.appendChild(text);
+
+        if (e.body && e.body !== e.title) {
+          const details = doc.createElement('details');
+          details.className = 'timeline-item-details';
+          const summary = doc.createElement('summary');
+          summary.textContent = 'Show output';
+          summary.style.cursor = 'pointer';
+          summary.style.opacity = '0.7';
+          summary.style.fontSize = '0.9em';
+          summary.style.marginTop = '4px';
+          details.appendChild(summary);
+
+          const detailBody = doc.createElement('div');
+          detailBody.className = 'timeline-item-body';
+          detailBody.textContent = e.body;
+          detailBody.style.marginTop = '4px';
+          detailBody.style.padding = '8px';
+          detailBody.style.background = 'var(--bg-subtle, rgba(0,0,0,0.03))';
+          detailBody.style.borderRadius = '4px';
+          detailBody.style.fontFamily = 'monospace';
+          detailBody.style.fontSize = '0.9em';
+          detailBody.style.overflowX = 'auto';
+          details.appendChild(detailBody);
+
+          li.appendChild(details);
+        }
+
+        list.appendChild(li);
       });
+
+      container.appendChild(list);
       return container;
     }
 
-    renderStageLabel(stage) {
-      switch (stage) {
-        case 'plan': return 'Plan';
-        case 'act': return 'Act';
-        case 'edit': return 'Edit';
-        case 'verify': return 'Verify';
-        default: return 'Timeline';
-      }
-    }
+
 
     renderEntryIcon(doc, kind) {
       const span = doc.createElement('span');
       span.className = 'timeline-icon';
       switch (kind) {
-        case 'plan': span.textContent = '•'; break;
+        case 'thinking': span.textContent = '💭'; break;
         case 'command': span.textContent = '›'; break;
-        case 'test': span.textContent = '✓'; break;
+        case 'test': span.textContent = '🧪'; break;
         case 'file-change': span.textContent = '✎'; break;
         case 'final-message': span.textContent = '✓'; break;
         case 'error': span.textContent = '!'; break;
@@ -3545,11 +3762,7 @@
       newBtn.addEventListener('click', () => this.eventBus.emit('session:create'));
       pane.appendChild(newBtn);
 
-      const project = this.stateManager.get('projects.current');
-      const projectId = project ? project.id : null;
-      const allSessions = this.stateManager.get('sessions.list') || [];
-      const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
-
+      const sessions = this.stateManager.get('sessions.list') || [];
       const currentId = this.stateManager.get('sessions.currentId');
       if (!sessions.length) {
         const empty = document.createElement('div');
@@ -6089,26 +6302,14 @@
     const viewportBar = new TopViewportBar(eventBus, stateManager);
     stateManager.set('ui.viewport.useIframeStage', false);
 
-    // Re-run ensureDefaultSession when project changes to ensure we have a valid session for the new context
-    stateManager.subscribe('projects.current', () => {
-      ensureDefaultSession();
-    });
-
     ensureDefaultSession();
 
     function ensureDefaultSession() {
-      const project = stateManager.get('projects.current');
-      const projectId = project ? project.id : null;
-      const allSessions = stateManager.get('sessions.list') || [];
-      
-      // Filter sessions for current project (strict match: null matches null)
-      const projectSessions = allSessions.filter(s => s.projectId === projectId);
-
-      if (projectSessions.length === 0) {
+      const sessions = stateManager.get('sessions.list') || [];
+      if (!Array.isArray(sessions) || sessions.length === 0) {
         const id = generateSessionId();
         const session = {
           id,
-          projectId,
           title: 'New Session',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -6119,16 +6320,15 @@
           manualTitle: false
         };
         stateManager.batch({
-          'sessions.list': [session, ...allSessions],
+          'sessions.list': [session],
           'sessions.currentId': id
         });
-      } else {
-        // If currentId is not in the project sessions, switch to the first one
-        const currentId = stateManager.get('sessions.currentId');
-        const currentBelongs = projectSessions.some(s => s.id === currentId);
-        if (!currentId || !currentBelongs) {
-          stateManager.set('sessions.currentId', projectSessions[0].id);
-        }
+        return;
+      }
+
+      const currentId = stateManager.get('sessions.currentId');
+      if (!currentId) {
+        stateManager.set('sessions.currentId', sessions[0].id);
       }
     }
 
@@ -6560,14 +6760,11 @@
       });
 
       eventBus.on('session:create', () => {
-        const project = stateManager.get('projects.current');
-        const projectId = project ? project.id : null;
         const tokens = selectionToTokens();
         const titleSource = dockRoot ? dockRoot.getInputValue() : '';
         const id = generateSessionId();
         const session = {
           id,
-          projectId,
           title: titleSource.trim() || 'New Session',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -6583,6 +6780,7 @@
           'sessions.currentId': id,
           'ui.dockTab': 'chat'
         });
+        persistSessions();
         if (dockRoot) dockRoot.clearInput();
       });
 
@@ -6593,6 +6791,7 @@
           'sessions.currentId': id,
           'ui.dockTab': 'chat'
         });
+        persistSessions();
       });
 
       eventBus.on('session:rename', ({ id, title }) => {
@@ -6603,6 +6802,7 @@
           session.updatedAt = Date.now();
           session.manualTitle = true;
         });
+        persistSessions();
       });
 
       eventBus.on('session:delete', (id) => {
@@ -6621,6 +6821,7 @@
           stateManager.batch(updates);
           if (!nextId) ensureDefaultSession();
         }
+        persistSessions();
       });
 
       // Context tag click events (stage-aware highlight refresh)
