@@ -283,6 +283,116 @@ async function forwardToServer(engine, context) {
   }
 }
 
+async function forwardStreamToServer(engine, context, tabId, streamId) {
+  if (!tabId) {
+    console.warn('[LUMI] Missing tabId for stream request');
+    return;
+  }
+
+  const emitToTab = (payload) => {
+    try {
+      chrome.tabs.sendMessage(tabId, payload, () => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          console.debug('[LUMI] stream sendMessage lastError (non-fatal):', err.message);
+        }
+      });
+    } catch (error) {
+      console.debug('[LUMI] stream sendMessage threw (non-fatal):', error?.message);
+    }
+  };
+
+  const emitError = (message) => {
+    emitToTab({ type: 'STREAM_ERROR', streamId, error: message });
+  };
+
+  const emitDone = (result) => {
+    emitToTab({ type: 'STREAM_DONE', streamId, result });
+  };
+
+  const emitChunk = (chunk) => {
+    emitToTab({ type: 'STREAM_CHUNK', streamId, chunk });
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3900000); // 65 minutes
+
+  try {
+    const response = await fetch(`${serverUrl}/execute/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ engine, context }),
+      signal: controller.signal
+    });
+
+    if (!response.ok || !response.body) {
+      const errorData = await response.json().catch(() => ({}));
+      const message = errorData.error || `Server returned ${response.status}`;
+      emitError(message);
+      emitDone({ success: false, error: message, timestamp: Date.now() });
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const handleEvent = (raw) => {
+      if (!raw) return;
+      const dataLines = raw
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.replace(/^data:\s?/, ''))
+        .join('\n');
+      if (!dataLines.trim()) return;
+      let payload;
+      try {
+        payload = JSON.parse(dataLines);
+      } catch (error) {
+        console.warn('[LUMI] Failed to parse SSE payload:', error?.message);
+        return;
+      }
+      const { type } = payload || {};
+      if (type === 'chunk' && payload.chunk) {
+        emitChunk(payload.chunk);
+        return;
+      }
+      if (type === 'error') {
+        emitError(payload.error || 'Stream error');
+        return;
+      }
+      if (type === 'done') {
+        emitDone(payload);
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep = buffer.indexOf('\n\n');
+      while (sep !== -1) {
+        const raw = buffer.slice(0, sep).trim();
+        buffer = buffer.slice(sep + 2);
+        handleEvent(raw);
+        sep = buffer.indexOf('\n\n');
+      }
+    }
+
+    if (buffer.trim()) {
+      handleEvent(buffer.trim());
+    }
+  } catch (error) {
+    console.error('[LUMI] STREAM fetch failed:', error?.message);
+    emitError(error?.message || 'Failed to connect to stream');
+    emitDone({ success: false, error: error?.message || 'Stream aborted', timestamp: Date.now() });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function handleApplySettings(payload = {}) {
   const merged = mergeSettings(payload);
   const projects = sanitizeProjects(merged.projects);
@@ -354,6 +464,24 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
           timestamp: Date.now()
         });
       });
+    return true;
+  }
+
+  if (type === 'EXECUTE_STREAM') {
+    const { engine, context, streamId } = message.payload || {};
+    const tabId = sender?.tab?.id;
+    bgLog('EXECUTE_STREAM', { engine, intent: context?.intent?.slice?.(0, 60), streamId });
+    forwardStreamToServer(engine, context, tabId, streamId).catch((error) => {
+      console.error('[LUMI] EXECUTE_STREAM failed:', error);
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'STREAM_ERROR',
+          streamId,
+          error: error?.message || 'Stream execution failed'
+        });
+      } catch (_) {}
+    });
+    sendResponse({ success: true });
     return true;
   }
 

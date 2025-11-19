@@ -23,6 +23,9 @@ const defaultConfig = {
   workingDirectory: process.cwd(),
   serverUrl: 'http://127.0.0.1:3456',
   defaultEngine: 'codex',
+  features: {
+    useJsonTimeline: false
+  },
   codex: {
     model: 'gpt-5-codex-high',
     sandbox: 'workspace-write',
@@ -74,6 +77,10 @@ function normalizeConfig(raw = {}) {
   const merged = {
     ...defaultConfig,
     ...raw,
+    features: {
+      ...defaultConfig.features,
+      ...(raw.features || {})
+    },
     codex: {
       ...defaultConfig.codex,
       ...(raw.codex || {})
@@ -105,6 +112,10 @@ function mergeConfig(current, updates = {}) {
   const candidate = {
     ...current,
     ...updates,
+    features: {
+      ...current.features,
+      ...(updates.features || {})
+    },
     codex: {
       ...current.codex,
       ...(updates.codex || {})
@@ -361,6 +372,7 @@ app.get('/health', (req, res) => {
       cliCapabilities,
       codex: config.codex,
       claude: config.claude,
+      features: config.features || {},
       projects: publicConfig().projects
     }
   });
@@ -475,6 +487,118 @@ app.post('/execute', async (req, res) => {
   }
 });
 
+app.post('/execute/stream', async (req, res) => {
+  const startTime = Date.now();
+  const { engine, context } = req.body || {};
+
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  const writeEvent = (payload) => {
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch (error) {
+      logError('Failed to write SSE payload:', error.message);
+    }
+  };
+  const sendChunk = (chunk) => {
+    if (!chunk) return;
+    writeEvent({ type: 'chunk', chunk });
+  };
+  const sendError = (message) => {
+    if (!message) return;
+    writeEvent({ type: 'error', error: message });
+  };
+  const finish = (payload = {}) => {
+    writeEvent({ type: 'done', ...payload });
+    try { res.end(); } catch (_) {}
+  };
+
+  if (!context || !context.intent) {
+    sendError('Invalid request: missing intent');
+    finish({ success: false, error: 'Invalid request: missing intent', timestamp: Date.now() });
+    return;
+  }
+
+  const { project, cwd } = resolveProjectForUrl(context.pageUrl);
+  const hasProjects = Array.isArray(config.projects) && config.projects.length > 0;
+
+  if (hasProjects && !project) {
+    const message = 'No configured project matches the current page. Update LUMI settings to map this host.';
+    logError('Project match failed for URL (stream):', context.pageUrl);
+    sendError(message);
+    finish({
+      success: false,
+      error: message,
+      code: 'NO_PROJECT_MATCH',
+      host: (() => {
+        try {
+          return new URL(context.pageUrl).host;
+        } catch (_) {
+          return null;
+        }
+      })(),
+      projects: config.projects,
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  const workingDirectory = cwd || config.workingDirectory;
+  log('Resolved working directory (stream):', workingDirectory, 'project:', project?.name || 'default');
+
+  let screenshotPath = null;
+  let activeProc = null;
+  req.on('close', () => {
+    if (activeProc) {
+      try { activeProc.kill('SIGKILL'); } catch (_) {}
+    }
+  });
+
+  try {
+    if (context.screenshot) {
+      const requestId = `stream_${Date.now()}`;
+      screenshotPath = await saveScreenshot(context.screenshot, requestId);
+    }
+
+    const execOptions = { cwd: workingDirectory, project };
+    const streamOptions = {
+      sendChunk,
+      sendError,
+      setProc: (proc) => { activeProc = proc; }
+    };
+    let result;
+    if (engine === 'claude') {
+      result = await streamClaude(context, screenshotPath, execOptions, streamOptions);
+    } else {
+      result = await streamCodex(context, screenshotPath, execOptions, streamOptions);
+    }
+
+    const duration = Date.now() - startTime;
+    finish({
+      ...result,
+      engine: engine || result?.engine,
+      filesModified: !!result?.success,
+      duration,
+      timestamp: Date.now(),
+      project: project ? { id: project.id, name: project.name, workingDirectory } : null
+    });
+  } catch (error) {
+    logError('Execute stream error:', error.message);
+    sendError(error.message || 'Stream execution failed');
+    finish({ success: false, error: error.message || 'Stream execution failed', timestamp: Date.now() });
+  } finally {
+    if (screenshotPath) {
+      try { fs.unlinkSync(screenshotPath); } catch (error) { logError('Failed to delete screenshot:', error.message); }
+    }
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -580,6 +704,7 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
   }
   const args = [];
 
+  const preferJsonTimeline = !!(config.features && config.features.useJsonTimeline);
   const approval = config.codex.approvals || 'never';
   args.push('-a', approval);
   args.push('exec');
@@ -599,6 +724,11 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
   const extraArgs = parseArgs(config.codex.extraArgs);
   if (extraArgs.length) {
     args.push(...extraArgs);
+  }
+
+  const useJsonChunks = preferJsonTimeline && capabilities.supportsJson;
+  if (useJsonChunks) {
+    args.push('--json');
   }
 
   const longPrompt = (prompt && prompt.length > 500) || /\n/.test(prompt || '');
@@ -632,14 +762,275 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
     };
   }
 
-  const { parseToLumiResult } = require('./parse');
-  const lumiResult = parseToLumiResult('codex', result.stdout);
+  const { parseToLumiResult, buildTimelineFromChunks } = require('./parse');
+  let parsedChunks = null;
+  let structuredStdout = null;
+  let parsedMeta = null;
+  if (useJsonChunks) {
+    try {
+      const { parseCodexJsonOutput } = require('./parse');
+      const parsed = parseCodexJsonOutput(result.stdout);
+      parsedMeta = parsed;
+      if (parsed && Array.isArray(parsed.chunks) && parsed.chunks.length) {
+        parsedChunks = parsed.chunks;
+      }
+      if (parsed && parsed.stdout) {
+        structuredStdout = parsed.stdout;
+      }
+      if (!parsedChunks) {
+        log('Codex JSON parse yielded no chunks; falling back to text output without timeline.');
+      }
+    } catch (error) {
+      logError('Codex JSON parse failed:', error.message);
+    }
+  }
+
+  const outputPayload = structuredStdout && structuredStdout.trim()
+    ? structuredStdout
+    : result.stdout;
+  const lumiResult = parseToLumiResult('codex', outputPayload);
+  let timelineEntries = null;
+  let turnSummary = null;
+  if (parsedChunks) {
+    try {
+      const built = buildTimelineFromChunks(parsedChunks, {});
+      if (built) {
+        timelineEntries = built.timeline;
+        turnSummary = built.summary;
+      }
+    } catch (error) {
+      logError('Failed to build timeline from Codex chunks:', error.message);
+    }
+  }
+  if (parsedMeta && parsedMeta.summary) {
+    if (!lumiResult.summary) lumiResult.summary = {};
+    if (!lumiResult.summary.title || lumiResult.summary.title === 'Assistant response') {
+      lumiResult.summary.title = parsedMeta.summary.slice(0, 140);
+    }
+    if (!lumiResult.summary.description) {
+      lumiResult.summary.description = parsedMeta.summary;
+    }
+  }
+  // Strip misleading "Updated N files" phrasing from summary description when present
+  try {
+    if (lumiResult.summary && typeof lumiResult.summary.description === 'string') {
+      lumiResult.summary.description = lumiResult.summary.description
+        .replace(/Updated\s+\d+\s+file(s)?\.?/gi, '')
+        .trim();
+    }
+  } catch (_) {
+    // ignore sanitize errors
+  }
+  if (parsedMeta && parsedMeta.usage) {
+    lumiResult.usage = parsedMeta.usage;
+  }
+
   return {
     success: true,
-    output: result.stdout,
+    output: outputPayload,
     stderr: result.stderr,
     engine: 'codex',
-    lumiResult
+    lumiResult,
+    ...(parsedChunks ? { chunks: parsedChunks } : {}),
+    ...(timelineEntries ? { timelineEntries } : {}),
+    ...(turnSummary ? { turnSummary } : {})
+  };
+}
+
+async function streamCodex(context, screenshotPath, execOptions = {}, emit = {}) {
+  const { sendChunk, sendError, setProc } = emit;
+  const capabilities = await detectCLI('codex');
+
+  if (!capabilities.available) {
+    sendError?.('Codex CLI not available');
+    return {
+      success: false,
+      error: 'Codex CLI not available',
+      message: 'Please install Codex CLI or check your PATH'
+    };
+  }
+
+  if (!capabilities.supportsJson) {
+    const message = 'Codex CLI does not support --json; streaming timeline unavailable';
+    sendError?.(message);
+    return { success: false, error: message };
+  }
+
+  let prompt = buildPrompt(context);
+
+  if (screenshotPath) {
+    prompt += `\n\n# Screenshot Reference\n- Local Path: ${screenshotPath}\n- Please review the image when making the requested changes.`;
+  }
+  const args = [];
+
+  const approval = config.codex.approvals || 'never';
+  args.push('-a', approval);
+  args.push('exec');
+
+  if (capabilities.supportsModel && config.codex.model) {
+    args.push('--model', config.codex.model);
+  }
+
+  if (capabilities.supportsSandbox && config.codex.sandbox) {
+    args.push('--sandbox', config.codex.sandbox);
+  }
+
+  if (capabilities.supportsImage && screenshotPath) {
+    args.push('-i', screenshotPath);
+  }
+
+  const extraArgs = parseArgs(config.codex.extraArgs);
+  if (extraArgs.length) {
+    args.push(...extraArgs);
+  }
+
+  args.push('--json');
+
+  const longPrompt = (prompt && prompt.length > 500) || /\n/.test(prompt || '');
+  const useStdin = longPrompt || !!(capabilities.supportsImage && screenshotPath);
+  if (!useStdin) {
+    args.push(prompt);
+  }
+
+  const cmdPreview = args.join(' ') + (useStdin ? ' <prompt-from-stdin>' : ' <prompt>');
+  log('Streaming Codex:', cmdPreview);
+  log('Using stdin for prompt:', useStdin);
+  log('--- Codex stream started ---');
+  log('Working directory:', execOptions.cwd || config.workingDirectory);
+
+  const cd = await detectCLI('codex');
+  const proc = spawn(cd.bin || 'codex', args, {
+    shell: false,
+    timeout: 3600000,
+    cwd: execOptions.cwd || config.workingDirectory,
+    stdio: useStdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe']
+  });
+  if (setProc) setProc(proc);
+
+  const { codexEventToChunks, createChunkFactory } = require('./parse/codex-json');
+  const { parseToLumiResult, buildTimelineFromChunks } = require('./parse');
+  const stamp = createChunkFactory();
+  const chunks = [];
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+  let aggregatedText = [];
+  let summary = '';
+  let usage = null;
+
+  let leftover = '';
+  const processLine = (line) => {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return;
+    try {
+      const event = JSON.parse(trimmed);
+      if (event?.type === 'turn.completed' && event.usage) {
+        usage = event.usage;
+      }
+      const partial = codexEventToChunks(event, stamp);
+      if (partial.summary && !summary) summary = partial.summary;
+      if (Array.isArray(partial.aggregatedText) && partial.aggregatedText.length) {
+        aggregatedText.push(...partial.aggregatedText);
+      }
+      partial.chunks.forEach((chunk) => {
+        chunks.push(chunk);
+        sendChunk?.(chunk);
+      });
+    } catch (_) {
+      // Ignore malformed lines; fallback logic will handle missing chunks
+    }
+  };
+
+  proc.stdout.on('data', (data) => {
+    const text = data.toString();
+    stdoutBuffer += text;
+    leftover += text;
+    const parts = leftover.split(/\r?\n/);
+    leftover = parts.pop() || '';
+    parts.forEach(processLine);
+  });
+
+  proc.stderr.on('data', (data) => {
+    const text = data.toString();
+    stderrBuffer += text;
+  });
+
+  if (useStdin && proc.stdin) {
+    try {
+      proc.stdin.write(prompt);
+      proc.stdin.end();
+    } catch (_) {
+      // ignore stdin errors
+    }
+  }
+
+  let exitCode = 0;
+  await new Promise((resolve) => {
+    proc.on('close', (code) => {
+      exitCode = typeof code === 'number' ? code : 0;
+      resolve();
+    });
+    proc.on('error', (error) => {
+      stderrBuffer += error?.message || '';
+      exitCode = exitCode || -1;
+      resolve();
+    });
+  });
+
+  if (leftover.trim()) {
+    processLine(leftover.trim());
+  }
+
+  if (exitCode !== 0 && !chunks.some((c) => c && c.type === 'error')) {
+    const errorChunk = stamp({
+      type: 'error',
+      text: `Codex exited with code ${exitCode}`
+    });
+    chunks.push(errorChunk);
+    sendChunk?.(errorChunk);
+  }
+
+  log('--- Codex stream ended ---');
+
+  const outputPayload = aggregatedText.join('\n') || stdoutBuffer;
+  const lumiResult = parseToLumiResult('codex', outputPayload);
+  if (summary) {
+    if (!lumiResult.summary) lumiResult.summary = {};
+    if (!lumiResult.summary.title || lumiResult.summary.title === 'Assistant response') {
+      lumiResult.summary.title = summary.slice(0, 140);
+    }
+    if (!lumiResult.summary.description) {
+      lumiResult.summary.description = summary;
+    }
+  }
+  if (usage) {
+    lumiResult.usage = usage;
+  }
+
+  let timelineEntries = null;
+  let turnSummary = null;
+  if (chunks.length) {
+    try {
+      const built = buildTimelineFromChunks(chunks, {});
+      if (built) {
+        timelineEntries = built.timeline;
+        turnSummary = built.summary;
+      }
+    } catch (error) {
+      logError('Failed to build timeline from Codex stream:', error.message);
+    }
+  }
+
+  return {
+    success: exitCode === 0,
+    output: outputPayload,
+    stderr: stderrBuffer,
+    engine: 'codex',
+    lumiResult,
+    chunks,
+    ...(timelineEntries ? { timelineEntries } : {}),
+    ...(turnSummary ? { turnSummary } : {}),
+    ...(usage ? { usage } : {}),
+    ...(exitCode !== 0 ? { error: stderrBuffer || 'Codex execution failed' } : {})
   };
 }
 
@@ -655,6 +1046,7 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
 
   const prompt = buildPrompt(context);
   const args = [];
+  const preferJsonTimeline = !!(config.features && config.features.useJsonTimeline);
 
   if (capabilities.supportsPrompt) {
     args.push('-p', prompt);
@@ -666,8 +1058,12 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
     args.push('--model', config.claude.model);
   }
 
-  if (capabilities.supportsOutputFormat && config.claude.outputFormat) {
-    args.push('--output-format', config.claude.outputFormat);
+  const useStreamJson = preferJsonTimeline && capabilities.supportsOutputFormat;
+  const desiredOutputFormat = useStreamJson
+    ? 'stream-json'
+    : config.claude.outputFormat;
+  if (capabilities.supportsOutputFormat && desiredOutputFormat) {
+    args.push('--output-format', desiredOutputFormat);
   }
 
   if (config.claude.permissionMode) {
@@ -703,8 +1099,25 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
     };
   }
 
+  let parsedChunks = null;
+  let parsedMeta = null;
+  if (useStreamJson) {
+    try {
+      const { parseClaudeStreamJson } = require('./parse');
+      const parsed = parseClaudeStreamJson(result.stdout);
+      parsedMeta = parsed;
+      if (parsed && Array.isArray(parsed.chunks) && parsed.chunks.length) {
+        parsedChunks = parsed.chunks;
+      } else {
+        log('Claude stream-json parse yielded no chunks; falling back to text output without timeline.');
+      }
+    } catch (error) {
+      logError('Claude stream-json parse failed:', error.message);
+    }
+  }
+
   let output = result.stdout;
-  if (capabilities.supportsOutputFormat && config.claude.outputFormat === 'json') {
+  if (!useStreamJson && capabilities.supportsOutputFormat && config.claude.outputFormat === 'json') {
     try {
       output = JSON.parse(result.stdout);
     } catch (error) {
@@ -712,14 +1125,203 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
     }
   }
 
-  const { parseToLumiResult } = require('./parse');
+  const { parseToLumiResult, buildTimelineFromChunks } = require('./parse');
   const lumiResult = parseToLumiResult('claude', output);
+  let timelineEntries = null;
+  let turnSummary = null;
+  if (parsedChunks) {
+    try {
+      const built = buildTimelineFromChunks(parsedChunks, {});
+      if (built) {
+        timelineEntries = built.timeline;
+        turnSummary = built.summary;
+      }
+    } catch (error) {
+      logError('Failed to build timeline from Claude chunks:', error.message);
+    }
+  }
+  if (parsedMeta && parsedMeta.summary) {
+    if (!lumiResult.summary) lumiResult.summary = {};
+    if (!lumiResult.summary.title || lumiResult.summary.title === 'Proposed edits') {
+      lumiResult.summary.title = parsedMeta.summary.slice(0, 140);
+    }
+    if (!lumiResult.summary.description) {
+      lumiResult.summary.description = parsedMeta.summary;
+    }
+  }
   return {
     success: true,
     output,
     stderr: result.stderr,
     engine: 'claude',
-    lumiResult
+    lumiResult,
+    ...(parsedChunks ? { chunks: parsedChunks } : {}),
+    ...(timelineEntries ? { timelineEntries } : {}),
+    ...(turnSummary ? { turnSummary } : {})
+  };
+}
+
+async function streamClaude(context, screenshotPath, execOptions = {}, emit = {}) {
+  const { sendChunk, sendError, setProc } = emit;
+  const capabilities = await detectCLI('claude');
+
+  if (!capabilities.available) {
+    sendError?.('Claude CLI not available');
+    return {
+      success: false,
+      error: 'Claude CLI not available',
+      message: 'Please install Claude Code CLI or check your PATH'
+    };
+  }
+
+  if (!capabilities.supportsOutputFormat) {
+    const message = 'Claude CLI does not support --output-format stream-json; streaming timeline unavailable';
+    sendError?.(message);
+    return { success: false, error: message };
+  }
+
+  const prompt = buildPrompt(context);
+  const args = [];
+
+  if (capabilities.supportsPrompt) {
+    args.push('-p', prompt);
+  } else {
+    args.push(prompt);
+  }
+
+  if (config.claude.model) {
+    args.push('--model', config.claude.model);
+  }
+
+  args.push('--output-format', 'stream-json');
+
+  if (config.claude.permissionMode) {
+    args.push('--permission-mode', config.claude.permissionMode);
+  }
+
+  if (Array.isArray(config.claude.tools) && config.claude.tools.length) {
+    args.push('--tools', config.claude.tools.join(','));
+  }
+
+  const extraArgs = parseArgs(config.claude.extraArgs);
+  if (extraArgs.length) {
+    args.push(...extraArgs);
+  }
+
+  log('Streaming Claude:', 'claude', args.slice(0, 4).join(' '), '...');
+
+  const cl = await detectCLI('claude');
+  const proc = spawn(cl.bin || 'claude', args, {
+    shell: false,
+    timeout: 3600000,
+    cwd: execOptions.cwd || config.workingDirectory
+  });
+  if (setProc) setProc(proc);
+
+  const { claudeEventToChunks, createChunkFactory } = require('./parse/claude-stream-json');
+  const { parseToLumiResult, buildTimelineFromChunks } = require('./parse');
+  const stamp = createChunkFactory();
+  const chunks = [];
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+  let summary = '';
+  const aggregatedText = [];
+
+  let leftover = '';
+  const processLine = (line) => {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return;
+    try {
+      const event = JSON.parse(trimmed);
+      const partial = claudeEventToChunks(event, stamp);
+      if (partial.summary && !summary) summary = partial.summary;
+      partial.chunks.forEach((chunk) => {
+        chunks.push(chunk);
+        if (chunk.text) aggregatedText.push(chunk.text);
+        if (chunk.resultSummary) aggregatedText.push(chunk.resultSummary);
+        sendChunk?.(chunk);
+      });
+    } catch (_) {
+      // Ignore malformed lines to keep stream resilient
+    }
+  };
+
+  proc.stdout.on('data', (data) => {
+    const text = data.toString();
+    stdoutBuffer += text;
+    leftover += text;
+    const parts = leftover.split(/\r?\n/);
+    leftover = parts.pop() || '';
+    parts.forEach(processLine);
+  });
+
+  proc.stderr.on('data', (data) => {
+    const text = data.toString();
+    stderrBuffer += text;
+  });
+
+  let exitCode = 0;
+  await new Promise((resolve) => {
+    proc.on('close', (code) => {
+      exitCode = typeof code === 'number' ? code : 0;
+      resolve();
+    });
+    proc.on('error', (error) => {
+      stderrBuffer += error?.message || '';
+      exitCode = exitCode || -1;
+      resolve();
+    });
+  });
+
+  if (leftover.trim()) {
+    processLine(leftover.trim());
+  }
+
+  if (exitCode !== 0 && !chunks.some((c) => c && c.type === 'error')) {
+    const errorChunk = stamp({
+      type: 'error',
+      text: `Claude exited with code ${exitCode}`
+    });
+    chunks.push(errorChunk);
+    sendChunk?.(errorChunk);
+  }
+
+  const outputPayload = aggregatedText.join('\n') || stdoutBuffer;
+  const lumiResult = parseToLumiResult('claude', outputPayload);
+  if (summary) {
+    if (!lumiResult.summary) lumiResult.summary = {};
+    if (!lumiResult.summary.title || lumiResult.summary.title === 'Proposed edits') {
+      lumiResult.summary.title = summary.slice(0, 140);
+    }
+    if (!lumiResult.summary.description) {
+      lumiResult.summary.description = summary;
+    }
+  }
+
+  let timelineEntries = null;
+  let turnSummary = null;
+  if (chunks.length) {
+    try {
+      const built = buildTimelineFromChunks(chunks, {});
+      if (built) {
+        timelineEntries = built.timeline;
+        turnSummary = built.summary;
+      }
+    } catch (error) {
+      logError('Failed to build timeline from Claude stream:', error.message);
+    }
+  }
+
+  return {
+    success: exitCode === 0,
+    output: outputPayload,
+    stderr: stderrBuffer,
+    engine: 'claude',
+    lumiResult,
+    chunks,
+    ...(timelineEntries ? { timelineEntries } : {}),
+    ...(turnSummary ? { turnSummary } : {}),
+    ...(exitCode !== 0 ? { error: stderrBuffer || 'Claude execution failed' } : {})
   };
 }
 
@@ -734,6 +1336,7 @@ async function detectCLI(cliName) {
     available: false,
     version: null,
     supportsImage: false,
+    supportsJson: false,
     supportsOutputFormat: false,
     supportsModel: false,
     supportsSandbox: false,
@@ -763,6 +1366,18 @@ async function detectCLI(cliName) {
         capabilities.supportsImage = helpText.includes('-i') || helpText.includes('--image');
         capabilities.supportsModel = helpText.includes('--model');
         capabilities.supportsSandbox = helpText.includes('--sandbox');
+        capabilities.supportsJson = helpText.includes('--json');
+        if (!capabilities.supportsJson) {
+          try {
+            const execHelp = await runCommand(capabilities.bin, ['exec', '--help'], { timeout: 5000 });
+            if (execHelp.exitCode === 0) {
+              const execText = execHelp.stdout + execHelp.stderr;
+              capabilities.supportsJson = execText.includes('--json');
+            }
+          } catch (_) {
+            // ignore exec help detection errors; fallback to non-JSON path
+          }
+        }
       } else if (cliName === 'claude') {
         capabilities.supportsOutputFormat = helpText.includes('--output-format');
         capabilities.supportsPrompt = helpText.includes('-p');

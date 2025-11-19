@@ -100,6 +100,8 @@ function bootstrap() {
   // Initialize engine & health
   const engineManager = new EngineManager(eventBus, stateManager, chromeBridge);
   const healthChecker = new HealthChecker(eventBus, stateManager, chromeBridge, engineManager);
+  const activeStreams = new Map();
+  const pendingStreamResults = new Map();
 
   // Viewport scaffolding (reflow toggle supported)
   const viewportController = new ViewportController(eventBus, stateManager);
@@ -112,14 +114,26 @@ function bootstrap() {
   const blocked = HOST_IFRAME_BLOCKLIST.test(window.location.hostname);
   stateManager.set('ui.viewport.useIframeStage', false);
 
+  // Re-run ensureDefaultSession when project changes to ensure we have a valid session for the new context
+  stateManager.subscribe('projects.current', () => {
+    ensureDefaultSession();
+  });
+
   ensureDefaultSession();
 
   function ensureDefaultSession() {
-    let sessions = stateManager.get('sessions.list');
-    if (!Array.isArray(sessions) || sessions.length === 0) {
+    const project = stateManager.get('projects.current');
+    const projectId = project ? project.id : null;
+    const allSessions = stateManager.get('sessions.list') || [];
+    
+    // Filter sessions for current project (strict match: null matches null)
+    const projectSessions = allSessions.filter(s => s.projectId === projectId);
+
+    if (projectSessions.length === 0) {
       const id = generateSessionId();
       const session = {
         id,
+        projectId,
         title: 'New Session',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -130,13 +144,16 @@ function bootstrap() {
         manualTitle: false
       };
       stateManager.batch({
-        'sessions.list': [session],
+        'sessions.list': [session, ...allSessions],
         'sessions.currentId': id
       });
-      sessions = [session];
-    }
-    if (!stateManager.get('sessions.currentId') && sessions.length) {
-      stateManager.set('sessions.currentId', sessions[0].id);
+    } else {
+      // If currentId is not in the project sessions, switch to the first one
+      const currentId = stateManager.get('sessions.currentId');
+      const currentBelongs = projectSessions.some(s => s.id === currentId);
+      if (!currentId || !currentBelongs) {
+        stateManager.set('sessions.currentId', projectSessions[0].id);
+      }
     }
   }
 
@@ -246,6 +263,115 @@ function bootstrap() {
       if (description) msg.result.description = description;
     } catch (_) {
       // ignore auto summary errors
+    }
+  }
+
+  function applyResultToMessage(msg, result = {}) {
+    msg.streaming = false;
+    msg.done = true;
+    msg.applied = !!result.success;
+
+    if (result && result.turnSummary) {
+      msg.turnSummary = result.turnSummary;
+    }
+    if (Array.isArray(result?.timelineEntries)) {
+      msg.timelineEntries = result.timelineEntries;
+    }
+
+    if (result && result.lumiResult) {
+      msg.result = result.lumiResult;
+    } else if (typeof result?.output === 'string' && result.output.trim()) {
+      msg.text = result.output.trim();
+    } else if (typeof result?.message === 'string' && result.message.trim()) {
+      msg.text = result.message.trim();
+    } else if (typeof result?.error === 'string' && result.error.trim()) {
+      msg.text = result.error.trim();
+    } else if (!msg.text) {
+      msg.text = result.success ? 'Done' : (result.error || 'Request failed');
+    }
+
+    if (Array.isArray(result?.chunks) && result.chunks.length) {
+      msg.chunks = result.chunks.slice();
+    } else if (!Array.isArray(msg.chunks) || msg.chunks.length === 0) {
+      try {
+        const fallbackChunks = deriveChunksFromText(result.output || '', result.stderr || '');
+        if (Array.isArray(fallbackChunks) && fallbackChunks.length) {
+          msg.chunks = fallbackChunks;
+        }
+      } catch (_) {
+        // ignore fallback errors
+      }
+    }
+
+    if (msg.turnSummary) {
+      if (!msg.result) msg.result = {};
+      if (!msg.result.title && msg.turnSummary.title) {
+        msg.result.title = msg.turnSummary.title;
+      }
+      if (!msg.result.description) {
+        const bullet = Array.isArray(msg.turnSummary.bullets) && msg.turnSummary.bullets.length
+          ? msg.turnSummary.bullets[0]
+          : null;
+        if (bullet) msg.result.description = bullet;
+      }
+    }
+  }
+
+  function handleStreamChunk(payload = {}) {
+    const { streamId, chunk } = payload;
+    if (!streamId || !chunk) return;
+    const meta = activeStreams.get(streamId);
+    if (!meta) return;
+    const { sessionId, messageId } = meta;
+    updateMessage(sessionId, messageId, (msg) => {
+      if (!Array.isArray(msg.chunks)) msg.chunks = [];
+      msg.chunks.push(chunk);
+      msg.streaming = true;
+      msg.done = false;
+      if (chunk.type === 'result') {
+        if (!msg.result) msg.result = {};
+        if (chunk.resultSummary && !msg.result.title) msg.result.title = chunk.resultSummary;
+        if (chunk.text && !msg.result.description) msg.result.description = chunk.text;
+      }
+    });
+  }
+
+  function handleStreamDone(payload = {}) {
+    const { streamId, result = {} } = payload;
+    const meta = activeStreams.get(streamId);
+    if (meta) {
+      const { sessionId, messageId } = meta;
+      updateMessage(sessionId, messageId, (msg) => {
+        applyResultToMessage(msg, result || {});
+      });
+      activeStreams.delete(streamId);
+    }
+    const pending = pendingStreamResults.get(streamId);
+    if (pending) {
+      pending.resolve(result || {});
+      pendingStreamResults.delete(streamId);
+    }
+  }
+
+  function handleStreamError(payload = {}) {
+    const { streamId, error } = payload;
+    const meta = activeStreams.get(streamId);
+    if (meta) {
+      const { sessionId, messageId } = meta;
+      updateMessage(sessionId, messageId, (msg) => {
+        msg.streaming = false;
+        msg.done = true;
+        msg.applied = false;
+        msg.text = error || 'Stream failed';
+      });
+    }
+    const pending = pendingStreamResults.get(streamId);
+    if (pending) {
+      // Keep stream promise unresolved until done arrives unless we have no meta.
+      if (!meta) {
+        pending.reject(new Error(error || 'Stream failed'));
+        pendingStreamResults.delete(streamId);
+      }
     }
   }
 
@@ -470,11 +596,14 @@ function bootstrap() {
     });
 
     eventBus.on('session:create', () => {
+      const project = stateManager.get('projects.current');
+      const projectId = project ? project.id : null;
       const tokens = selectionToTokens();
       const titleSource = dockRoot ? dockRoot.getInputValue() : '';
       const id = generateSessionId();
       const session = {
         id,
+        projectId,
         title: titleSource.trim() || 'New Session',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1042,62 +1171,64 @@ function bootstrap() {
       try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
 
       try {
-        const result = await serverClient.execute(
-          engine,
-          intent,
-          reqElements,
-          lastScreenshot,
-          pageInfo,
-          reqScreenshots,
-          reqEdits
-        );
+        let result = null;
+        let usedStream = false;
+        const streamId = streamMsgId ? ('st' + Math.random().toString(36).slice(2)) : null;
+        const canUseStream = engine === 'codex';
+
+        if (streamId && sessionId && canUseStream) {
+          activeStreams.set(streamId, { sessionId, messageId: streamMsgId });
+          const streamPromise = new Promise((resolve, reject) => {
+            pendingStreamResults.set(streamId, { resolve, reject });
+          });
+          try {
+            await serverClient.executeStream(
+              engine,
+              intent,
+              reqElements,
+              lastScreenshot,
+              pageInfo,
+              reqScreenshots,
+              reqEdits,
+              streamId
+            );
+            usedStream = true;
+            result = await streamPromise;
+          } catch (err) {
+            console.error('[Content] Stream execution failed:', err);
+            activeStreams.delete(streamId);
+            pendingStreamResults.delete(streamId);
+            result = usedStream ? { success: false, error: err?.message || 'Stream failed' } : null;
+          }
+        }
+
+        if (!result && !usedStream) {
+          result = await serverClient.execute(
+            engine,
+            intent,
+            reqElements,
+            lastScreenshot,
+            pageInfo,
+            reqScreenshots,
+            reqEdits
+          );
+        }
 
         if (sessionId) {
-          const applyToMsg = (msg) => {
-            msg.streaming = false;
-            msg.done = true;
-            msg.applied = !!result.success;
-            if (result && result.turnSummary) {
-              msg.turnSummary = result.turnSummary;
-            }
-            if (Array.isArray(result?.timelineEntries)) {
-              msg.timelineEntries = result.timelineEntries;
-            }
-            if (result && result.lumiResult) {
-              msg.result = result.lumiResult;
-            } else if (typeof result?.output === 'string' && result.output.trim()) {
-              msg.text = result.output.trim();
-            } else if (typeof result?.message === 'string' && result.message.trim()) {
-              msg.text = result.message.trim();
+          if (!usedStream) {
+            if (streamMsgId) {
+              updateMessage(sessionId, streamMsgId, (msg) => applyResultToMessage(msg, result || {}));
             } else {
-              msg.text = result.success ? 'Done' : (result.error || 'Request failed');
+              const mid = appendMessage(sessionId, { role: 'assistant' });
+              updateMessage(sessionId, mid, (msg) => applyResultToMessage(msg, result || {}));
             }
-            if (Array.isArray(result?.chunks) && result.chunks.length) {
-              msg.chunks = result.chunks.slice();
-            } else if (!Array.isArray(msg.chunks) || msg.chunks.length === 0) {
-              try {
-                const fallbackChunks = deriveChunksFromText(result.output || '', result.stderr || '');
-                if (Array.isArray(fallbackChunks) && fallbackChunks.length) {
-                  msg.chunks = fallbackChunks;
-                }
-              } catch (_) {
-                // ignore fallback errors
-              }
-            }
-          };
-          if (streamMsgId) {
-            updateMessage(sessionId, streamMsgId, applyToMsg);
-          } else {
-            // Fallback: append as a new message
-            const mid = appendMessage(sessionId, { role: 'assistant' });
-            updateMessage(sessionId, mid, applyToMsg);
           }
           updateSessionById(sessionId, (session) => {
             session.snapshotTokens = selectionToTokens();
           });
         }
 
-        if (result.success) {
+        if (result?.success) {
           topBanner.update('Success! Changes applied.');
           setTimeout(() => topBanner.hide(), 2200);
           if (dockRoot) dockRoot.clearInput();
@@ -1113,7 +1244,7 @@ function bootstrap() {
           if (dockRoot) dockRoot.updateSendState();
           highlightManager.clearAll();
           if (editModal) editModal.close();
-        } else {
+        } else if (result) {
           topBanner.update(result.error || 'Request failed');
           setTimeout(() => topBanner.hide(), 2200);
         }
@@ -1359,6 +1490,17 @@ function bootstrap() {
           if (open) eventBus.emit('viewport:toggle', true);
         } catch (_) {}
         return;
+      }
+      if (message.type === 'STREAM_CHUNK') {
+        handleStreamChunk(message);
+        return;
+      }
+      if (message.type === 'STREAM_DONE') {
+        handleStreamDone(message);
+        return;
+      }
+      if (message.type === 'STREAM_ERROR') {
+        handleStreamError(message);
       }
     });
 

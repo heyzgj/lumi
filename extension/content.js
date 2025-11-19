@@ -1643,6 +1643,24 @@
     }
 
     /**
+     * Stream execution request to server
+     */
+    executeStreamOnServer(engine, context, streamId) {
+      return new Promise((resolve, reject) => {
+        this.sendMessage({
+          type: 'EXECUTE_STREAM',
+          payload: { engine, context, streamId }
+        }, (response) => {
+          if (response && response.error) {
+            reject(new Error(response.error));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    }
+
+    /**
      * Get from storage
      */
     storageGet(keys) {
@@ -1755,6 +1773,22 @@
         return result;
       } catch (error) {
         console.error('[ServerClient] Execution failed:', error);
+        throw error;
+      }
+    }
+
+    async executeStream(engine, intent, elements, screenshot, pageInfo, screenshots = [], edits = [], streamId) {
+      const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots, edits);
+
+      try {
+        await this.chromeBridge.executeStreamOnServer(
+          engine,
+          context,
+          streamId
+        );
+        return { ok: true };
+      } catch (error) {
+        console.error('[ServerClient] Stream execution failed:', error);
         throw error;
       }
     }
@@ -2197,6 +2231,25 @@
     font-size: 12px;
     color: var(--text-secondary);
     font-style: italic;
+  }
+  .raw-logs {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .raw-logs summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+  .raw-logs-body {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   @keyframes dock-dots {
     0% { width: 0; }
@@ -2688,7 +2741,7 @@
         const dock = this.shadow && this.shadow.getElementById('dock');
         if (!dock) return;
         if (mode === 'dark') dock.classList.add('dark'); else dock.classList.remove('dark');
-      } catch (_) {}
+      } catch (_) { }
     }
 
     reflectMode(mode) {
@@ -2697,7 +2750,7 @@
         const shot = this.shadow.getElementById('shot-btn');
         if (select) select.classList.toggle('active', mode === 'element');
         if (shot) shot.classList.toggle('active', mode === 'screenshot');
-      } catch (_) {}
+      } catch (_) { }
     }
 
     mount() {
@@ -2708,10 +2761,10 @@
       this.shadow = this.host.attachShadow({ mode: 'open' });
       this.shadow.innerHTML = this.renderHTML();
       document.body.appendChild(this.host);
-      
+
       // Apply initial layout (no squeeze until shown)
       this.applySqueeze(false);
-      
+
       // Remove compact handle – prefer close + launcher orb UX
       this.createLauncher();
       this.bind();
@@ -2836,7 +2889,7 @@
           this.updateTheme();
         });
         this.stateManager.subscribe('ui.mode', (mode) => this.reflectMode(mode));
-      } catch (_) {}
+      } catch (_) { }
 
       // Apply theme and mode on mount
       this.updateTheme();
@@ -2846,7 +2899,7 @@
       closeBtn.addEventListener('click', () => {
         this.stateManager.set('ui.dockOpen', false);
         this.setVisible(false);
-        try { this.eventBus.emit('bubble:close'); } catch (_) {}
+        try { this.eventBus.emit('bubble:close'); } catch (_) { }
       });
 
       this.tabsEl.addEventListener('click', (e) => {
@@ -2863,7 +2916,7 @@
       try {
         this.eventBus.on('session:create', () => this.setTab('chat'));
         this.eventBus.on('session:resume', () => this.setTab('chat'));
-      } catch (_) {}
+      } catch (_) { }
 
       this.engineSelect.addEventListener('change', () => {
         const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
@@ -3003,7 +3056,7 @@
         const body = document.body;
         html.style.paddingRight = '0px';
         body.style.paddingRight = '0px';
-      } catch (_) {}
+      } catch (_) { }
     }
 
     updateDockState(state) {
@@ -3011,17 +3064,17 @@
       if (!dock) return;
       dock.classList.remove('compact');
       const dockWidth = '420px';
-      
+
       if (this.host) {
         this.host.style.pointerEvents = 'auto';
         this.host.style.transition = 'width 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
         this.host.style.width = dockWidth;
       }
-      
+
       // Update squeeze based on compact state
       const isOpen = this.stateManager.get('ui.dockOpen') !== false;
       if (isOpen) this.applySqueeze(false);
-      
+
       // Hide Dock surface entirely in compact; use handle instead
       dock.style.display = 'flex';
 
@@ -3034,10 +3087,10 @@
     setVisible(isOpen) {
       if (!this.host) return;
       this.host.style.display = isOpen ? 'block' : 'none';
-      
+
       // Overlay mode, no squeeze
       this.applySqueeze(false);
-      
+
       if (this.handle) {
         const state = this.stateManager.get('ui.dockState');
         this.handle.style.display = isOpen && state === 'compact' ? 'flex' : 'none';
@@ -3083,7 +3136,12 @@
       if (!this.chatPane) return;
       const pane = this.chatPane;
       pane.innerHTML = '';
-      const sessions = this.stateManager.get('sessions.list') || [];
+
+      const project = this.stateManager.get('projects.current');
+      const projectId = project ? project.id : null;
+      const allSessions = this.stateManager.get('sessions.list') || [];
+      const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
+
       const currentId = this.stateManager.get('sessions.currentId');
       const session = sessions.find(s => s.id === currentId) || sessions[0];
       if (!session || session.transcript.length === 0) {
@@ -3175,22 +3233,22 @@
       const turnSummary = msg.turnSummary || null;
       const resultChunks = Array.isArray(msg.chunks) ? msg.chunks : [];
 
+      const stripFileCount = (text = '') =>
+        String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
+
       const title = turnSummary?.title
-        || result.title
-        || (resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
+        || stripFileCount(result.title)
+        || stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
         || '';
       const description = (() => {
         if (turnSummary && Array.isArray(turnSummary.bullets) && turnSummary.bullets.length) {
-          return turnSummary.bullets[0];
+          return stripFileCount(turnSummary.bullets[0]);
         }
         let text =
-          result.description ||
-          (resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
-          msg.text ||
+          stripFileCount(result.description) ||
+          stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
+          stripFileCount(msg.text) ||
           '';
-        if (text) {
-          text = String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-        }
         return text || '';
       })();
 
@@ -3263,6 +3321,9 @@
         placeholder.className = 'timeline-placeholder';
         placeholder.textContent = 'Execution events will appear here once processing begins.';
         body.appendChild(placeholder);
+      }
+      if (chunks.length) {
+        body.appendChild(this.renderRawLogs(chunks));
       }
       wrapper.appendChild(body);
       return wrapper;
@@ -3364,6 +3425,27 @@
       return list;
     }
 
+    renderRawLogs(chunks = []) {
+      const doc = this.shadow?.ownerDocument || document;
+      const details = doc.createElement('details');
+      details.className = 'raw-logs';
+      const summary = doc.createElement('summary');
+      summary.textContent = 'View raw logs';
+      details.appendChild(summary);
+      const pre = doc.createElement('pre');
+      pre.className = 'raw-logs-body';
+      const lines = [];
+      chunks.forEach((c) => {
+        if (!c || typeof c !== 'object') return;
+        if (c.type === 'log' && c.text) lines.push(c.text);
+        else if (c.type === 'run' && c.cmd) lines.push(`[run] ${c.cmd}`);
+        else if (c.type === 'error' && (c.text || c.message)) lines.push(`[error] ${c.text || c.message}`);
+      });
+      pre.textContent = lines.join('\n');
+      details.appendChild(pre);
+      return details;
+    }
+
     renderTimelineEntries(entries = []) {
       const doc = this.shadow?.ownerDocument || document;
       const container = doc.createElement('div');
@@ -3463,7 +3545,11 @@
       newBtn.addEventListener('click', () => this.eventBus.emit('session:create'));
       pane.appendChild(newBtn);
 
-      const sessions = this.stateManager.get('sessions.list') || [];
+      const project = this.stateManager.get('projects.current');
+      const projectId = project ? project.id : null;
+      const allSessions = this.stateManager.get('sessions.list') || [];
+      const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
+
       const currentId = this.stateManager.get('sessions.currentId');
       if (!sessions.length) {
         const empty = document.createElement('div');
@@ -3998,7 +4084,7 @@
         e.stopPropagation();
         const idRaw = chip.dataset.shotId;
         const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
-        try { this.eventBus.emit('screenshot:remove', id); } catch (_) {}
+        try { this.eventBus.emit('screenshot:remove', id); } catch (_) { }
       });
 
       chip.appendChild(labelBtn);
@@ -4048,7 +4134,7 @@
         if (!toRemove.length) return;
         // Remove from highest to lowest to keep indices consistent
         toRemove.sort((a, b) => b - a).forEach((idx) => this.eventBus.emit('element:removed', idx));
-      } catch (_) {}
+      } catch (_) { }
     }
 
     decorateChip(chip, item, index) {
@@ -4116,7 +4202,7 @@
     }
 
     showShotPreview(shot, anchorEl) {
-      try { this.ensureShotPreviewContainers(); } catch (_) {}
+      try { this.ensureShotPreviewContainers(); } catch (_) { }
       if (!this.shotTooltip || !this.shotTooltipImg) return;
       this.shotTooltipImg.src = shot.dataUrl;
       const chipRect = anchorEl.getBoundingClientRect();
@@ -4134,7 +4220,7 @@
     }
 
     openShotLightbox(shot) {
-      try { this.ensureShotPreviewContainers(); } catch (_) {}
+      try { this.ensureShotPreviewContainers(); } catch (_) { }
       if (!this.shotLightbox || !this.shotLightboxImg) return;
       this.shotLightboxImg.src = shot.dataUrl;
       this.shotLightbox.style.display = 'flex';
@@ -4159,7 +4245,7 @@
     removeElementAt(index) {
       const list = (this.stateManager.get('selection.elements') || []).slice();
       if (index < 0 || index >= list.length) return;
-      try { this.eventBus.emit('element:pre-remove', { index, snapshot: list[index] }); } catch (_) {}
+      try { this.eventBus.emit('element:pre-remove', { index, snapshot: list[index] }); } catch (_) { }
       list.splice(index, 1);
       this.stateManager.set('selection.elements', list);
       this.eventBus.emit('element:removed', index);
@@ -5994,6 +6080,8 @@
     // Initialize engine & health
     const engineManager = new EngineManager(eventBus, stateManager, chromeBridge);
     const healthChecker = new HealthChecker(eventBus, stateManager, chromeBridge, engineManager);
+    const activeStreams = new Map();
+    const pendingStreamResults = new Map();
 
     // Viewport scaffolding (reflow toggle supported)
     const viewportController = new ViewportController(eventBus, stateManager);
@@ -6001,14 +6089,26 @@
     const viewportBar = new TopViewportBar(eventBus, stateManager);
     stateManager.set('ui.viewport.useIframeStage', false);
 
+    // Re-run ensureDefaultSession when project changes to ensure we have a valid session for the new context
+    stateManager.subscribe('projects.current', () => {
+      ensureDefaultSession();
+    });
+
     ensureDefaultSession();
 
     function ensureDefaultSession() {
-      let sessions = stateManager.get('sessions.list');
-      if (!Array.isArray(sessions) || sessions.length === 0) {
+      const project = stateManager.get('projects.current');
+      const projectId = project ? project.id : null;
+      const allSessions = stateManager.get('sessions.list') || [];
+      
+      // Filter sessions for current project (strict match: null matches null)
+      const projectSessions = allSessions.filter(s => s.projectId === projectId);
+
+      if (projectSessions.length === 0) {
         const id = generateSessionId();
         const session = {
           id,
+          projectId,
           title: 'New Session',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -6019,13 +6119,16 @@
           manualTitle: false
         };
         stateManager.batch({
-          'sessions.list': [session],
+          'sessions.list': [session, ...allSessions],
           'sessions.currentId': id
         });
-        sessions = [session];
-      }
-      if (!stateManager.get('sessions.currentId') && sessions.length) {
-        stateManager.set('sessions.currentId', sessions[0].id);
+      } else {
+        // If currentId is not in the project sessions, switch to the first one
+        const currentId = stateManager.get('sessions.currentId');
+        const currentBelongs = projectSessions.some(s => s.id === currentId);
+        if (!currentId || !currentBelongs) {
+          stateManager.set('sessions.currentId', projectSessions[0].id);
+        }
       }
     }
 
@@ -6135,6 +6238,115 @@
         if (description) msg.result.description = description;
       } catch (_) {
         // ignore auto summary errors
+      }
+    }
+
+    function applyResultToMessage(msg, result = {}) {
+      msg.streaming = false;
+      msg.done = true;
+      msg.applied = !!result.success;
+
+      if (result && result.turnSummary) {
+        msg.turnSummary = result.turnSummary;
+      }
+      if (Array.isArray(result?.timelineEntries)) {
+        msg.timelineEntries = result.timelineEntries;
+      }
+
+      if (result && result.lumiResult) {
+        msg.result = result.lumiResult;
+      } else if (typeof result?.output === 'string' && result.output.trim()) {
+        msg.text = result.output.trim();
+      } else if (typeof result?.message === 'string' && result.message.trim()) {
+        msg.text = result.message.trim();
+      } else if (typeof result?.error === 'string' && result.error.trim()) {
+        msg.text = result.error.trim();
+      } else if (!msg.text) {
+        msg.text = result.success ? 'Done' : (result.error || 'Request failed');
+      }
+
+      if (Array.isArray(result?.chunks) && result.chunks.length) {
+        msg.chunks = result.chunks.slice();
+      } else if (!Array.isArray(msg.chunks) || msg.chunks.length === 0) {
+        try {
+          const fallbackChunks = deriveChunksFromText(result.output || '', result.stderr || '');
+          if (Array.isArray(fallbackChunks) && fallbackChunks.length) {
+            msg.chunks = fallbackChunks;
+          }
+        } catch (_) {
+          // ignore fallback errors
+        }
+      }
+
+      if (msg.turnSummary) {
+        if (!msg.result) msg.result = {};
+        if (!msg.result.title && msg.turnSummary.title) {
+          msg.result.title = msg.turnSummary.title;
+        }
+        if (!msg.result.description) {
+          const bullet = Array.isArray(msg.turnSummary.bullets) && msg.turnSummary.bullets.length
+            ? msg.turnSummary.bullets[0]
+            : null;
+          if (bullet) msg.result.description = bullet;
+        }
+      }
+    }
+
+    function handleStreamChunk(payload = {}) {
+      const { streamId, chunk } = payload;
+      if (!streamId || !chunk) return;
+      const meta = activeStreams.get(streamId);
+      if (!meta) return;
+      const { sessionId, messageId } = meta;
+      updateMessage(sessionId, messageId, (msg) => {
+        if (!Array.isArray(msg.chunks)) msg.chunks = [];
+        msg.chunks.push(chunk);
+        msg.streaming = true;
+        msg.done = false;
+        if (chunk.type === 'result') {
+          if (!msg.result) msg.result = {};
+          if (chunk.resultSummary && !msg.result.title) msg.result.title = chunk.resultSummary;
+          if (chunk.text && !msg.result.description) msg.result.description = chunk.text;
+        }
+      });
+    }
+
+    function handleStreamDone(payload = {}) {
+      const { streamId, result = {} } = payload;
+      const meta = activeStreams.get(streamId);
+      if (meta) {
+        const { sessionId, messageId } = meta;
+        updateMessage(sessionId, messageId, (msg) => {
+          applyResultToMessage(msg, result || {});
+        });
+        activeStreams.delete(streamId);
+      }
+      const pending = pendingStreamResults.get(streamId);
+      if (pending) {
+        pending.resolve(result || {});
+        pendingStreamResults.delete(streamId);
+      }
+    }
+
+    function handleStreamError(payload = {}) {
+      const { streamId, error } = payload;
+      const meta = activeStreams.get(streamId);
+      if (meta) {
+        const { sessionId, messageId } = meta;
+        updateMessage(sessionId, messageId, (msg) => {
+          msg.streaming = false;
+          msg.done = true;
+          msg.applied = false;
+          msg.text = error || 'Stream failed';
+        });
+      }
+      const pending = pendingStreamResults.get(streamId);
+      if (pending) {
+        // Keep stream promise unresolved until done arrives unless we have no meta.
+        if (!meta) {
+          pending.reject(new Error(error || 'Stream failed'));
+          pendingStreamResults.delete(streamId);
+        }
       }
     }
 
@@ -6348,11 +6560,14 @@
       });
 
       eventBus.on('session:create', () => {
+        const project = stateManager.get('projects.current');
+        const projectId = project ? project.id : null;
         const tokens = selectionToTokens();
         const titleSource = dockRoot ? dockRoot.getInputValue() : '';
         const id = generateSessionId();
         const session = {
           id,
+          projectId,
           title: titleSource.trim() || 'New Session',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -6920,62 +7135,64 @@
         try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
 
         try {
-          const result = await serverClient.execute(
-            engine,
-            intent,
-            reqElements,
-            lastScreenshot,
-            pageInfo,
-            reqScreenshots,
-            reqEdits
-          );
+          let result = null;
+          let usedStream = false;
+          const streamId = streamMsgId ? ('st' + Math.random().toString(36).slice(2)) : null;
+          const canUseStream = engine === 'codex';
+
+          if (streamId && sessionId && canUseStream) {
+            activeStreams.set(streamId, { sessionId, messageId: streamMsgId });
+            const streamPromise = new Promise((resolve, reject) => {
+              pendingStreamResults.set(streamId, { resolve, reject });
+            });
+            try {
+              await serverClient.executeStream(
+                engine,
+                intent,
+                reqElements,
+                lastScreenshot,
+                pageInfo,
+                reqScreenshots,
+                reqEdits,
+                streamId
+              );
+              usedStream = true;
+              result = await streamPromise;
+            } catch (err) {
+              console.error('[Content] Stream execution failed:', err);
+              activeStreams.delete(streamId);
+              pendingStreamResults.delete(streamId);
+              result = usedStream ? { success: false, error: err?.message || 'Stream failed' } : null;
+            }
+          }
+
+          if (!result && !usedStream) {
+            result = await serverClient.execute(
+              engine,
+              intent,
+              reqElements,
+              lastScreenshot,
+              pageInfo,
+              reqScreenshots,
+              reqEdits
+            );
+          }
 
           if (sessionId) {
-            const applyToMsg = (msg) => {
-              msg.streaming = false;
-              msg.done = true;
-              msg.applied = !!result.success;
-              if (result && result.turnSummary) {
-                msg.turnSummary = result.turnSummary;
-              }
-              if (Array.isArray(result?.timelineEntries)) {
-                msg.timelineEntries = result.timelineEntries;
-              }
-              if (result && result.lumiResult) {
-                msg.result = result.lumiResult;
-              } else if (typeof result?.output === 'string' && result.output.trim()) {
-                msg.text = result.output.trim();
-              } else if (typeof result?.message === 'string' && result.message.trim()) {
-                msg.text = result.message.trim();
+            if (!usedStream) {
+              if (streamMsgId) {
+                updateMessage(sessionId, streamMsgId, (msg) => applyResultToMessage(msg, result || {}));
               } else {
-                msg.text = result.success ? 'Done' : (result.error || 'Request failed');
+                const mid = appendMessage(sessionId, { role: 'assistant' });
+                updateMessage(sessionId, mid, (msg) => applyResultToMessage(msg, result || {}));
               }
-              if (Array.isArray(result?.chunks) && result.chunks.length) {
-                msg.chunks = result.chunks.slice();
-              } else if (!Array.isArray(msg.chunks) || msg.chunks.length === 0) {
-                try {
-                  const fallbackChunks = deriveChunksFromText(result.output || '', result.stderr || '');
-                  if (Array.isArray(fallbackChunks) && fallbackChunks.length) {
-                    msg.chunks = fallbackChunks;
-                  }
-                } catch (_) {
-                  // ignore fallback errors
-                }
-              }
-            };
-            if (streamMsgId) {
-              updateMessage(sessionId, streamMsgId, applyToMsg);
-            } else {
-              // Fallback: append as a new message
-              const mid = appendMessage(sessionId, { role: 'assistant' });
-              updateMessage(sessionId, mid, applyToMsg);
             }
             updateSessionById(sessionId, (session) => {
               session.snapshotTokens = selectionToTokens();
             });
           }
 
-          if (result.success) {
+          if (result?.success) {
             topBanner.update('Success! Changes applied.');
             setTimeout(() => topBanner.hide(), 2200);
             if (dockRoot) dockRoot.clearInput();
@@ -6991,7 +7208,7 @@
             if (dockRoot) dockRoot.updateSendState();
             highlightManager.clearAll();
             if (editModal) editModal.close();
-          } else {
+          } else if (result) {
             topBanner.update(result.error || 'Request failed');
             setTimeout(() => topBanner.hide(), 2200);
           }
@@ -7237,6 +7454,17 @@
             if (open) eventBus.emit('viewport:toggle', true);
           } catch (_) {}
           return;
+        }
+        if (message.type === 'STREAM_CHUNK') {
+          handleStreamChunk(message);
+          return;
+        }
+        if (message.type === 'STREAM_DONE') {
+          handleStreamDone(message);
+          return;
+        }
+        if (message.type === 'STREAM_ERROR') {
+          handleStreamError(message);
         }
       });
 

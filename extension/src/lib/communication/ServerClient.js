@@ -32,6 +32,22 @@ export default class ServerClient {
     }
   }
 
+  async executeStream(engine, intent, elements, screenshot, pageInfo, screenshots = [], edits = [], streamId) {
+    const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots, edits);
+
+    try {
+      await this.chromeBridge.executeStreamOnServer(
+        engine,
+        context,
+        streamId
+      );
+      return { ok: true };
+    } catch (error) {
+      console.error('[ServerClient] Stream execution failed:', error);
+      throw error;
+    }
+  }
+
   buildContext(intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
     const context = {
       intent,

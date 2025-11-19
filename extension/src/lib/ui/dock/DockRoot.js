@@ -30,7 +30,7 @@ export default class DockRoot {
       const dock = this.shadow && this.shadow.getElementById('dock');
       if (!dock) return;
       if (mode === 'dark') dock.classList.add('dark'); else dock.classList.remove('dark');
-    } catch (_) {}
+    } catch (_) { }
   }
 
   reflectMode(mode) {
@@ -39,7 +39,7 @@ export default class DockRoot {
       const shot = this.shadow.getElementById('shot-btn');
       if (select) select.classList.toggle('active', mode === 'element');
       if (shot) shot.classList.toggle('active', mode === 'screenshot');
-    } catch (_) {}
+    } catch (_) { }
   }
 
   mount() {
@@ -50,10 +50,10 @@ export default class DockRoot {
     this.shadow = this.host.attachShadow({ mode: 'open' });
     this.shadow.innerHTML = this.renderHTML();
     document.body.appendChild(this.host);
-    
+
     // Apply initial layout (no squeeze until shown)
     this.applySqueeze(false);
-    
+
     // Remove compact handle – prefer close + launcher orb UX
     this.createLauncher();
     this.bind();
@@ -178,7 +178,7 @@ export default class DockRoot {
         this.updateTheme();
       });
       this.stateManager.subscribe('ui.mode', (mode) => this.reflectMode(mode));
-    } catch (_) {}
+    } catch (_) { }
 
     // Apply theme and mode on mount
     this.updateTheme();
@@ -188,7 +188,7 @@ export default class DockRoot {
     closeBtn.addEventListener('click', () => {
       this.stateManager.set('ui.dockOpen', false);
       this.setVisible(false);
-      try { this.eventBus.emit('bubble:close'); } catch (_) {}
+      try { this.eventBus.emit('bubble:close'); } catch (_) { }
     });
 
     this.tabsEl.addEventListener('click', (e) => {
@@ -205,7 +205,7 @@ export default class DockRoot {
     try {
       this.eventBus.on('session:create', () => this.setTab('chat'));
       this.eventBus.on('session:resume', () => this.setTab('chat'));
-    } catch (_) {}
+    } catch (_) { }
 
     this.engineSelect.addEventListener('change', () => {
       const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
@@ -345,7 +345,7 @@ export default class DockRoot {
       const body = document.body;
       html.style.paddingRight = '0px';
       body.style.paddingRight = '0px';
-    } catch (_) {}
+    } catch (_) { }
   }
 
   updateDockState(state) {
@@ -354,17 +354,17 @@ export default class DockRoot {
     dock.classList.remove('compact');
     const isCompact = false;
     const dockWidth = '420px';
-    
+
     if (this.host) {
       this.host.style.pointerEvents = isCompact ? 'none' : 'auto';
       this.host.style.transition = 'width 0.2s cubic-bezier(0.22, 1, 0.36, 1)';
       this.host.style.width = dockWidth;
     }
-    
+
     // Update squeeze based on compact state
     const isOpen = this.stateManager.get('ui.dockOpen') !== false;
     if (isOpen) this.applySqueeze(false);
-    
+
     // Hide Dock surface entirely in compact; use handle instead
     dock.style.display = isCompact ? 'none' : 'flex';
 
@@ -377,10 +377,10 @@ export default class DockRoot {
   setVisible(isOpen) {
     if (!this.host) return;
     this.host.style.display = isOpen ? 'block' : 'none';
-    
+
     // Overlay mode, no squeeze
     this.applySqueeze(false);
-    
+
     if (this.handle) {
       const state = this.stateManager.get('ui.dockState');
       this.handle.style.display = isOpen && state === 'compact' ? 'flex' : 'none';
@@ -426,7 +426,12 @@ export default class DockRoot {
     if (!this.chatPane) return;
     const pane = this.chatPane;
     pane.innerHTML = '';
-    const sessions = this.stateManager.get('sessions.list') || [];
+
+    const project = this.stateManager.get('projects.current');
+    const projectId = project ? project.id : null;
+    const allSessions = this.stateManager.get('sessions.list') || [];
+    const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
+
     const currentId = this.stateManager.get('sessions.currentId');
     const session = sessions.find(s => s.id === currentId) || sessions[0];
     if (!session || session.transcript.length === 0) {
@@ -518,22 +523,22 @@ export default class DockRoot {
     const turnSummary = msg.turnSummary || null;
     const resultChunks = Array.isArray(msg.chunks) ? msg.chunks : [];
 
+    const stripFileCount = (text = '') =>
+      String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
+
     const title = turnSummary?.title
-      || result.title
-      || (resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
+      || stripFileCount(result.title)
+      || stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
       || '';
     const description = (() => {
       if (turnSummary && Array.isArray(turnSummary.bullets) && turnSummary.bullets.length) {
-        return turnSummary.bullets[0];
+        return stripFileCount(turnSummary.bullets[0]);
       }
       let text =
-        result.description ||
-        (resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
-        msg.text ||
+        stripFileCount(result.description) ||
+        stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
+        stripFileCount(msg.text) ||
         '';
-      if (text) {
-        text = String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-      }
       return text || '';
     })();
 
@@ -606,6 +611,9 @@ export default class DockRoot {
       placeholder.className = 'timeline-placeholder';
       placeholder.textContent = 'Execution events will appear here once processing begins.';
       body.appendChild(placeholder);
+    }
+    if (chunks.length) {
+      body.appendChild(this.renderRawLogs(chunks));
     }
     wrapper.appendChild(body);
     return wrapper;
@@ -707,6 +715,27 @@ export default class DockRoot {
     return list;
   }
 
+  renderRawLogs(chunks = []) {
+    const doc = this.shadow?.ownerDocument || document;
+    const details = doc.createElement('details');
+    details.className = 'raw-logs';
+    const summary = doc.createElement('summary');
+    summary.textContent = 'View raw logs';
+    details.appendChild(summary);
+    const pre = doc.createElement('pre');
+    pre.className = 'raw-logs-body';
+    const lines = [];
+    chunks.forEach((c) => {
+      if (!c || typeof c !== 'object') return;
+      if (c.type === 'log' && c.text) lines.push(c.text);
+      else if (c.type === 'run' && c.cmd) lines.push(`[run] ${c.cmd}`);
+      else if (c.type === 'error' && (c.text || c.message)) lines.push(`[error] ${c.text || c.message}`);
+    });
+    pre.textContent = lines.join('\n');
+    details.appendChild(pre);
+    return details;
+  }
+
   renderTimelineEntries(entries = []) {
     const doc = this.shadow?.ownerDocument || document;
     const container = doc.createElement('div');
@@ -806,7 +835,11 @@ export default class DockRoot {
     newBtn.addEventListener('click', () => this.eventBus.emit('session:create'));
     pane.appendChild(newBtn);
 
-    const sessions = this.stateManager.get('sessions.list') || [];
+    const project = this.stateManager.get('projects.current');
+    const projectId = project ? project.id : null;
+    const allSessions = this.stateManager.get('sessions.list') || [];
+    const sessions = allSessions.filter(s => (s.projectId || null) === projectId);
+
     const currentId = this.stateManager.get('sessions.currentId');
     if (!sessions.length) {
       const empty = document.createElement('div');
@@ -1341,7 +1374,7 @@ export default class DockRoot {
       e.stopPropagation();
       const idRaw = chip.dataset.shotId;
       const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
-      try { this.eventBus.emit('screenshot:remove', id); } catch (_) {}
+      try { this.eventBus.emit('screenshot:remove', id); } catch (_) { }
     });
 
     chip.appendChild(labelBtn);
@@ -1391,7 +1424,7 @@ export default class DockRoot {
       if (!toRemove.length) return;
       // Remove from highest to lowest to keep indices consistent
       toRemove.sort((a, b) => b - a).forEach((idx) => this.eventBus.emit('element:removed', idx));
-    } catch (_) {}
+    } catch (_) { }
   }
 
   decorateChip(chip, item, index) {
@@ -1459,7 +1492,7 @@ export default class DockRoot {
   }
 
   showShotPreview(shot, anchorEl) {
-    try { this.ensureShotPreviewContainers(); } catch (_) {}
+    try { this.ensureShotPreviewContainers(); } catch (_) { }
     if (!this.shotTooltip || !this.shotTooltipImg) return;
     this.shotTooltipImg.src = shot.dataUrl;
     const chipRect = anchorEl.getBoundingClientRect();
@@ -1477,7 +1510,7 @@ export default class DockRoot {
   }
 
   openShotLightbox(shot) {
-    try { this.ensureShotPreviewContainers(); } catch (_) {}
+    try { this.ensureShotPreviewContainers(); } catch (_) { }
     if (!this.shotLightbox || !this.shotLightboxImg) return;
     this.shotLightboxImg.src = shot.dataUrl;
     this.shotLightbox.style.display = 'flex';
@@ -1502,7 +1535,7 @@ export default class DockRoot {
   removeElementAt(index) {
     const list = (this.stateManager.get('selection.elements') || []).slice();
     if (index < 0 || index >= list.length) return;
-    try { this.eventBus.emit('element:pre-remove', { index, snapshot: list[index] }); } catch (_) {}
+    try { this.eventBus.emit('element:pre-remove', { index, snapshot: list[index] }); } catch (_) { }
     list.splice(index, 1);
     this.stateManager.set('selection.elements', list);
     this.eventBus.emit('element:removed', index);

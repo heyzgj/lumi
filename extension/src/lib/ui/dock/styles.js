@@ -344,6 +344,25 @@ export const DOCK_STYLES = `
     color: var(--text-secondary);
     font-style: italic;
   }
+  .raw-logs {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .raw-logs summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+  .raw-logs-body {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   @keyframes dock-dots {
     0% { width: 0; }
     33% { width: 0.4em; }
