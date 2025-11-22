@@ -62,13 +62,13 @@
           <header class="panel-header">
             <div>
               <h2>Projects</h2>
-              <p class="helper">Map hosts to local working directories.</p>
+              <p class="helper">Tell LUMI where your code lives. Host / path patterns are optional.</p>
             </div>
             <button id="addProject" class="ghost">Add</button>
           </header>
           <div class="panel-body">
             <div id="projectsEmpty" class="empty-state" hidden>
-              <p>No projects yet. Requests fall back to the default working directory.</p>
+              <p>No projects yet. LUMI is disabled until you add at least one project (at least a working directory).</p>
             </div>
             <div id="projectsList" class="projects-list"></div>
           </div>
@@ -174,6 +174,26 @@
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
+    <div id="projectModal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <h3>Add Project</h3>
+        <div class="field">
+          <label for="projectModalDirectory">Working Directory</label>
+          <input id="projectModalDirectory" type="text" placeholder="/Users/you/project" />
+          <small>Absolute path where Codex/Claude should run.</small>
+        </div>
+        <div class="field">
+          <label for="projectModalHosts">URL Patterns (optional)</label>
+          <input id="projectModalHosts" type="text" placeholder="localhost:3000, *.example.com, file:///Users/you/project/" />
+          <small>Comma separated. Use host patterns for http/https (e.g., localhost:3000) or file path prefixes for local HTML (e.g., file:///Users/you/project/). Leave empty to apply to all pages.</small>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="ghost" id="projectModalCancel">Cancel</button>
+          <button type="button" class="primary" id="projectModalAdd">Add</button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="options.js"></script>
   </body>
 </html>

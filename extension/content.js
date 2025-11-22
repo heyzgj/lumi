@@ -1423,14 +1423,37 @@
           : Array.isArray(rawConfig?.config?.projects)
             ? rawConfig.config.projects
             : [];
+        const workingDirectory = rawConfig?.workingDirectory
+          || rawConfig?.config?.workingDirectory
+          || null;
         const host = window.location?.host || '';
         const projectMatch = resolveProject(projects, window.location?.href);
-        const projectAllowed = projects.length === 0 || !!projectMatch?.project;
+        const projectAllowed = !!projectMatch?.project;
+
+        try {
+          const debugProject = projectMatch?.project
+            ? {
+                id: projectMatch.project.id,
+                name: projectMatch.project.name,
+                workingDirectory: projectMatch.project.workingDirectory
+              }
+            : null;
+          // eslint-disable-next-line no-console
+          console.log('[LUMI][HealthChecker] /health resolved', {
+            healthy: !!result?.healthy,
+            host,
+            projectsCount: projects.length,
+            workingDirectory,
+            projectAllowed,
+            project: debugProject
+          });
+        } catch (_) { /* ignore debug logging errors */ }
 
         this.stateManager.batch({
           'projects.allowed': projectAllowed,
           'projects.current': projectMatch?.project || null,
-          'projects.list': projects
+          'projects.list': projects,
+          'server.workingDirectory': workingDirectory
         });
 
         if (!projectAllowed) {
@@ -1500,13 +1523,43 @@
 
     try {
       const url = new URL(pageUrl);
-      const host = url.host.toLowerCase();
+      const host = (url.host || '').toLowerCase();
+      const isFile = url.protocol === 'file:';
+      const pathname = (url.pathname || '').toLowerCase();
       let best = null;
       let bestScore = -Infinity;
       for (const project of projects) {
         if (!project || project.enabled === false) continue;
         const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+        if (hosts.length === 0) {
+          // Wildcard project: matches any URL with lowest priority
+          const score = -1;
+          if (score > bestScore) {
+            bestScore = score;
+            best = project;
+          }
+          continue;
+        }
         for (const pattern of hosts) {
+          const raw = String(pattern || '').trim().toLowerCase();
+          if (!raw) continue;
+
+          // file:// 页面支持路径前缀匹配
+          if (isFile && (raw.startsWith('file:///') || raw.startsWith('/'))) {
+            let prefix = raw;
+            if (prefix.startsWith('file://')) {
+              prefix = prefix.slice('file://'.length);
+            }
+            if (!pathname.startsWith(prefix)) continue;
+            const score = 5000 + prefix.length;
+            if (score > bestScore) {
+              bestScore = score;
+              best = project;
+            }
+            continue;
+          }
+
+          // 其它协议按 host pattern 匹配
           if (!hostMatches(pattern, host)) continue;
           const normalized = String(pattern).trim().toLowerCase();
           const wildcards = (normalized.match(/\*/g) || []).length;
@@ -2415,9 +2468,7 @@
 
   .history-main { min-width: 0; }
   .history-title { font-size: 13px; font-weight: 500; color: var(--text); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); display: flex; align-items: center; gap: 6px; }
-  .status-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--dock-stroke); }
-  .status-dot.ok { background: var(--success); }
+  .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); }
 
   .history-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s ease; }
   .history-actions button {
@@ -3059,6 +3110,7 @@
       this.historyPane = this.shadow.getElementById('history-pane');
       this.tabsEl = this.shadow.getElementById('tabs');
       this.editorEl = this.shadow.getElementById('composer-editor');
+      this.footerEl = this.shadow.querySelector('.footer');
       this.inputEl = this.editorEl;
       this.sendBtn = this.shadow.getElementById('send-btn');
       this.engineSelect = this.shadow.getElementById('engine-select');
@@ -3225,6 +3277,21 @@
       this.stateManager.subscribe('wysiwyg.hasDiffs', () => this.updateSendState());
       this.stateManager.subscribe('projects.allowed', () => this.updateSendState());
       this.stateManager.subscribe('projects.current', (project) => this.updateProjectName(project));
+      this.stateManager.subscribe('server.workingDirectory', () => {
+        this.updateProjectName(this.stateManager.get('projects.current'));
+      });
+
+      // Also listen for batched state updates so we react when HealthChecker
+      // updates projects.current / server.workingDirectory via batch(...)
+      try {
+        this.eventBus.on('state:batch-update', (updates) => {
+          if (!updates) return;
+          if (Object.prototype.hasOwnProperty.call(updates, 'projects.current')
+            || Object.prototype.hasOwnProperty.call(updates, 'server.workingDirectory')) {
+            this.updateProjectName(this.stateManager.get('projects.current'));
+          }
+        });
+      } catch (_) { /* ignore debug wiring errors */ }
 
       this.updateEngine(this.stateManager.get('engine.current'));
       this.updateEngineAvailability();
@@ -3324,6 +3391,10 @@
 
     renderBody() {
       const tab = this.stateManager.get('ui.dockTab') || this.activeTab;
+      // Hide composer when viewing History
+      if (this.footerEl) {
+        this.footerEl.style.display = tab === 'history' ? 'none' : 'block';
+      }
       if (tab === 'history') {
         this.chatPane.classList.add('view-hidden');
         this.chatPane.classList.remove('view-active');
@@ -3780,7 +3851,7 @@
         row.innerHTML = `
         <div class="history-main">
           <div class="history-title">${session.title ? escapeHtml(session.title) : 'Untitled session'}</div>
-          <div class="history-meta">${this.timeAgo(session.updatedAt || session.createdAt)} • ${session.msgCount || 0}<span class="status-dot ${session.lastAppliedOk ? 'ok' : ''}"></span></div>
+          <div class="history-meta">${this.timeAgo(session.updatedAt || session.createdAt)}</div>
         </div>
         <div class="history-actions">
           <button data-action="rename">Rename</button>
@@ -3911,12 +3982,51 @@
 
     updateProjectName(project) {
       if (!this.projectLabel) return;
+
+      try {
+        const serverWd = this.stateManager.get('server.workingDirectory');
+        const debugProject = project && typeof project === 'object'
+          ? {
+              id: project.id,
+              name: project.name,
+              workingDirectory: project.workingDirectory
+            }
+          : null;
+        // eslint-disable-next-line no-console
+        console.log('[LUMI][Dock] updateProjectName', {
+          project: debugProject,
+          serverWorkingDirectory: serverWd
+        });
+      } catch (_) { /* ignore debug logging errors */ }
+
+      const projectAllowed = this.stateManager.get('projects.allowed');
+
+      // If there is no mapped project or the host is blocked, treat as unmapped
+      if (!project || projectAllowed === false) {
+        this.projectLabel.textContent = 'Lumi — Unmapped Page';
+        return;
+      }
+
+      // Prefer the matched project's working directory as identity when available
+      try {
+        const projectWd = project && typeof project === 'object' ? project.workingDirectory : null;
+        if (projectWd && typeof projectWd === 'string') {
+          const cleaned = projectWd.replace(/[\\/]+$/, '');
+          const parts = cleaned.split(/[\\/]/);
+          const base = parts[parts.length - 1] || cleaned;
+          this.projectLabel.textContent = `Lumi — ${base}`;
+          return;
+        }
+      } catch (_) { /* ignore */ }
+
+      // Fallback: use explicit project name when available
       if (project && typeof project === 'object') {
         const name = project.name || project.id || 'Linked Project';
         this.projectLabel.textContent = `Lumi — ${name}`;
-      } else {
-        this.projectLabel.textContent = 'Lumi — Unmapped Page';
+        return;
       }
+
+      this.projectLabel.textContent = 'Lumi — Unmapped Page';
     }
 
     updateSendState() {

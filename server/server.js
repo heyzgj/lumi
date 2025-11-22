@@ -147,7 +147,7 @@ function sanitizeProjects(projects) {
         : [];
       const enabled = project.enabled !== false;
 
-      if (!workingDirectory || hosts.length === 0) {
+      if (!workingDirectory) {
         return null;
       }
 
@@ -258,19 +258,55 @@ function resolveProjectForUrl(pageUrl) {
     return { project: null, cwd: config.workingDirectory };
   }
 
-  const host = parsed.host;
+  const host = parsed.host || '';
+  const isFile = parsed.protocol === 'file:';
+  const pathname = (parsed.pathname || '').toLowerCase();
   const projects = Array.isArray(config.projects) ? config.projects : [];
 
-  // Choose the most specific matching project (prefer exact host matches,
-  // then fewer wildcards, then longer non-wildcard length)
+  // Choose the most specific matching project:
+  // - Prefer explicit host patterns (exact > fewer wildcards > longer length)
+  // - 对 file:// URL 支持路径前缀匹配（file:///path/... 或 /path/...）
+  // - 如果 hosts 为空，将该 project 视为 wildcard，匹配任何 URL，优先级最低
   let best = null;
   let bestScore = -Infinity;
 
   for (const project of projects) {
     if (!project || project.enabled === false) continue;
     const hosts = Array.isArray(project.hosts) ? project.hosts : [];
-    if (hosts.length === 0) continue;
+    if (hosts.length === 0) {
+      // Wildcard project: matches any URL with lowest priority
+      const cwd = project.workingDirectory || config.workingDirectory;
+      if (!cwd) continue;
+      const score = -1; // less than any explicit match
+      if (score > bestScore) {
+        bestScore = score;
+        best = { project, cwd };
+      }
+      continue;
+    }
     for (const pattern of hosts) {
+      const raw = String(pattern || '').trim().toLowerCase();
+      if (!raw) continue;
+
+      // file:// 页面支持路径前缀匹配
+      if (isFile && (raw.startsWith('file:///') || raw.startsWith('/'))) {
+        let prefix = raw;
+        if (prefix.startsWith('file://')) {
+          prefix = prefix.slice('file://'.length);
+        }
+        if (!pathname.startsWith(prefix)) continue;
+        const cwd = project.workingDirectory || config.workingDirectory;
+        if (!cwd) continue;
+        // 更长的前缀代表更具体的匹配
+        const score = 5000 + prefix.length;
+        if (score > bestScore) {
+          bestScore = score;
+          best = { project, cwd };
+        }
+        continue;
+      }
+
+      // 其它协议按 host pattern 匹配
       if (!hostMatches(pattern, host)) continue;
       const normalized = normalizeHostPattern(pattern);
       const wildcards = (normalized.match(/\*/g) || []).length;

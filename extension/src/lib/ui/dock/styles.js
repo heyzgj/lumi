@@ -527,9 +527,7 @@ export const DOCK_STYLES = `
 
   .history-main { min-width: 0; }
   .history-title { font-size: 13px; font-weight: 500; color: var(--text); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); display: flex; align-items: center; gap: 6px; }
-  .status-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--dock-stroke); }
-  .status-dot.ok { background: var(--success); }
+  .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); }
 
   .history-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s ease; }
   .history-actions button {

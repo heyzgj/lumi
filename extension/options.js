@@ -100,7 +100,7 @@ function sanitizeProjects(projects = []) {
         : [];
       const enabled = project.enabled !== false;
 
-      if (!workingDirectory || hosts.length === 0) {
+      if (!workingDirectory) {
         return null;
       }
 
@@ -290,6 +290,63 @@ function addNewProject() {
   });
   currentProjects = [...currentProjects, newProject];
   renderProjects();
+}
+
+function openProjectModal() {
+  const modal = $('projectModal');
+  if (!modal) return;
+  const dirInput = $('projectModalDirectory');
+  const hostsInput = $('projectModalHosts');
+  if (dirInput) dirInput.value = '';
+  if (hostsInput) hostsInput.value = '';
+  modal.classList.add('visible');
+  modal.hidden = false;
+  if (dirInput) dirInput.focus();
+}
+
+function closeProjectModal() {
+  const modal = $('projectModal');
+  if (!modal) return;
+  modal.classList.remove('visible');
+  modal.hidden = true;
+}
+
+function addProjectFromModal() {
+  const dirInput = $('projectModalDirectory');
+  const hostsInput = $('projectModalHosts');
+  if (!dirInput) return;
+  const workingDirectory = dirInput.value.trim();
+  const hostsRaw = (hostsInput?.value || '').trim();
+  if (!workingDirectory) {
+    dirInput.focus();
+    return;
+  }
+  const hosts = hostsRaw
+    ? hostsRaw.split(',').map((host) => normalizeHostPattern(host)).filter(Boolean)
+    : [];
+
+  syncProjectsFromUI();
+
+  // Derive a default name from the directory basename
+  let name = '';
+  try {
+    const cleaned = workingDirectory.replace(/[\\/]+$/, '');
+    const parts = cleaned.split(/[\\/]/);
+    name = parts[parts.length - 1] || cleaned;
+  } catch (_) {
+    name = '';
+  }
+
+  const newProject = ensureProjectShape({
+    id: generateProjectId(),
+    name,
+    workingDirectory,
+    hosts,
+    hostsText: hostsRaw
+  });
+  currentProjects = [...currentProjects, newProject];
+  renderProjects();
+  closeProjectModal();
 }
 
 function sendMessage(message) {
@@ -532,7 +589,30 @@ function registerEvents() {
   if (addProjectBtn) {
     addProjectBtn.addEventListener('click', (event) => {
       event.preventDefault();
-      addNewProject();
+      openProjectModal();
+    });
+  }
+
+  const modalAdd = $('projectModalAdd');
+  if (modalAdd) {
+    modalAdd.addEventListener('click', (event) => {
+      event.preventDefault();
+      addProjectFromModal();
+    });
+  }
+  const modalCancel = $('projectModalCancel');
+  if (modalCancel) {
+    modalCancel.addEventListener('click', (event) => {
+      event.preventDefault();
+      closeProjectModal();
+    });
+  }
+  const modal = $('projectModal');
+  if (modal) {
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeProjectModal();
+      }
     });
   }
 

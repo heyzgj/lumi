@@ -74,7 +74,7 @@ function sanitizeProjects(projects = []) {
         : [];
       const enabled = project.enabled !== false;
 
-      if (!workingDirectory || hosts.length === 0) return null;
+      if (!workingDirectory) return null;
 
       return {
         id,
