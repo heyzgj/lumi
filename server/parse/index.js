@@ -23,14 +23,6 @@ const EntryStatus = {
   FAILED: 'failed'
 };
 
-function stripFileCount(text = '') {
-  try {
-    return String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-  } catch (_) {
-    return text;
-  }
-}
-
 /**
  * Build a linear, chronological timeline from Chunk[]
  * @param {Array} chunks raw chunk array
@@ -134,7 +126,7 @@ function buildTimelineFromChunks(chunks = [], timing = {}) {
           kind: EntryKind.FINAL,
           status: EntryStatus.DONE,
           title: 'Result',
-          body: stripFileCount(c.resultSummary || c.text || ''),
+          body: c.resultSummary || c.text || '',
           sourceChunkIds: c.id ? [c.id] : undefined
         });
       }
@@ -189,7 +181,7 @@ function buildTimelineFromChunks(chunks = [], timing = {}) {
   // Extract bullets from final result or edits
   const finalEntry = entries.findLast(e => e.kind === EntryKind.FINAL);
   if (finalEntry && finalEntry.body) {
-    summary.bullets.push(finalEntry.body.slice(0, 200));
+    summary.bullets.push(finalEntry.body);
   }
 
   if (testsStatus === 'not_run' && commandCount > 0) {

@@ -565,15 +565,11 @@ function bootstrap() {
     // Remove a specific screenshot by id
     eventBus.on('screenshot:remove', (id) => {
       const list = (stateManager.get('selection.screenshots') || []).slice();
-      console.log('[LUMI] screenshot:remove', { id, currentList: list });
       const idx = list.findIndex(s => s && (s.id === id));
       if (idx >= 0) {
         list.splice(idx, 1);
         stateManager.set('selection.screenshots', list);
         eventBus.emit('screenshot:removed', id);
-        console.log('[LUMI] screenshot removed, new list:', list);
-      } else {
-        console.warn('[LUMI] screenshot not found for removal:', id);
       }
     });
 

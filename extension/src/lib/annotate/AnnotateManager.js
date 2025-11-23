@@ -62,7 +62,7 @@ export default class AnnotateManager {
         this.stateManager.set('ui.mode', 'screenshot'); // Reusing 'screenshot' mode for now
     }
 
-    deactivate(clearScreenshots = false) {
+    deactivate() {
         if (!this.isActive) return;
         this.isActive = false;
 
@@ -86,12 +86,6 @@ export default class AnnotateManager {
         // Unbind events
         this.unbindEvents();
 
-        // Only clear screenshots if explicitly requested (e.g., on cancel)
-        if (clearScreenshots) {
-            this.stateManager.set('selection.screenshots', []);
-            console.log('[LUMI] AnnotateManager cleared screenshots');
-        }
-
         // Reset state
         this.stateManager.set('ui.mode', 'idle');
     }
@@ -111,7 +105,7 @@ export default class AnnotateManager {
         this.unsubscribers.push(this.eventBus.on('annotate:color', (color) => this.setColor(color)));
         this.unsubscribers.push(this.eventBus.on('annotate:undo', () => this.undo()));
         this.unsubscribers.push(this.eventBus.on('annotate:reset', () => this.reset()));
-        this.unsubscribers.push(this.eventBus.on('annotate:cancel', () => this.deactivate(true))); // Clear screenshots on cancel
+        this.unsubscribers.push(this.eventBus.on('annotate:cancel', () => this.deactivate()));
         this.unsubscribers.push(this.eventBus.on('annotate:submit', () => this.captureAndSubmit()));
 
         // Dock state changes (for toolbar positioning)
@@ -163,6 +157,9 @@ export default class AnnotateManager {
     handleKeyDown(e) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             const activeObjects = this.fabricCanvas.getActiveObjects();
+            // If any active object is currently being edited (e.g. IText), do not delete
+            if (activeObjects.some(obj => obj.isEditing)) return;
+
             if (activeObjects.length) {
                 this.fabricCanvas.discardActiveObject();
                 activeObjects.forEach((obj) => {
@@ -375,7 +372,6 @@ export default class AnnotateManager {
 
             // Add to selection
             const screenshots = this.stateManager.get('selection.screenshots') || [];
-            console.log('[LUMI] AnnotateManager adding shot. Current list:', screenshots);
             const newShot = {
                 id: 'shot-' + Date.now(),
                 dataUrl: dataUrl,
@@ -386,13 +382,11 @@ export default class AnnotateManager {
                 }
             };
 
-            const newList = [...screenshots, newShot];
-            this.stateManager.set('selection.screenshots', newList);
-            console.log('[LUMI] AnnotateManager set new list:', newList);
+            this.stateManager.set('selection.screenshots', [...screenshots, newShot]);
             this.eventBus.emit('screenshot:captured', newShot);
 
-            // Close annotate mode (don't clear screenshots - let user see them in composer)
-            this.deactivate(false);
+            // Close annotate mode
+            this.deactivate();
 
         } catch (err) {
             console.error('Screenshot failed:', err);

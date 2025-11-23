@@ -135,11 +135,10 @@ export const DOCK_STYLES = `
 
   #chat-pane.view-hidden,
   #history-pane.view-hidden { display: none; }
-  #chat-pane.view-active,
-  #history-pane.view-active { display: block; }
+  #chat-pane.view-active { display: block; }
 
   /* Chat */
-  .chat-list { display: flex; flex-direction: column; gap: 20px; }
+  .chat-list { display: flex; flex-direction: column; gap: 22px; }
   .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
 
   /* Amp-style messages: user has border, assistant plain */
@@ -154,6 +153,8 @@ export const DOCK_STYLES = `
     background: transparent;
     border: none;
     padding-left: 0;
+    padding-top: 16px;
+    gap: 4px;
   }
   .msg.user {
     background: color-mix(in srgb, var(--dock-fg) 3%, transparent);
@@ -252,6 +253,15 @@ export const DOCK_STYLES = `
   .assistant-timeline {
     margin-top: 6px;
   }
+  .assistant-timeline.collapsed {
+    margin-top: 2px;
+  }
+  .assistant-timeline + .assistant-summary {
+    margin-top: 8px;
+  }
+  .assistant-timeline.collapsed + .assistant-summary {
+    margin-top: 4px;
+  }
   .timeline-feed {
     margin: 0;
     padding-left: 0;
@@ -278,7 +288,7 @@ export const DOCK_STYLES = `
     font-size: 13px;
     font-weight: 500;
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -296,7 +306,7 @@ export const DOCK_STYLES = `
     animation: dock-dots 1s steps(3, end) infinite;
   }
   .assistant-summary {
-    margin-top: 12px;
+    margin-top: 0px;
     font-size: 13px;
     color: var(--text);
   }
@@ -494,7 +504,7 @@ export const DOCK_STYLES = `
   }
 
   /* History */
-  .history-list { display: flex; flex-direction: column; gap: 18px; }
+  .history-list { display: flex; flex-direction: column; gap: 16px; }
   .history-new {
     display: inline-flex;
     align-items: center;
@@ -557,7 +567,7 @@ export const DOCK_STYLES = `
   }
 
   /* Composer */
-  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 24px; }
 
   .composer-top {
     display: flex;
@@ -568,6 +578,7 @@ export const DOCK_STYLES = `
     border: 1px solid var(--border);
     background: var(--surface);
     padding: 10px 14px;
+    margin-bottom: 12px; /* adds space before the engine/actions row */
     cursor: text;
   }
   .composer-top .editor {
@@ -635,13 +646,195 @@ export const DOCK_STYLES = `
   .icon:active { transform: scale(0.98); }
   .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--text); }
   .send {
-    padding: 6px 14px;
-    border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
-    background: var(--accent);
-    color: var(--on-accent);
-    font-size: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--dock-fg);
+    color: var(--dock-bg);
+    display: grid;
+    place-items: center;
     cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.2s ease, background 0.2s ease;
+    position: relative;
+    padding: 0;
   }
-  .send:disabled { opacity: 0.5; cursor: not-allowed; }
+  .send:hover { transform: scale(1.05); }
+  .send:active { transform: scale(0.95); }
+  .send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; background: var(--dock-fg-2); }
+  
+  .send svg {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  
+  .send.processing svg {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  
+  .send.processing::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--dock-bg);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: dock-spin 0.8s linear infinite;
+  }
+
+  /* New Timeline Styles */
+  .timeline-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px 0;
+    position: relative;
+  }
+  .timeline-entries::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 11px; /* Centered relative to 24px icon (12px center) - 1px width = 11px */
+    width: 2px;
+    background: var(--dock-stroke);
+    z-index: 0;
+  }
+
+  .timeline-entry {
+    display: flex;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .timeline-icon {
+    flex: 0 0 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
+    margin-top: 0; /* Ensure no extra margin */
+  }
+
+  /* ... status colors ... */
+
+  .timeline-content {
+    flex: 1;
+    min-width: 0;
+    padding-top: 2px; /* Align text with icon center */
+  }
+
+  .timeline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    padding: 2px 0; /* Remove horizontal padding */
+    transition: opacity 0.2s;
+  }
+  .timeline-header.clickable:hover {
+    background: transparent; /* Remove hover background */
+    opacity: 0.8; /* Subtle opacity change instead */
+  }
+
+  .timeline-title {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text);
+    flex: 1; /* Push chevron to right */
+  }
+
+  .timeline-chevron {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    transition: transform 0.2s ease;
+    opacity: 0; /* Hidden by default */
+  }
+  
+  .timeline-entry:hover .timeline-chevron,
+  .timeline-entry.expanded .timeline-chevron {
+    opacity: 1; /* Show on hover or expand */
+  }
+
+  .timeline-entry.expanded .timeline-chevron {
+    transform: rotate(180deg);
+  }
+
+  /* New Details Body Styling */
+  .timeline-details-body {
+    display: none; /* Hidden by default */
+    margin-top: 4px;
+    border-radius: 6px;
+    background: var(--dock-bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  
+  .timeline-entry.expanded .timeline-details-body {
+    display: block; /* Show when expanded */
+  }
+
+  .timeline-pre {
+    margin: 0;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 500px;
+    color: var(--text);
+    background: transparent; /* Background handled by container */
+    border: none; /* Border handled by container */
+  }
+
+  /* Summary Body Truncation Fix */
+  .summary-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    margin-top: 8px;
+    white-space: pre-wrap; /* Ensure wrapping */
+    overflow-wrap: break-word; /* Prevent overflow */
+    max-width: 100%;
+  }
+
+  /* Specific Entry Types */
+  .timeline-entry.thinking .timeline-title {
+    font-style: italic;
+    color: var(--text-secondary);
+  }
+  
+  .timeline-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .timeline-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text);
+  }
+  .timeline-file-stat {
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-secondary);
+  }
+  .timeline-file-stat.added { color: var(--success, #10b981); background: color-mix(in srgb, var(--success, #10b981) 10%, transparent); }
+  .timeline-file-stat.removed { color: var(--error, #ef4444); background: color-mix(in srgb, var(--error, #ef4444) 10%, transparent); }
 `;

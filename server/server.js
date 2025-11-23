@@ -841,7 +841,7 @@ async function executeCodex(context, screenshotPath, execOptions = {}) {
   if (parsedMeta && parsedMeta.summary) {
     if (!lumiResult.summary) lumiResult.summary = {};
     if (!lumiResult.summary.title || lumiResult.summary.title === 'Assistant response') {
-      lumiResult.summary.title = parsedMeta.summary.slice(0, 140);
+      lumiResult.summary.title = parsedMeta.summary;
     }
     if (!lumiResult.summary.description) {
       lumiResult.summary.description = parsedMeta.summary;
@@ -1033,7 +1033,7 @@ async function streamCodex(context, screenshotPath, execOptions = {}, emit = {})
   if (summary) {
     if (!lumiResult.summary) lumiResult.summary = {};
     if (!lumiResult.summary.title || lumiResult.summary.title === 'Assistant response') {
-      lumiResult.summary.title = summary.slice(0, 140);
+      lumiResult.summary.title = summary;
     }
     if (!lumiResult.summary.description) {
       lumiResult.summary.description = summary;
@@ -1180,7 +1180,7 @@ async function executeClaude(context, screenshotPath, execOptions = {}) {
   if (parsedMeta && parsedMeta.summary) {
     if (!lumiResult.summary) lumiResult.summary = {};
     if (!lumiResult.summary.title || lumiResult.summary.title === 'Proposed edits') {
-      lumiResult.summary.title = parsedMeta.summary.slice(0, 140);
+      lumiResult.summary.title = parsedMeta.summary;
     }
     if (!lumiResult.summary.description) {
       lumiResult.summary.description = parsedMeta.summary;
@@ -1328,7 +1328,7 @@ async function streamClaude(context, screenshotPath, execOptions = {}, emit = {}
   if (summary) {
     if (!lumiResult.summary) lumiResult.summary = {};
     if (!lumiResult.summary.title || lumiResult.summary.title === 'Proposed edits') {
-      lumiResult.summary.title = summary.slice(0, 140);
+      lumiResult.summary.title = summary;
     }
     if (!lumiResult.summary.description) {
       lumiResult.summary.description = summary;

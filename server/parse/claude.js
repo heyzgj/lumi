@@ -54,6 +54,12 @@ function parseClaudeOutput(output) {
 
   // Two modes: json (object/array) or text (json lines)
   if (typeof output === 'string') {
+    const fullText = output.trim();
+    if (fullText) {
+      result.summary.title = fullText;
+      result.summary.description = fullText;
+    }
+
     const { changes } = parseClaudeJSONLines(output);
     if (changes.length) {
       result.changes.push(...changes);
@@ -62,8 +68,6 @@ function parseClaudeOutput(output) {
       // Possibly plain markdown/text from Claude
       result.outputType = /```|^#\s/m.test(output) ? 'markdown' : 'text';
     }
-    const firstLine = (output.split('\n').find(l => l.trim()) || '').trim();
-    if (firstLine) result.summary.title = firstLine.slice(0, 140);
     return result;
   }
 
@@ -78,8 +82,13 @@ function parseClaudeOutput(output) {
     }
   });
   if (result.changes.length) result.outputType = 'json';
+
+  const serialized = JSON.stringify(output, null, 2).trim();
+  if (serialized) {
+    result.summary.title = serialized;
+    result.summary.description = serialized;
+  }
   return result;
 }
 
 module.exports = { parseClaudeOutput };
-

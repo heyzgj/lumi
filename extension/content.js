@@ -1430,7 +1430,7 @@ ${TOKENS_CSS}
           this.stateManager.set('ui.mode', 'screenshot'); // Reusing 'screenshot' mode for now
       }
 
-      deactivate(clearScreenshots = false) {
+      deactivate() {
           if (!this.isActive) return;
           this.isActive = false;
 
@@ -1454,12 +1454,6 @@ ${TOKENS_CSS}
           // Unbind events
           this.unbindEvents();
 
-          // Only clear screenshots if explicitly requested (e.g., on cancel)
-          if (clearScreenshots) {
-              this.stateManager.set('selection.screenshots', []);
-              console.log('[LUMI] AnnotateManager cleared screenshots');
-          }
-
           // Reset state
           this.stateManager.set('ui.mode', 'idle');
       }
@@ -1479,7 +1473,7 @@ ${TOKENS_CSS}
           this.unsubscribers.push(this.eventBus.on('annotate:color', (color) => this.setColor(color)));
           this.unsubscribers.push(this.eventBus.on('annotate:undo', () => this.undo()));
           this.unsubscribers.push(this.eventBus.on('annotate:reset', () => this.reset()));
-          this.unsubscribers.push(this.eventBus.on('annotate:cancel', () => this.deactivate(true))); // Clear screenshots on cancel
+          this.unsubscribers.push(this.eventBus.on('annotate:cancel', () => this.deactivate()));
           this.unsubscribers.push(this.eventBus.on('annotate:submit', () => this.captureAndSubmit()));
 
           // Dock state changes (for toolbar positioning)
@@ -1531,6 +1525,9 @@ ${TOKENS_CSS}
       handleKeyDown(e) {
           if (e.key === 'Delete' || e.key === 'Backspace') {
               const activeObjects = this.fabricCanvas.getActiveObjects();
+              // If any active object is currently being edited (e.g. IText), do not delete
+              if (activeObjects.some(obj => obj.isEditing)) return;
+
               if (activeObjects.length) {
                   this.fabricCanvas.discardActiveObject();
                   activeObjects.forEach((obj) => {
@@ -1743,7 +1740,6 @@ ${TOKENS_CSS}
 
               // Add to selection
               const screenshots = this.stateManager.get('selection.screenshots') || [];
-              console.log('[LUMI] AnnotateManager adding shot. Current list:', screenshots);
               const newShot = {
                   id: 'shot-' + Date.now(),
                   dataUrl: dataUrl,
@@ -1754,13 +1750,11 @@ ${TOKENS_CSS}
                   }
               };
 
-              const newList = [...screenshots, newShot];
-              this.stateManager.set('selection.screenshots', newList);
-              console.log('[LUMI] AnnotateManager set new list:', newList);
+              this.stateManager.set('selection.screenshots', [...screenshots, newShot]);
               this.eventBus.emit('screenshot:captured', newShot);
 
-              // Close annotate mode (don't clear screenshots - let user see them in composer)
-              this.deactivate(false);
+              // Close annotate mode
+              this.deactivate();
 
           } catch (err) {
               console.error('Screenshot failed:', err);
@@ -2586,11 +2580,10 @@ ${TOKENS_CSS}
 
   #chat-pane.view-hidden,
   #history-pane.view-hidden { display: none; }
-  #chat-pane.view-active,
-  #history-pane.view-active { display: block; }
+  #chat-pane.view-active { display: block; }
 
   /* Chat */
-  .chat-list { display: flex; flex-direction: column; gap: 20px; }
+  .chat-list { display: flex; flex-direction: column; gap: 22px; }
   .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
 
   /* Amp-style messages: user has border, assistant plain */
@@ -2605,6 +2598,8 @@ ${TOKENS_CSS}
     background: transparent;
     border: none;
     padding-left: 0;
+    padding-top: 16px;
+    gap: 4px;
   }
   .msg.user {
     background: color-mix(in srgb, var(--dock-fg) 3%, transparent);
@@ -2703,6 +2698,15 @@ ${TOKENS_CSS}
   .assistant-timeline {
     margin-top: 6px;
   }
+  .assistant-timeline.collapsed {
+    margin-top: 2px;
+  }
+  .assistant-timeline + .assistant-summary {
+    margin-top: 8px;
+  }
+  .assistant-timeline.collapsed + .assistant-summary {
+    margin-top: 4px;
+  }
   .timeline-feed {
     margin: 0;
     padding-left: 0;
@@ -2729,7 +2733,7 @@ ${TOKENS_CSS}
     font-size: 13px;
     font-weight: 500;
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2747,7 +2751,7 @@ ${TOKENS_CSS}
     animation: dock-dots 1s steps(3, end) infinite;
   }
   .assistant-summary {
-    margin-top: 12px;
+    margin-top: 0px;
     font-size: 13px;
     color: var(--text);
   }
@@ -2945,7 +2949,7 @@ ${TOKENS_CSS}
   }
 
   /* History */
-  .history-list { display: flex; flex-direction: column; gap: 18px; }
+  .history-list { display: flex; flex-direction: column; gap: 16px; }
   .history-new {
     display: inline-flex;
     align-items: center;
@@ -3008,7 +3012,7 @@ ${TOKENS_CSS}
   }
 
   /* Composer */
-  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 24px; }
 
   .composer-top {
     display: flex;
@@ -3019,6 +3023,7 @@ ${TOKENS_CSS}
     border: 1px solid var(--border);
     background: var(--surface);
     padding: 10px 14px;
+    margin-bottom: 12px; /* adds space before the engine/actions row */
     cursor: text;
   }
   .composer-top .editor {
@@ -3086,15 +3091,197 @@ ${TOKENS_CSS}
   .icon:active { transform: scale(0.98); }
   .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--text); }
   .send {
-    padding: 6px 14px;
-    border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
-    background: var(--accent);
-    color: var(--on-accent);
-    font-size: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--dock-fg);
+    color: var(--dock-bg);
+    display: grid;
+    place-items: center;
     cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.2s ease, background 0.2s ease;
+    position: relative;
+    padding: 0;
   }
-  .send:disabled { opacity: 0.5; cursor: not-allowed; }
+  .send:hover { transform: scale(1.05); }
+  .send:active { transform: scale(0.95); }
+  .send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; background: var(--dock-fg-2); }
+  
+  .send svg {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  
+  .send.processing svg {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  
+  .send.processing::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--dock-bg);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: dock-spin 0.8s linear infinite;
+  }
+
+  /* New Timeline Styles */
+  .timeline-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px 0;
+    position: relative;
+  }
+  .timeline-entries::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 11px; /* Centered relative to 24px icon (12px center) - 1px width = 11px */
+    width: 2px;
+    background: var(--dock-stroke);
+    z-index: 0;
+  }
+
+  .timeline-entry {
+    display: flex;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .timeline-icon {
+    flex: 0 0 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
+    margin-top: 0; /* Ensure no extra margin */
+  }
+
+  /* ... status colors ... */
+
+  .timeline-content {
+    flex: 1;
+    min-width: 0;
+    padding-top: 2px; /* Align text with icon center */
+  }
+
+  .timeline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    padding: 2px 0; /* Remove horizontal padding */
+    transition: opacity 0.2s;
+  }
+  .timeline-header.clickable:hover {
+    background: transparent; /* Remove hover background */
+    opacity: 0.8; /* Subtle opacity change instead */
+  }
+
+  .timeline-title {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text);
+    flex: 1; /* Push chevron to right */
+  }
+
+  .timeline-chevron {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    transition: transform 0.2s ease;
+    opacity: 0; /* Hidden by default */
+  }
+  
+  .timeline-entry:hover .timeline-chevron,
+  .timeline-entry.expanded .timeline-chevron {
+    opacity: 1; /* Show on hover or expand */
+  }
+
+  .timeline-entry.expanded .timeline-chevron {
+    transform: rotate(180deg);
+  }
+
+  /* New Details Body Styling */
+  .timeline-details-body {
+    display: none; /* Hidden by default */
+    margin-top: 4px;
+    border-radius: 6px;
+    background: var(--dock-bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  
+  .timeline-entry.expanded .timeline-details-body {
+    display: block; /* Show when expanded */
+  }
+
+  .timeline-pre {
+    margin: 0;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 500px;
+    color: var(--text);
+    background: transparent; /* Background handled by container */
+    border: none; /* Border handled by container */
+  }
+
+  /* Summary Body Truncation Fix */
+  .summary-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    margin-top: 8px;
+    white-space: pre-wrap; /* Ensure wrapping */
+    overflow-wrap: break-word; /* Prevent overflow */
+    max-width: 100%;
+  }
+
+  /* Specific Entry Types */
+  .timeline-entry.thinking .timeline-title {
+    font-style: italic;
+    color: var(--text-secondary);
+  }
+  
+  .timeline-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .timeline-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text);
+  }
+  .timeline-file-stat {
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-secondary);
+  }
+  .timeline-file-stat.added { color: var(--success, #10b981); background: color-mix(in srgb, var(--success, #10b981) 10%, transparent); }
+  .timeline-file-stat.removed { color: var(--error, #ef4444); background: color-mix(in srgb, var(--error, #ef4444) 10%, transparent); }
 `;
 
   function escapeHtml(str = '') {
@@ -3311,12 +3498,13 @@ ${TOKENS_CSS}
       FAILED: 'failed'
   };
 
-  function stripFileCount(text = '') {
-      try {
-          return String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-      } catch (_) {
-          return text;
-      }
+  function cleanText(text = '') {
+      if (!text) return '';
+      return String(text)
+          .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+          .replace(/\*(.*?)\*/g, '$1')     // Italic
+          .replace(/`(.*?)`/g, '$1')       // Code
+          .trim();
   }
 
   /**
@@ -3345,8 +3533,8 @@ ${TOKENS_CSS}
                       id: nextId(EntryKind.THINKING),
                       kind: EntryKind.THINKING,
                       status: EntryStatus.DONE,
-                      title: c.text || 'Thinking...',
-                      body: c.resultSummary || undefined,
+                      title: 'Thinking...',
+                      body: cleanText(c.text || c.resultSummary),
                       sourceChunkIds: c.id ? [c.id] : undefined
                   });
               }
@@ -3355,13 +3543,23 @@ ${TOKENS_CSS}
               const logs = [];
               let status = EntryStatus.DONE;
               let errorMsg = null;
+              let testSummary = null;
 
               // Consume subsequent logs/errors until next non-log chunk
               let j = i + 1;
               while (j < chunkArray.length) {
                   const next = chunkArray[j];
                   if (next.type === 'log') {
-                      if (next.text) logs.push(next.text);
+                      if (next.text) {
+                          logs.push(next.text);
+                          // Try to extract test summary from logs
+                          if (/(\d+)\s+passing/.test(next.text)) {
+                              testSummary = next.text.trim();
+                          } else if (/(\d+)\s+failing/.test(next.text)) {
+                              testSummary = next.text.trim();
+                              status = EntryStatus.FAILED;
+                          }
+                      }
                       j++;
                   } else if (next.type === 'error' && next.runId === c.id) {
                       // Error specifically linked to this run
@@ -3376,25 +3574,58 @@ ${TOKENS_CSS}
               i = j - 1;
 
               const kind = isTestCommand(c.cmd) ? EntryKind.TEST : EntryKind.COMMAND;
+
+              // Refine title/body based on kind
+              let title = c.cmd || 'Run command';
+              let body = logs.join('\n');
+
+              if (kind === EntryKind.TEST) {
+                  if (status === EntryStatus.FAILED) {
+                      title = 'Tests Failed';
+                  } else if (testSummary) {
+                      title = 'Tests Passed';
+                  } else {
+                      title = 'Ran Tests';
+                  }
+                  if (testSummary) {
+                      body = testSummary + '\n\n' + body;
+                  }
+              }
+
+              if (errorMsg) {
+                  body = `${errorMsg}\n${body}`;
+              }
+
               entries.push({
                   id: nextId(kind),
                   kind,
                   status,
-                  title: c.cmd || 'Run command',
-                  body: errorMsg ? `${errorMsg}\n${logs.join('\n')}` : logs.join('\n'),
+                  title: cleanText(title),
+                  body,
                   sourceChunkIds: c.id ? [c.id] : undefined
               });
 
           } else if (c.type === 'edit') {
               // Aggregate consecutive edits
-              const files = [c.file];
+              const files = [];
               const sourceIds = c.id ? [c.id] : [];
+
+              // Process first edit
+              files.push({
+                  path: c.file,
+                  added: c.added,
+                  removed: c.removed
+              });
 
               let j = i + 1;
               while (j < chunkArray.length) {
                   const next = chunkArray[j];
                   if (next.type === 'edit') {
-                      files.push(next.file);
+                      files.push({
+                          path: next.file,
+                          added: next.added,
+                          removed: next.removed
+                      });
                       if (next.id) sourceIds.push(next.id);
                       j++;
                   } else {
@@ -3403,15 +3634,22 @@ ${TOKENS_CSS}
               }
               i = j - 1;
 
-              const uniqueFiles = Array.from(new Set(files.filter(Boolean)));
+              const uniqueFiles = Array.from(new Set(files.map(f => f.path).filter(Boolean)));
+
+              let title = '';
+              if (uniqueFiles.length === 1) {
+                  title = `Edited ${uniqueFiles[0]}`;
+              } else {
+                  title = `Edited ${uniqueFiles.length} files`;
+              }
+
               entries.push({
                   id: nextId(EntryKind.FILE_CHANGE),
                   kind: EntryKind.FILE_CHANGE,
                   status: EntryStatus.DONE,
-                  title: uniqueFiles.length === 1
-                      ? `Edited ${uniqueFiles[0]}`
-                      : `Edited ${uniqueFiles.length} files`,
+                  title,
                   files: uniqueFiles,
+                  details: files, // Keep full details
                   sourceChunkIds: sourceIds
               });
 
@@ -3422,7 +3660,7 @@ ${TOKENS_CSS}
                       kind: EntryKind.FINAL,
                       status: EntryStatus.DONE,
                       title: 'Result',
-                      body: stripFileCount(c.resultSummary || c.text || ''),
+                      body: cleanText(c.resultSummary || c.text || ''),
                       sourceChunkIds: c.id ? [c.id] : undefined
                   });
               }
@@ -3454,19 +3692,9 @@ ${TOKENS_CSS}
       let status = 'success';
       if (hasError) status = 'failed';
 
-      entries.filter((e) => e.kind === EntryKind.COMMAND || e.kind === EntryKind.TEST).length;
-      const editEntries = entries.filter((e) => e.kind === EntryKind.FILE_CHANGE);
-      new Set(editEntries.flatMap(e => e.files || [])).size;
-
-      // Title Heuristic - simplified to reduce noise
-      let title = null;
-      // Only show title if it adds value beyond "Ran command"
-      if (hasError) title = 'Execution failed';
-      else if (testsStatus === 'failed') title = 'Tests failed';
-
       const summary = {
           status,
-          title,
+          title: null, // Deprecated in favor of timeline
           meta: {
               durationMs: typeof timing.durationMs === 'number' ? timing.durationMs : undefined,
               testsStatus
@@ -3477,7 +3705,7 @@ ${TOKENS_CSS}
       // Extract bullets from final result or edits
       const finalEntry = entries.findLast(e => e.kind === EntryKind.FINAL);
       if (finalEntry && finalEntry.body) {
-          summary.bullets.push(finalEntry.body.slice(0, 200));
+          summary.bullets.push(finalEntry.body);
       }
 
       return { summary, timeline: entries };
@@ -4027,21 +4255,18 @@ ${TOKENS_CSS}
       const turnSummary = msg.turnSummary || null;
       const resultChunks = Array.isArray(msg.chunks) ? msg.chunks : [];
 
-      const stripFileCount = (text = '') =>
-        String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-
       const title = turnSummary?.title
-        || stripFileCount(result.title)
-        || stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
+        || result.title
+        || (resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
         || '';
       const description = (() => {
         if (turnSummary && Array.isArray(turnSummary.bullets) && turnSummary.bullets.length) {
-          return stripFileCount(turnSummary.bullets[0]);
+          return turnSummary.bullets[0];
         }
         let text =
-          stripFileCount(result.description) ||
-          stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
-          stripFileCount(msg.text) ||
+          result.description ||
+          (resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
+          msg.text ||
           '';
         return text || '';
       })();
@@ -4069,12 +4294,7 @@ ${TOKENS_CSS}
         return container;
       }
 
-      if (title) {
-        const titleEl = doc.createElement('div');
-        titleEl.className = 'summary-title';
-        titleEl.textContent = title;
-        container.appendChild(titleEl);
-      }
+      // If we have a description, show it. This is the "Result" text the user missed.
       if (description) {
         const desc = doc.createElement('div');
         desc.className = 'summary-body';
@@ -4085,8 +4305,25 @@ ${TOKENS_CSS}
           desc.textContent = description;
         }
         container.appendChild(desc);
+      } else if (title) {
+        // Fallback to title if no description
+        const titleEl = doc.createElement('div');
+        titleEl.className = 'summary-title';
+        titleEl.textContent = title;
+        container.appendChild(titleEl);
       }
+
       return container;
+    }
+
+    cleanMarkdown(text = '') {
+      if (!text) return '';
+      return String(text)
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+        .replace(/\*(.*?)\*/g, '$1')     // Italic
+        .replace(/`(.*?)`/g, '$1')       // Code
+        .replace(/^#+\s+/, '')           // Headers
+        .trim();
     }
 
     renderAssistantTimeline(msg, state) {
@@ -4101,8 +4338,9 @@ ${TOKENS_CSS}
         }
       }
 
-      const hasTimeline = timelineEntries.length > 0 || chunks.length > 0;
+      const hasTimeline = timelineEntries.length > 0;
       if (!hasTimeline && state === 'done') return null;
+
       const doc = this.shadow?.ownerDocument || document;
       const wrapper = doc.createElement('div');
       wrapper.className = 'assistant-timeline';
@@ -4117,18 +4355,23 @@ ${TOKENS_CSS}
       } else {
         body.style.display = 'none';
       }
+
       if (timelineEntries.length) {
         body.appendChild(this.renderTimelineEntries(timelineEntries));
-      } else if (chunks.length) {
-        // fallback to old chunks rendering
-        body.appendChild(this.renderTimeline(chunks));
+      } else if (state === 'streaming') {
+        // If streaming but no entries yet (e.g. just started), show placeholder or nothing
+        // We don't want the old renderTimeline fallback.
+        const placeholder = doc.createElement('div');
+        placeholder.className = 'timeline-placeholder';
+        placeholder.textContent = 'Thinking...';
+        body.appendChild(placeholder);
       } else {
         const placeholder = doc.createElement('div');
         placeholder.className = 'timeline-placeholder';
-        placeholder.textContent = 'Execution events will appear here once processing begins.';
+        placeholder.textContent = 'No events to display.';
         body.appendChild(placeholder);
       }
-      // Raw logs removed per user request
+
       wrapper.appendChild(body);
       return wrapper;
     }
@@ -4255,68 +4498,225 @@ ${TOKENS_CSS}
       const container = doc.createElement('div');
       container.className = 'timeline-entries';
 
-      const list = doc.createElement('ul');
-      list.className = 'timeline-feed';
-
       entries.forEach((e) => {
-        const li = doc.createElement('li');
-        li.className = 'timeline-item';
-        li.style.whiteSpace = 'pre-wrap';
-        li.style.lineHeight = '1.5';
+        // Clean the title before rendering
+        const cleanedEntry = { ...e, title: this.cleanMarkdown(e.title) };
 
-        // No icon - minimalist design
-
-        const text = doc.createElement('span');
-        text.textContent = e.title || e.summary || '';
-        li.appendChild(text);
-
-        if (e.body && e.body !== e.title) {
-          const details = doc.createElement('details');
-          details.className = 'timeline-item-details';
-          const summary = doc.createElement('summary');
-          summary.textContent = 'Show output';
-          summary.style.cursor = 'pointer';
-          summary.style.opacity = '0.7';
-          summary.style.fontSize = '0.9em';
-          summary.style.marginTop = '4px';
-          details.appendChild(summary);
-
-          const detailBody = doc.createElement('div');
-          detailBody.className = 'timeline-item-body';
-          detailBody.textContent = e.body;
-          detailBody.style.marginTop = '4px';
-          detailBody.style.padding = '8px';
-          detailBody.style.background = 'var(--bg-subtle, rgba(0,0,0,0.03))';
-          detailBody.style.borderRadius = '4px';
-          detailBody.style.fontFamily = 'monospace';
-          detailBody.style.fontSize = '0.9em';
-          detailBody.style.overflowX = 'auto';
-          details.appendChild(detailBody);
-
-          li.appendChild(details);
+        let item = null;
+        switch (cleanedEntry.kind) {
+          case EntryKind.THINKING: item = this.renderThinkingEntry(doc, cleanedEntry); break;
+          case EntryKind.COMMAND: item = this.renderCommandEntry(doc, cleanedEntry); break;
+          case EntryKind.FILE_CHANGE: item = this.renderEditEntry(doc, cleanedEntry); break;
+          case EntryKind.TEST: item = this.renderTestEntry(doc, cleanedEntry); break;
+          case EntryKind.ERROR: item = this.renderErrorEntry(doc, cleanedEntry); break;
+          case EntryKind.FINAL: item = this.renderFinalEntry(doc, cleanedEntry); break;
+          default: item = this.renderGenericEntry(doc, cleanedEntry);
         }
-
-        list.appendChild(li);
+        if (item) container.appendChild(item);
       });
 
-      container.appendChild(list);
       return container;
     }
 
+    renderThinkingEntry(doc, e) {
+      return this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, e.kind),
+        title: e.title,
+        body: e.body, // Thinking content
+        isThinking: true
+      });
+    }
 
+    renderCommandEntry(doc, e) {
+      return this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, e.kind),
+        title: e.title,
+        body: e.body, // Output logs
+        detailsLabel: 'Show output'
+      });
+    }
+
+    renderEditEntry(doc, e) {
+      const item = this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, e.kind),
+        title: e.title,
+        // Custom body for file list
+      });
+
+      // Add file list to body if available
+      if (e.details && Array.isArray(e.details)) {
+        const fileList = doc.createElement('div');
+        fileList.className = 'timeline-file-list';
+        e.details.forEach(f => {
+          const row = doc.createElement('div');
+          row.className = 'timeline-file';
+          const name = doc.createElement('span');
+          name.textContent = f.path;
+          row.appendChild(name);
+
+          if (f.added) {
+            const added = doc.createElement('span');
+            added.className = 'timeline-file-stat added';
+            added.textContent = `+${f.added}`;
+            row.appendChild(added);
+          }
+          if (f.removed) {
+            const removed = doc.createElement('span');
+            removed.className = 'timeline-file-stat removed';
+            removed.textContent = `-${f.removed}`;
+            row.appendChild(removed);
+          }
+          fileList.appendChild(row);
+        });
+
+        // Append to content
+        const content = item.querySelector('.timeline-content');
+        if (content) content.appendChild(fileList);
+      }
+
+      return item;
+    }
+
+    renderTestEntry(doc, e) {
+      return this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, e.kind),
+        title: e.title,
+        body: e.body,
+        detailsLabel: 'Show test output'
+      });
+    }
+
+    renderErrorEntry(doc, e) {
+      return this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, e.kind),
+        title: e.title,
+        body: e.body,
+        detailsLabel: 'Show error details'
+      });
+    }
+
+    renderFinalEntry(doc, e) {
+      // Usually we don't show final entry in timeline if it's just a result summary, 
+      // but if it has body we might.
+      // For now, let's skip it if it duplicates the main result, or show it as a checkmark.
+      return this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, e.kind),
+        title: e.title,
+        body: e.body
+      });
+    }
+
+    renderGenericEntry(doc, e) {
+      return this.renderTimelineEntry(doc, e, {
+        icon: this.renderEntryIcon(doc, 'default'),
+        title: e.title || e.summary,
+        body: e.body
+      });
+    }
+
+    renderTimelineEntry(doc, e, options = {}) {
+      const el = doc.createElement('div');
+      el.className = `timeline-entry ${e.status || ''} ${e.kind || ''}`;
+
+      if (options.icon) {
+        el.appendChild(options.icon);
+      }
+
+      const content = doc.createElement('div');
+      content.className = 'timeline-content';
+
+      const header = doc.createElement('div');
+      header.className = 'timeline-header';
+      // Make header clickable if there is a body to toggle
+      if (options.body && !options.isThinking) {
+        header.style.cursor = 'pointer';
+        header.classList.add('clickable');
+        header.onclick = () => {
+          el.classList.toggle('expanded');
+        };
+      }
+
+      const title = doc.createElement('div');
+      title.className = 'timeline-title';
+      title.textContent = options.title || '';
+      header.appendChild(title);
+
+      // Add chevron if expandable
+      if (options.body && !options.isThinking) {
+        const chevron = doc.createElement('span');
+        chevron.className = 'timeline-chevron';
+        chevron.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+        header.appendChild(chevron);
+      }
+
+      // Duration could be added here if available in entry
+
+      content.appendChild(header);
+
+      if (options.body) {
+        if (options.isThinking) {
+          const body = doc.createElement('div');
+          body.className = 'timeline-body';
+          body.textContent = options.body;
+          content.appendChild(body);
+        } else {
+          // Hidden by default, toggled via .expanded class on parent
+          const details = doc.createElement('div');
+          details.className = 'timeline-details-body';
+
+          const pre = doc.createElement('div');
+          pre.className = 'timeline-pre';
+          pre.textContent = options.body;
+          details.appendChild(pre);
+
+          content.appendChild(details);
+        }
+      }
+
+      // Add file list to body if available (for edit entries)
+      if (e.details && Array.isArray(e.details) && e.kind === EntryKind.FILE_CHANGE) ;
+
+      el.appendChild(content);
+      return el;
+    }
 
     renderEntryIcon(doc, kind) {
       const span = doc.createElement('span');
       span.className = 'timeline-icon';
+
+      // SVG Icons
+      let svgPath = '';
       switch (kind) {
-        case 'thinking': span.textContent = '💭'; break;
-        case 'command': span.textContent = '›'; break;
-        case 'test': span.textContent = '🧪'; break;
-        case 'file-change': span.textContent = '✎'; break;
-        case 'final-message': span.textContent = '✓'; break;
-        case 'error': span.textContent = '!'; break;
-        default: return null;
+        case EntryKind.THINKING:
+          // Brain or Thought Bubble
+          svgPath = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>'; // Message bubble
+          break;
+        case EntryKind.COMMAND:
+          // Terminal
+          svgPath = '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>';
+          break;
+        case EntryKind.TEST:
+          // Beaker
+          svgPath = '<path d="M10 2v7.31"/><path d="M14 2v7.31"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>';
+          break;
+        case EntryKind.FILE_CHANGE:
+          // Edit/Pencil
+          svgPath = '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>';
+          break;
+        case EntryKind.FINAL:
+          // Check
+          svgPath = '<polyline points="20 6 9 17 4 12"></polyline>';
+          break;
+        case EntryKind.ERROR:
+          // Alert
+          svgPath = '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>';
+          break;
+        default:
+          // Dot
+          svgPath = '<circle cx="12" cy="12" r="2"></circle>';
       }
+
+      span.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg>`;
       return span;
     }
 
@@ -4561,7 +4961,7 @@ ${TOKENS_CSS}
       const isProcessing = this.stateManager.get('processing.active');
       const projectAllowed = this.stateManager.get('projects.allowed');
       this.sendBtn.disabled = !hasContext || !(hasIntent || hasEdits) || isProcessing || projectAllowed === false;
-      this.sendBtn.textContent = isProcessing ? 'Sending...' : 'Send';
+      this.sendBtn.classList.toggle('processing', !!isProcessing);
     }
 
     getPlainText() {
@@ -4933,10 +5333,8 @@ ${TOKENS_CSS}
       close.addEventListener('click', (e) => {
         e.stopPropagation();
         const idRaw = chip.dataset.shotId;
-        console.log('[LUMI] Clicked remove on screenshot chip', idRaw);
         const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
         try {
-          console.log('[LUMI] Emitting screenshot:remove', id);
           this.eventBus.emit('screenshot:remove', id);
         } catch (err) {
           console.error('[LUMI] Error emitting screenshot:remove', err);
@@ -4963,11 +5361,9 @@ ${TOKENS_CSS}
       if (!this.editorEl) return;
       // Remove existing screenshot chips
       const existing = this.editorEl.querySelectorAll('.chip[data-shot-id]');
-      console.log('[LUMI] renderScreenshotChips removing', existing.length, 'existing chips');
       existing.forEach(n => n.remove());
 
       const shots = this.stateManager.get('selection.screenshots') || [];
-      console.log('[LUMI] renderScreenshotChips adding', shots.length, 'new chips', shots);
       shots.forEach((shot) => {
         const chip = this.createScreenshotChip(shot);
         this.editorEl.appendChild(chip);
@@ -7422,15 +7818,11 @@ ${TOKENS_CSS}
       // Remove a specific screenshot by id
       eventBus.on('screenshot:remove', (id) => {
         const list = (stateManager.get('selection.screenshots') || []).slice();
-        console.log('[LUMI] screenshot:remove', { id, currentList: list });
         const idx = list.findIndex(s => s && (s.id === id));
         if (idx >= 0) {
           list.splice(idx, 1);
           stateManager.set('selection.screenshots', list);
           eventBus.emit('screenshot:removed', id);
-          console.log('[LUMI] screenshot removed, new list:', list);
-        } else {
-          console.warn('[LUMI] screenshot not found for removal:', id);
         }
       });
 

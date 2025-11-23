@@ -3,7 +3,7 @@ import { DOCK_STYLES } from './styles.js';
 import { readableElementName } from '../../utils/dom.js';
 import { escapeHtml } from './utils.js';
 import { renderMarkdown } from './MarkdownRenderer.js';
-import { buildTimelineFromChunks } from './client-timeline.js';
+import { buildTimelineFromChunks, EntryKind, EntryStatus } from './client-timeline.js';
 
 export default class DockRoot {
   constructor(eventBus, stateManager) {
@@ -550,21 +550,18 @@ export default class DockRoot {
     const turnSummary = msg.turnSummary || null;
     const resultChunks = Array.isArray(msg.chunks) ? msg.chunks : [];
 
-    const stripFileCount = (text = '') =>
-      String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-
     const title = turnSummary?.title
-      || stripFileCount(result.title)
-      || stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
+      || result.title
+      || (resultChunks.find((c) => c?.type === 'result' && c.resultSummary)?.resultSummary)
       || '';
     const description = (() => {
       if (turnSummary && Array.isArray(turnSummary.bullets) && turnSummary.bullets.length) {
-        return stripFileCount(turnSummary.bullets[0]);
+        return turnSummary.bullets[0];
       }
       let text =
-        stripFileCount(result.description) ||
-        stripFileCount(resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
-        stripFileCount(msg.text) ||
+        result.description ||
+        (resultChunks.find((c) => c?.type === 'result' && c.text)?.text) ||
+        msg.text ||
         '';
       return text || '';
     })();
@@ -592,12 +589,7 @@ export default class DockRoot {
       return container;
     }
 
-    if (title) {
-      const titleEl = doc.createElement('div');
-      titleEl.className = 'summary-title';
-      titleEl.textContent = title;
-      container.appendChild(titleEl);
-    }
+    // If we have a description, show it. This is the "Result" text the user missed.
     if (description) {
       const desc = doc.createElement('div');
       desc.className = 'summary-body';
@@ -608,8 +600,25 @@ export default class DockRoot {
         desc.textContent = description;
       }
       container.appendChild(desc);
+    } else if (title) {
+      // Fallback to title if no description
+      const titleEl = doc.createElement('div');
+      titleEl.className = 'summary-title';
+      titleEl.textContent = title;
+      container.appendChild(titleEl);
     }
+
     return container;
+  }
+
+  cleanMarkdown(text = '') {
+    if (!text) return '';
+    return String(text)
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+      .replace(/\*(.*?)\*/g, '$1')     // Italic
+      .replace(/`(.*?)`/g, '$1')       // Code
+      .replace(/^#+\s+/, '')           // Headers
+      .trim();
   }
 
   renderAssistantTimeline(msg, state) {
@@ -624,8 +633,9 @@ export default class DockRoot {
       }
     }
 
-    const hasTimeline = timelineEntries.length > 0 || chunks.length > 0;
+    const hasTimeline = timelineEntries.length > 0;
     if (!hasTimeline && state === 'done') return null;
+
     const doc = this.shadow?.ownerDocument || document;
     const wrapper = doc.createElement('div');
     wrapper.className = 'assistant-timeline';
@@ -640,18 +650,23 @@ export default class DockRoot {
     } else {
       body.style.display = 'none';
     }
+
     if (timelineEntries.length) {
       body.appendChild(this.renderTimelineEntries(timelineEntries));
-    } else if (chunks.length) {
-      // fallback to old chunks rendering
-      body.appendChild(this.renderTimeline(chunks));
+    } else if (state === 'streaming') {
+      // If streaming but no entries yet (e.g. just started), show placeholder or nothing
+      // We don't want the old renderTimeline fallback.
+      const placeholder = doc.createElement('div');
+      placeholder.className = 'timeline-placeholder';
+      placeholder.textContent = 'Thinking...';
+      body.appendChild(placeholder);
     } else {
       const placeholder = doc.createElement('div');
       placeholder.className = 'timeline-placeholder';
-      placeholder.textContent = 'Execution events will appear here once processing begins.';
+      placeholder.textContent = 'No events to display.';
       body.appendChild(placeholder);
     }
-    // Raw logs removed per user request
+
     wrapper.appendChild(body);
     return wrapper;
   }
@@ -778,68 +793,229 @@ export default class DockRoot {
     const container = doc.createElement('div');
     container.className = 'timeline-entries';
 
-    const list = doc.createElement('ul');
-    list.className = 'timeline-feed';
-
     entries.forEach((e) => {
-      const li = doc.createElement('li');
-      li.className = 'timeline-item';
-      li.style.whiteSpace = 'pre-wrap';
-      li.style.lineHeight = '1.5';
+      // Clean the title before rendering
+      const cleanedEntry = { ...e, title: this.cleanMarkdown(e.title) };
 
-      // No icon - minimalist design
-
-      const text = doc.createElement('span');
-      text.textContent = e.title || e.summary || '';
-      li.appendChild(text);
-
-      if (e.body && e.body !== e.title) {
-        const details = doc.createElement('details');
-        details.className = 'timeline-item-details';
-        const summary = doc.createElement('summary');
-        summary.textContent = 'Show output';
-        summary.style.cursor = 'pointer';
-        summary.style.opacity = '0.7';
-        summary.style.fontSize = '0.9em';
-        summary.style.marginTop = '4px';
-        details.appendChild(summary);
-
-        const detailBody = doc.createElement('div');
-        detailBody.className = 'timeline-item-body';
-        detailBody.textContent = e.body;
-        detailBody.style.marginTop = '4px';
-        detailBody.style.padding = '8px';
-        detailBody.style.background = 'var(--bg-subtle, rgba(0,0,0,0.03))';
-        detailBody.style.borderRadius = '4px';
-        detailBody.style.fontFamily = 'monospace';
-        detailBody.style.fontSize = '0.9em';
-        detailBody.style.overflowX = 'auto';
-        details.appendChild(detailBody);
-
-        li.appendChild(details);
+      let item = null;
+      switch (cleanedEntry.kind) {
+        case EntryKind.THINKING: item = this.renderThinkingEntry(doc, cleanedEntry); break;
+        case EntryKind.COMMAND: item = this.renderCommandEntry(doc, cleanedEntry); break;
+        case EntryKind.FILE_CHANGE: item = this.renderEditEntry(doc, cleanedEntry); break;
+        case EntryKind.TEST: item = this.renderTestEntry(doc, cleanedEntry); break;
+        case EntryKind.ERROR: item = this.renderErrorEntry(doc, cleanedEntry); break;
+        case EntryKind.FINAL: item = this.renderFinalEntry(doc, cleanedEntry); break;
+        default: item = this.renderGenericEntry(doc, cleanedEntry);
       }
-
-      list.appendChild(li);
+      if (item) container.appendChild(item);
     });
 
-    container.appendChild(list);
     return container;
   }
 
+  renderThinkingEntry(doc, e) {
+    return this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, e.kind),
+      title: e.title,
+      body: e.body, // Thinking content
+      isThinking: true
+    });
+  }
 
+  renderCommandEntry(doc, e) {
+    return this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, e.kind),
+      title: e.title,
+      body: e.body, // Output logs
+      detailsLabel: 'Show output'
+    });
+  }
+
+  renderEditEntry(doc, e) {
+    const item = this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, e.kind),
+      title: e.title,
+      // Custom body for file list
+    });
+
+    // Add file list to body if available
+    if (e.details && Array.isArray(e.details)) {
+      const fileList = doc.createElement('div');
+      fileList.className = 'timeline-file-list';
+      e.details.forEach(f => {
+        const row = doc.createElement('div');
+        row.className = 'timeline-file';
+        const name = doc.createElement('span');
+        name.textContent = f.path;
+        row.appendChild(name);
+
+        if (f.added) {
+          const added = doc.createElement('span');
+          added.className = 'timeline-file-stat added';
+          added.textContent = `+${f.added}`;
+          row.appendChild(added);
+        }
+        if (f.removed) {
+          const removed = doc.createElement('span');
+          removed.className = 'timeline-file-stat removed';
+          removed.textContent = `-${f.removed}`;
+          row.appendChild(removed);
+        }
+        fileList.appendChild(row);
+      });
+
+      // Append to content
+      const content = item.querySelector('.timeline-content');
+      if (content) content.appendChild(fileList);
+    }
+
+    return item;
+  }
+
+  renderTestEntry(doc, e) {
+    return this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, e.kind),
+      title: e.title,
+      body: e.body,
+      detailsLabel: 'Show test output'
+    });
+  }
+
+  renderErrorEntry(doc, e) {
+    return this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, e.kind),
+      title: e.title,
+      body: e.body,
+      detailsLabel: 'Show error details'
+    });
+  }
+
+  renderFinalEntry(doc, e) {
+    // Usually we don't show final entry in timeline if it's just a result summary, 
+    // but if it has body we might.
+    // For now, let's skip it if it duplicates the main result, or show it as a checkmark.
+    return this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, e.kind),
+      title: e.title,
+      body: e.body
+    });
+  }
+
+  renderGenericEntry(doc, e) {
+    return this.renderTimelineEntry(doc, e, {
+      icon: this.renderEntryIcon(doc, 'default'),
+      title: e.title || e.summary,
+      body: e.body
+    });
+  }
+
+  renderTimelineEntry(doc, e, options = {}) {
+    const el = doc.createElement('div');
+    el.className = `timeline-entry ${e.status || ''} ${e.kind || ''}`;
+
+    if (options.icon) {
+      el.appendChild(options.icon);
+    }
+
+    const content = doc.createElement('div');
+    content.className = 'timeline-content';
+
+    const header = doc.createElement('div');
+    header.className = 'timeline-header';
+    // Make header clickable if there is a body to toggle
+    if (options.body && !options.isThinking) {
+      header.style.cursor = 'pointer';
+      header.classList.add('clickable');
+      header.onclick = () => {
+        el.classList.toggle('expanded');
+      };
+    }
+
+    const title = doc.createElement('div');
+    title.className = 'timeline-title';
+    title.textContent = options.title || '';
+    header.appendChild(title);
+
+    // Add chevron if expandable
+    if (options.body && !options.isThinking) {
+      const chevron = doc.createElement('span');
+      chevron.className = 'timeline-chevron';
+      chevron.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+      header.appendChild(chevron);
+    }
+
+    // Duration could be added here if available in entry
+
+    content.appendChild(header);
+
+    if (options.body) {
+      if (options.isThinking) {
+        const body = doc.createElement('div');
+        body.className = 'timeline-body';
+        body.textContent = options.body;
+        content.appendChild(body);
+      } else {
+        // Hidden by default, toggled via .expanded class on parent
+        const details = doc.createElement('div');
+        details.className = 'timeline-details-body';
+
+        const pre = doc.createElement('div');
+        pre.className = 'timeline-pre';
+        pre.textContent = options.body;
+        details.appendChild(pre);
+
+        content.appendChild(details);
+      }
+    }
+
+    // Add file list to body if available (for edit entries)
+    if (e.details && Array.isArray(e.details) && e.kind === EntryKind.FILE_CHANGE) {
+      // ... existing file list logic ...
+      // This part was handled in renderEditEntry, but we need to ensure it's inside the toggleable area if desired.
+      // For now, let's keep it simple and assume renderEditEntry appends to content.
+    }
+
+    el.appendChild(content);
+    return el;
+  }
 
   renderEntryIcon(doc, kind) {
     const span = doc.createElement('span');
     span.className = 'timeline-icon';
+
+    // SVG Icons
+    let svgPath = '';
     switch (kind) {
-      case 'thinking': span.textContent = '💭'; break;
-      case 'command': span.textContent = '›'; break;
-      case 'test': span.textContent = '🧪'; break;
-      case 'file-change': span.textContent = '✎'; break;
-      case 'final-message': span.textContent = '✓'; break;
-      case 'error': span.textContent = '!'; break;
-      default: return null;
+      case EntryKind.THINKING:
+        // Brain or Thought Bubble
+        svgPath = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>'; // Message bubble
+        break;
+      case EntryKind.COMMAND:
+        // Terminal
+        svgPath = '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>';
+        break;
+      case EntryKind.TEST:
+        // Beaker
+        svgPath = '<path d="M10 2v7.31"/><path d="M14 2v7.31"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>';
+        break;
+      case EntryKind.FILE_CHANGE:
+        // Edit/Pencil
+        svgPath = '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>';
+        break;
+      case EntryKind.FINAL:
+        // Check
+        svgPath = '<polyline points="20 6 9 17 4 12"></polyline>';
+        break;
+      case EntryKind.ERROR:
+        // Alert
+        svgPath = '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>';
+        break;
+      default:
+        // Dot
+        svgPath = '<circle cx="12" cy="12" r="2"></circle>';
     }
+
+    span.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg>`;
     return span;
   }
 
@@ -1084,7 +1260,7 @@ export default class DockRoot {
     const isProcessing = this.stateManager.get('processing.active');
     const projectAllowed = this.stateManager.get('projects.allowed');
     this.sendBtn.disabled = !hasContext || !(hasIntent || hasEdits) || isProcessing || projectAllowed === false;
-    this.sendBtn.textContent = isProcessing ? 'Sending...' : 'Send';
+    this.sendBtn.classList.toggle('processing', !!isProcessing);
   }
 
   getPlainText() {
@@ -1456,10 +1632,8 @@ export default class DockRoot {
     close.addEventListener('click', (e) => {
       e.stopPropagation();
       const idRaw = chip.dataset.shotId;
-      console.log('[LUMI] Clicked remove on screenshot chip', idRaw);
       const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
       try {
-        console.log('[LUMI] Emitting screenshot:remove', id);
         this.eventBus.emit('screenshot:remove', id);
       } catch (err) {
         console.error('[LUMI] Error emitting screenshot:remove', err);
@@ -1486,11 +1660,9 @@ export default class DockRoot {
     if (!this.editorEl) return;
     // Remove existing screenshot chips
     const existing = this.editorEl.querySelectorAll('.chip[data-shot-id]');
-    console.log('[LUMI] renderScreenshotChips removing', existing.length, 'existing chips');
     existing.forEach(n => n.remove());
 
     const shots = this.stateManager.get('selection.screenshots') || [];
-    console.log('[LUMI] renderScreenshotChips adding', shots.length, 'new chips', shots);
     shots.forEach((shot) => {
       const chip = this.createScreenshotChip(shot);
       this.editorEl.appendChild(chip);

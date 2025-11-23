@@ -19,12 +19,13 @@ export const EntryStatus = {
     FAILED: 'failed'
 };
 
-function stripFileCount(text = '') {
-    try {
-        return String(text).replace(/Updated\s+\d+\s+file(s)?\.?/gi, '').trim();
-    } catch (_) {
-        return text;
-    }
+function cleanText(text = '') {
+    if (!text) return '';
+    return String(text)
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+        .replace(/\*(.*?)\*/g, '$1')     // Italic
+        .replace(/`(.*?)`/g, '$1')       // Code
+        .trim();
 }
 
 /**
@@ -53,8 +54,8 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
                     id: nextId(EntryKind.THINKING),
                     kind: EntryKind.THINKING,
                     status: EntryStatus.DONE,
-                    title: c.text || 'Thinking...',
-                    body: c.resultSummary || undefined,
+                    title: 'Thinking...',
+                    body: cleanText(c.text || c.resultSummary),
                     sourceChunkIds: c.id ? [c.id] : undefined
                 });
             }
@@ -63,13 +64,23 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
             const logs = [];
             let status = EntryStatus.DONE;
             let errorMsg = null;
+            let testSummary = null;
 
             // Consume subsequent logs/errors until next non-log chunk
             let j = i + 1;
             while (j < chunkArray.length) {
                 const next = chunkArray[j];
                 if (next.type === 'log') {
-                    if (next.text) logs.push(next.text);
+                    if (next.text) {
+                        logs.push(next.text);
+                        // Try to extract test summary from logs
+                        if (/(\d+)\s+passing/.test(next.text)) {
+                            testSummary = next.text.trim();
+                        } else if (/(\d+)\s+failing/.test(next.text)) {
+                            testSummary = next.text.trim();
+                            status = EntryStatus.FAILED;
+                        }
+                    }
                     j++;
                 } else if (next.type === 'error' && next.runId === c.id) {
                     // Error specifically linked to this run
@@ -84,25 +95,58 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
             i = j - 1;
 
             const kind = isTestCommand(c.cmd) ? EntryKind.TEST : EntryKind.COMMAND;
+
+            // Refine title/body based on kind
+            let title = c.cmd || 'Run command';
+            let body = logs.join('\n');
+
+            if (kind === EntryKind.TEST) {
+                if (status === EntryStatus.FAILED) {
+                    title = 'Tests Failed';
+                } else if (testSummary) {
+                    title = 'Tests Passed';
+                } else {
+                    title = 'Ran Tests';
+                }
+                if (testSummary) {
+                    body = testSummary + '\n\n' + body;
+                }
+            }
+
+            if (errorMsg) {
+                body = `${errorMsg}\n${body}`;
+            }
+
             entries.push({
                 id: nextId(kind),
                 kind,
                 status,
-                title: c.cmd || 'Run command',
-                body: errorMsg ? `${errorMsg}\n${logs.join('\n')}` : logs.join('\n'),
+                title: cleanText(title),
+                body,
                 sourceChunkIds: c.id ? [c.id] : undefined
             });
 
         } else if (c.type === 'edit') {
             // Aggregate consecutive edits
-            const files = [c.file];
+            const files = [];
             const sourceIds = c.id ? [c.id] : [];
+
+            // Process first edit
+            files.push({
+                path: c.file,
+                added: c.added,
+                removed: c.removed
+            });
 
             let j = i + 1;
             while (j < chunkArray.length) {
                 const next = chunkArray[j];
                 if (next.type === 'edit') {
-                    files.push(next.file);
+                    files.push({
+                        path: next.file,
+                        added: next.added,
+                        removed: next.removed
+                    });
                     if (next.id) sourceIds.push(next.id);
                     j++;
                 } else {
@@ -111,15 +155,22 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
             }
             i = j - 1;
 
-            const uniqueFiles = Array.from(new Set(files.filter(Boolean)));
+            const uniqueFiles = Array.from(new Set(files.map(f => f.path).filter(Boolean)));
+
+            let title = '';
+            if (uniqueFiles.length === 1) {
+                title = `Edited ${uniqueFiles[0]}`;
+            } else {
+                title = `Edited ${uniqueFiles.length} files`;
+            }
+
             entries.push({
                 id: nextId(EntryKind.FILE_CHANGE),
                 kind: EntryKind.FILE_CHANGE,
                 status: EntryStatus.DONE,
-                title: uniqueFiles.length === 1
-                    ? `Edited ${uniqueFiles[0]}`
-                    : `Edited ${uniqueFiles.length} files`,
+                title,
                 files: uniqueFiles,
+                details: files, // Keep full details
                 sourceChunkIds: sourceIds
             });
 
@@ -130,7 +181,7 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
                     kind: EntryKind.FINAL,
                     status: EntryStatus.DONE,
                     title: 'Result',
-                    body: stripFileCount(c.resultSummary || c.text || ''),
+                    body: cleanText(c.resultSummary || c.text || ''),
                     sourceChunkIds: c.id ? [c.id] : undefined
                 });
             }
@@ -162,10 +213,6 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
     let status = 'success';
     if (hasError) status = 'failed';
 
-    const commandCount = entries.filter((e) => e.kind === EntryKind.COMMAND || e.kind === EntryKind.TEST).length;
-    const editEntries = entries.filter((e) => e.kind === EntryKind.FILE_CHANGE);
-    const fileCount = new Set(editEntries.flatMap(e => e.files || [])).size;
-
     // Title Heuristic - simplified to reduce noise
     let title = null;
     // Only show title if it adds value beyond "Ran command"
@@ -174,7 +221,7 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
 
     const summary = {
         status,
-        title,
+        title: null, // Deprecated in favor of timeline
         meta: {
             durationMs: typeof timing.durationMs === 'number' ? timing.durationMs : undefined,
             testsStatus
@@ -185,7 +232,7 @@ export function buildTimelineFromChunks(chunks = [], timing = {}) {
     // Extract bullets from final result or edits
     const finalEntry = entries.findLast(e => e.kind === EntryKind.FINAL);
     if (finalEntry && finalEntry.body) {
-        summary.bullets.push(finalEntry.body.slice(0, 200));
+        summary.bullets.push(finalEntry.body);
     }
 
     return { summary, timeline: entries };

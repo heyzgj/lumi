@@ -19,11 +19,13 @@ function parseCodexOutput(stdout = '') {
     outputType: 'text'
   };
 
-  if (typeof stdout !== 'string' || !stdout.trim()) return result;
+  if (typeof stdout !== 'string') return result;
 
-  // Extract first non-empty non-*** line as summary hint
-  const firstLine = (stdout.split('\n').find(l => l.trim() && !l.startsWith('***')) || '').trim();
-  if (firstLine) result.summary.title = firstLine.slice(0, 140);
+  const fullText = stdout.trim();
+  if (!fullText) return result;
+
+  result.summary.title = fullText;
+  result.summary.description = fullText;
 
   // Capture one or multiple *** Begin Patch blocks
   const blocks = [];
