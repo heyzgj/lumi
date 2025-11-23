@@ -9,10 +9,10 @@ try {
   const url = new URL(window.location.href);
   __LUMI_SKIP_BOOTSTRAP__ = url.searchParams.has('_lumi_vp') || window.name === 'lumi-viewport-iframe';
   if (__LUMI_SKIP_BOOTSTRAP__) {
-    try { window.LUMI_INJECTED = true; } catch (_) {}
+    try { window.LUMI_INJECTED = true; } catch (_) { }
     console.info('[LUMI] Skipping bootstrap inside viewport iframe');
   }
-} catch (_) {}
+} catch (_) { }
 
 // Core
 import EventBus from './lib/core/EventBus.js';
@@ -27,7 +27,7 @@ import { readableElementName } from './lib/utils/dom.js';
 // Selection
 import HighlightManager from './lib/selection/HighlightManager.js';
 import ElementSelector from './lib/selection/ElementSelector.js';
-import ScreenshotSelector from './lib/selection/ScreenshotSelector.js';
+import AnnotateManager from './lib/annotate/AnnotateManager.js';
 
 // Engine & Communication
 import EngineManager from './lib/engine/EngineManager.js';
@@ -65,14 +65,14 @@ function bootstrap() {
   try {
     window.__lumiEventBus = eventBus;
     // Debug flag: _lumi_debug=1 or localStorage LUMI_DEBUG=1
-    (function(){
+    (function () {
       try {
         const u = new URL(window.location.href);
         if (u.searchParams.get('_lumi_debug') === '1') window.__LUMI_DEBUG = true;
         if (localStorage.getItem('LUMI_DEBUG') === '1') window.__LUMI_DEBUG = true;
-      } catch (_) {}
+      } catch (_) { }
     })();
-  } catch (_) {}
+  } catch (_) { }
 
   // If the script is accidentally loaded in page context (no runtime), bail out early
   if (!chromeBridge.isRuntimeAvailable()) {
@@ -82,7 +82,7 @@ function bootstrap() {
 
   // Initialize UI
   // TopBanner removed; provide no-op API to keep calls harmless
-  const topBanner = { update: () => {}, hide: () => {}, setRightOffset: () => {} };
+  const topBanner = { update: () => { }, hide: () => { }, setRightOffset: () => { } };
   let dockRoot = null;
   let editModal = null;
   // InteractionBubble removed for a simpler UX
@@ -94,7 +94,7 @@ function bootstrap() {
   let highlightManagerFrame = null;
   let elementSelector = null;
   let elementSelectorFrame = null;
-  let screenshotSelector = null;
+  let annotateManager = null;
   let pendingElementMode = false;
 
   // Initialize engine & health
@@ -108,11 +108,8 @@ function bootstrap() {
   viewportController.init();
   const viewportBar = new TopViewportBar(eventBus, stateManager);
 
-  // Default to iframe stage for true responsive behavior, but auto-disable on known blocked hosts
-  // Prefer inline stage by default so DOM edits reflect accurately; enable iframe only on request
-  const HOST_IFRAME_BLOCKLIST = /(^|\.)google\.[a-z.]+$|(^|\.)apply\.ycombinator\.com$/i;
-  const blocked = HOST_IFRAME_BLOCKLIST.test(window.location.hostname);
-  stateManager.set('ui.viewport.useIframeStage', false);
+  // Initialize AnnotateManager (replaces ScreenshotSelector)
+  annotateManager = new AnnotateManager(eventBus, stateManager, chromeBridge);
 
   ensureDefaultSession();
 
@@ -207,7 +204,7 @@ function bootstrap() {
       const idx = updated.transcript.findIndex(m => m && m.id === messageId);
       if (idx >= 0) {
         const m = { ...updated.transcript[idx] };
-        try { mutator(m); } catch (_) {}
+        try { mutator(m); } catch (_) { }
         applyAutoSummary(m);
         updated.transcript[idx] = m;
         updated.updatedAt = Date.now();
@@ -390,7 +387,7 @@ function bootstrap() {
       if (!iframe || !iframe.contentDocument || !iframe.contentWindow) return;
       // Clean previous
       if (highlightManagerFrame) {
-        try { highlightManagerFrame.clearAll(); } catch (_) {}
+        try { highlightManagerFrame.clearAll(); } catch (_) { }
       }
       // Inject tokens/global styles for consistent visuals/cursors inside the frame
       try {
@@ -401,15 +398,15 @@ function bootstrap() {
         const s2 = iframe.contentDocument.createElement('style');
         s2.textContent = GLOBAL_STYLES;
         head.appendChild(s2);
-      } catch (_) {}
+      } catch (_) { }
       highlightManagerFrame = new HighlightManager(eventBus, iframe.contentDocument, iframe.contentWindow);
       elementSelectorFrame = new ElementSelector(eventBus, stateManager, highlightManagerFrame, topBanner, iframe.contentDocument, iframe.contentWindow);
       // Activate correct selector depending on mode
       const mode = stateManager.get('ui.mode');
       if (mode === 'element' || pendingElementMode) {
         pendingElementMode = false;
-        try { elementSelector.deactivate(); } catch (_) {}
-        try { elementSelectorFrame.activate(); } catch (_) {}
+        try { elementSelector.deactivate(); } catch (_) { }
+        try { elementSelectorFrame.activate(); } catch (_) { }
       }
       // Rebind highlights into the active document to avoid duplicates/drift
       rebindHighlightsToActive();
@@ -417,11 +414,11 @@ function bootstrap() {
 
     function rebindHighlightsToActive() {
       const elements = stateManager.get('selection.elements') || [];
-      try { highlightManager.clearAllSelections(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) {}
+      try { highlightManager.clearAllSelections(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) { }
       const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
       const mgr = (useIframe && highlightManagerFrame) ? highlightManagerFrame : highlightManager;
-      elements.forEach((item, idx) => { try { mgr.addSelection(item.element, idx); } catch (_) {} });
+      elements.forEach((item, idx) => { try { mgr.addSelection(item.element, idx); } catch (_) { } });
     }
     function summarizeChanges(changes) {
       try {
@@ -434,11 +431,11 @@ function bootstrap() {
     }
     function refreshElementHighlights() {
       const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
-      try { highlightManager.clearAllSelections(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) {}
+      try { highlightManager.clearAllSelections(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) { }
       const mgr = (useIframe && highlightManagerFrame) ? highlightManagerFrame : highlightManager;
       const elements = stateManager.get('selection.elements') || [];
-      elements.forEach((item, idx) => { try { mgr.addSelection(item.element, idx); } catch (_) {} });
+      elements.forEach((item, idx) => { try { mgr.addSelection(item.element, idx); } catch (_) { } });
     }
 
     // Selection events
@@ -452,8 +449,8 @@ function bootstrap() {
           dockRoot.insertChipForElement(elements[index], index);
         }
         // Ensure chips are fully synced regardless of caret state
-        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
-        try { dockRoot.updateSendState(); } catch (_) {}
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
+        try { dockRoot.updateSendState(); } catch (_) { }
       }
       // no-op (bubble removed)
       stateManager.set('ui.dockState', 'normal');
@@ -476,20 +473,20 @@ function bootstrap() {
             // If baseline provides a value, restore it; else remove inline style
             const base = snapshot.baseline && snapshot.baseline.inline ? snapshot.baseline.inline[prop] : undefined;
             if (base === undefined || base === null || base === '') {
-              try { el.style[prop] = ''; } catch (_) {}
+              try { el.style[prop] = ''; } catch (_) { }
             } else {
-              try { el.style[prop] = base; } catch (_) {}
+              try { el.style[prop] = base; } catch (_) { }
             }
           });
         }
         // 2) Restore text content only for leaf nodes with a string baseline
         if (snapshot.baseline && typeof snapshot.baseline.text === 'string') {
-          try { el.textContent = snapshot.baseline.text; } catch (_) {}
+          try { el.textContent = snapshot.baseline.text; } catch (_) { }
         }
         // 3) Restore key inline properties from baseline to guarantee full reset
         const baseInline = (snapshot.baseline && snapshot.baseline.inline) || {};
         Object.entries(baseInline).forEach(([prop, value]) => {
-          try { el.style[prop] = value || ''; } catch (_) {}
+          try { el.style[prop] = value || ''; } catch (_) { }
         });
       } catch (_) { /* ignore */ }
     });
@@ -534,8 +531,8 @@ function bootstrap() {
     });
 
     eventBus.on('selection:clear', () => {
-      try { highlightManager.clearAll(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+      try { highlightManager.clearAll(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) { }
       if (dockRoot) {
         dockRoot.clearChips();
         dockRoot.updateSendState();
@@ -547,7 +544,7 @@ function bootstrap() {
 
     eventBus.on('screenshot:captured', () => {
       if (dockRoot) {
-        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
         dockRoot.updateSendState();
       }
       const shots = stateManager.get('selection.screenshots') || [];
@@ -560,7 +557,7 @@ function bootstrap() {
 
     eventBus.on('screenshot:removed', () => {
       if (dockRoot) {
-        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
         dockRoot.updateSendState();
       }
     });
@@ -568,11 +565,15 @@ function bootstrap() {
     // Remove a specific screenshot by id
     eventBus.on('screenshot:remove', (id) => {
       const list = (stateManager.get('selection.screenshots') || []).slice();
+      console.log('[LUMI] screenshot:remove', { id, currentList: list });
       const idx = list.findIndex(s => s && (s.id === id));
       if (idx >= 0) {
         list.splice(idx, 1);
         stateManager.set('selection.screenshots', list);
         eventBus.emit('screenshot:removed', id);
+        console.log('[LUMI] screenshot removed, new list:', list);
+      } else {
+        console.warn('[LUMI] screenshot not found for removal:', id);
       }
     });
 
@@ -652,19 +653,19 @@ function bootstrap() {
       const elements = stateManager.get('selection.elements') || [];
       const item = elements[index];
       if (!item) return;
-      try { item.element.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      try { item.element.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { }
       // Clear both managers to avoid duplicate halos across documents
-      try { highlightManager.clearAllSelections(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) {}
+      try { highlightManager.clearAllSelections(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.clearAllSelections(); } catch (_) { }
       const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
       const mgr = (useIframe && highlightManagerFrame) ? highlightManagerFrame : highlightManager;
-      elements.forEach((entry, idx) => { try { mgr.addSelection(entry.element, idx); } catch (_) {} });
+      elements.forEach((entry, idx) => { try { mgr.addSelection(entry.element, idx); } catch (_) { } });
     });
 
     eventBus.on('edit:open', (payload = {}) => {
       if (!editModal) return;
-      try { highlightManager.hideHover(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.hideHover(); } catch (_) {}
+      try { highlightManager.hideHover(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.hideHover(); } catch (_) { }
       const selection = stateManager.get('selection.elements') || [];
       if (!Array.isArray(selection) || selection.length === 0) return;
       let idx = typeof payload.index === 'number' ? payload.index : -1;
@@ -710,12 +711,12 @@ function bootstrap() {
       const currentMode = stateManager.get('ui.mode');
       const useIframe = !!stateManager.get('ui.viewport.useIframeStage');
       if (currentMode === 'element') {
-        try { elementSelector.deactivate(); } catch (_) {}
-        try { elementSelectorFrame && elementSelectorFrame.deactivate(); } catch (_) {}
+        try { elementSelector.deactivate(); } catch (_) { }
+        try { elementSelectorFrame && elementSelectorFrame.deactivate(); } catch (_) { }
         return;
       }
       // Switching into element mode
-      if (screenshotSelector) screenshotSelector.deactivate();
+      if (annotateManager) annotateManager.deactivate();
 
       // Prefer iframe stage when ready; otherwise fall back to top document immediately
       const viewportEnabled = !!stateManager.get('ui.viewport.enabled');
@@ -723,22 +724,22 @@ function bootstrap() {
         elementSelectorFrame.activate();
       } else {
         // Immediate fallback to ensure user can select without waiting
-        try { elementSelector.activate(); } catch (_) {}
+        try { elementSelector.activate(); } catch (_) { }
         // If iframe stage is desired but not ready, arm a one-shot auto-activation when it becomes ready
         pendingElementMode = !!useIframe;
       }
     });
 
     eventBus.on('mode:toggle-screenshot', () => {
-      if (!elementSelector || !screenshotSelector) return;
+      if (!elementSelector || !annotateManager) return;
       const currentMode = stateManager.get('ui.mode');
 
       if (currentMode === 'screenshot') {
-        screenshotSelector.deactivate();
+        annotateManager.deactivate();
         // no-op (bubble removed)
       } else {
         elementSelector.deactivate();
-        screenshotSelector.activate();
+        annotateManager.activate();
       }
     });
 
@@ -753,10 +754,10 @@ function bootstrap() {
     eventBus.on('viewport:iframe-fallback', () => {
       if (pendingElementMode) {
         pendingElementMode = false;
-        try { elementSelector.activate(); } catch (_) {}
+        try { elementSelector.activate(); } catch (_) { }
       }
       // Rebind highlights to top document after fallback
-      try { rebindHighlightsToActive(); } catch (_) {}
+      try { rebindHighlightsToActive(); } catch (_) { }
     });
 
     // Dock events (legacy bubble hooks mapped to dock)
@@ -764,7 +765,7 @@ function bootstrap() {
       stateManager.set('ui.dockOpen', false);
       if (dockRoot) dockRoot.setVisible(false);
       if (elementSelector) elementSelector.deactivate();
-      if (screenshotSelector) screenshotSelector.deactivate();
+      if (annotateManager) annotateManager.deactivate();
       highlightManager.clearAll();
       // no-op (bubble removed)
       if (editModal) editModal.close();
@@ -777,7 +778,7 @@ function bootstrap() {
       try {
         viewportController.setEnabled(false);
         viewportBar.setVisible(false);
-      } catch (_) {}
+      } catch (_) { }
     });
 
     eventBus.on('bubble:toggle', () => {
@@ -790,7 +791,7 @@ function bootstrap() {
       }
       if (isOpen) {
         if (elementSelector) elementSelector.deactivate();
-        if (screenshotSelector) screenshotSelector.deactivate();
+        if (annotateManager) annotateManager.deactivate();
         highlightManager.clearAll();
         // no-op (bubble removed)
         if (editModal) editModal.close();
@@ -852,7 +853,7 @@ function bootstrap() {
       const open = stateManager.get('ui.dockOpen') !== false;
       const state = stateManager.get('ui.dockState');
       const offset = open && state !== 'compact' ? 420 : 0;
-      try { topBanner.setRightOffset(offset + 'px'); } catch (_) {}
+      try { topBanner.setRightOffset(offset + 'px'); } catch (_) { }
     };
     stateManager.subscribe('ui.dockOpen', alignTopBanner);
     stateManager.subscribe('ui.dockState', alignTopBanner);
@@ -889,7 +890,7 @@ function bootstrap() {
       Object.entries(changes || {}).forEach(([prop, value]) => {
         if (prop === 'text') {
           if (canEditText(element)) {
-            try { prev[prop] = element.textContent; } catch (_) {}
+            try { prev[prop] = element.textContent; } catch (_) { }
             element.textContent = value;
             committed[prop] = value;
           }
@@ -915,10 +916,10 @@ function bootstrap() {
       });
       if (dockRoot) {
         dockRoot.updateSendState();
-        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
       }
-      try { highlightManager.updateAllPositions(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.updateAllPositions(); } catch (_) {}
+      try { highlightManager.updateAllPositions(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.updateAllPositions(); } catch (_) { }
     });
 
     // Undo: prefer preview-level undo when modal is open; fallback to applied edits
@@ -938,7 +939,7 @@ function bootstrap() {
       const elements = stateManager.get('selection.elements') || [];
       let target = elements[index]?.element || null;
       if (!target && selector) {
-        try { target = document.querySelector(selector); } catch (_) {}
+        try { target = document.querySelector(selector); } catch (_) { }
       }
       if (!target) return;
       const context = { index };
@@ -983,14 +984,14 @@ function bootstrap() {
           if (base.text !== null && base.text !== undefined && canEditText(item.element)) {
             if ((item.element.textContent || '') !== (base.text || '')) stillEdited = true;
           }
-        } catch (_) {}
+        } catch (_) { }
         const keys = Object.keys(base.inline || {});
         for (const k of keys) {
           try {
             const cur = item.element.style[k] || '';
             const orig = base.inline[k] || '';
             if (cur !== orig) { stillEdited = true; break; }
-          } catch (_) {}
+          } catch (_) { }
         }
         item.edited = stillEdited;
         if (!stillEdited) {
@@ -1007,7 +1008,7 @@ function bootstrap() {
       });
 
       if (dockRoot) {
-        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) {}
+        try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
         dockRoot.updateSendState();
       }
     });
@@ -1120,7 +1121,7 @@ function bootstrap() {
           text: prettyIntent.trim()
         });
         // Clear typed text immediately after sending for a clean slate
-        try { if (dockRoot) dockRoot.clearInput(); } catch (_) {}
+        try { if (dockRoot) dockRoot.clearInput(); } catch (_) { }
       }
 
       stateManager.set('processing.active', true);
@@ -1135,7 +1136,7 @@ function bootstrap() {
             done: false,
             chunks: []
           });
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // Build context snapshot
@@ -1146,8 +1147,8 @@ function bootstrap() {
       const reqEdits = edits;
 
       // Clear context immediately for a cleaner UX during processing
-      try { highlightManager.clearAll(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+      try { highlightManager.clearAll(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) { }
       stateManager.batch({
         'selection.elements': [],
         'selection.screenshots': [],
@@ -1155,8 +1156,8 @@ function bootstrap() {
         'wysiwyg.edits': [],
         'wysiwyg.hasDiffs': false
       });
-      try { dockRoot && dockRoot.clearChips(); } catch (_) {}
-      try { dockRoot && dockRoot.updateSendState(); } catch (_) {}
+      try { dockRoot && dockRoot.clearChips(); } catch (_) { }
+      try { dockRoot && dockRoot.updateSendState(); } catch (_) { }
 
       try {
         let result = null;
@@ -1228,7 +1229,7 @@ function bootstrap() {
             'wysiwyg.hasDiffs': false,
             'wysiwyg.pending': null
           });
-          try { styleHistory.clear(); } catch (_) {}
+          try { styleHistory.clear(); } catch (_) { }
           if (dockRoot) dockRoot.updateSendState();
           highlightManager.clearAll();
           if (editModal) editModal.close();
@@ -1271,8 +1272,8 @@ function bootstrap() {
         'selection.screenshots': []
       });
       if (dockRoot) dockRoot.updateSendState();
-      try { highlightManager.clearAll(); } catch (_) {}
-      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) {}
+      try { highlightManager.clearAll(); } catch (_) { }
+      try { highlightManagerFrame && highlightManagerFrame.clearAll(); } catch (_) { }
       if (editModal) editModal.close();
     });
 
@@ -1298,7 +1299,7 @@ function bootstrap() {
     try {
       if (!el) return false;
       const tag = (el.tagName || '').toLowerCase();
-      if (['input','textarea','img','video','canvas','svg'].includes(tag)) return false;
+      if (['input', 'textarea', 'img', 'video', 'canvas', 'svg'].includes(tag)) return false;
       return el.childElementCount === 0;
     } catch (_) { return false; }
   }
@@ -1307,7 +1308,7 @@ function bootstrap() {
   function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
       // track space pressed for panning
-      if (e.key === ' ') { try { window.__lumiSpacePressed = true; } catch (_) {} }
+      if (e.key === ' ') { try { window.__lumiSpacePressed = true; } catch (_) { } }
       // Ignore if typing in input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         // Allow Cmd+Enter for submit
@@ -1325,7 +1326,7 @@ function bootstrap() {
 
         if (mode !== 'idle') {
           if (elementSelector) elementSelector.deactivate();
-          if (screenshotSelector) screenshotSelector.deactivate();
+          if (annotateManager) annotateManager.deactivate();
         } else if (isDockOpen) {
           eventBus.emit('bubble:close');
         }
@@ -1375,7 +1376,7 @@ function bootstrap() {
       }
     });
     document.addEventListener('keyup', (e) => {
-      if (e.key === ' ') { try { window.__lumiSpacePressed = false; } catch (_) {} }
+      if (e.key === ' ') { try { window.__lumiSpacePressed = false; } catch (_) { } }
     });
   }
 
@@ -1407,7 +1408,8 @@ function bootstrap() {
 
     // Initialize selectors after UI is ready
     elementSelector = new ElementSelector(eventBus, stateManager, highlightManager, topBanner, document, window);
-    screenshotSelector = new ScreenshotSelector(eventBus, stateManager, highlightManager, topBanner, chromeBridge);
+    // screenshotSelector removed; annotateManager initialized earlier
+
 
     // Bind all events (after UI is mounted)
     bindEvents();
@@ -1419,7 +1421,7 @@ function bootstrap() {
     try {
       stateManager.set('ui.theme', 'light');
       setDockThemeMode('light');
-    } catch (_) {}
+    } catch (_) { }
 
     // Apply initial viewport visibility, synced with dock state
     try {
@@ -1430,7 +1432,7 @@ function bootstrap() {
       viewportBar.mount();
       viewportBar.setVisible(on);
       stateManager.set('ui.viewport.enabled', on);
-    } catch (_) {}
+    } catch (_) { }
 
     // Keep highlight layer in sync with viewport canvas scroll (inline stage)
     try {
@@ -1449,7 +1451,7 @@ function bootstrap() {
       eventBus.on('viewport:scale', (value) => viewportController.setScale(value));
       eventBus.on('viewport:zoom', (value) => viewportController.setZoom(value));
       syncScrollTarget();
-    } catch (_) {}
+    } catch (_) { }
 
     // Viewport follows dock visibility (they work together as one unit)
     try {
@@ -1461,10 +1463,10 @@ function bootstrap() {
         persistUIState();  // Persist when dock open/close state changes
       });
       stateManager.subscribe('ui.theme', (mode) => {
-        try { setDockThemeMode(mode); } catch (_) {}
-        try { viewportBar.setTheme(mode); } catch (_) {}
+        try { setDockThemeMode(mode); } catch (_) { }
+        try { viewportBar.setTheme(mode); } catch (_) { }
       });
-    } catch (_) {}
+    } catch (_) { }
 
     // (moved into bindEvents scope as setupIframeSelectionLocal)
 
@@ -1476,7 +1478,7 @@ function bootstrap() {
         try {
           const open = stateManager.get('ui.dockOpen') !== false;
           if (open) eventBus.emit('viewport:toggle', true);
-        } catch (_) {}
+        } catch (_) { }
         return;
       }
       if (message.type === 'STREAM_CHUNK') {
@@ -1500,16 +1502,16 @@ function bootstrap() {
 
     // Runtime self-check (non-fatal)
     try {
-      (function selfCheck(){
+      (function selfCheck() {
         const get = (p) => stateManager.get(p);
         const need = (cond, msg) => { if (!cond) console.error('[LUMI SelfCheck]', msg); };
         const p = get('ui.viewport.preset');
-        need(['responsive','mobile','pad','laptop'].includes(p), 'Unknown preset: '+p);
-        const logical = get('ui.viewport.logical')||{};
-        need(logical.width>0 && logical.height>0, 'Logical size invalid');
+        need(['responsive', 'mobile', 'pad', 'laptop'].includes(p), 'Unknown preset: ' + p);
+        const logical = get('ui.viewport.logical') || {};
+        need(logical.width > 0 && logical.height > 0, 'Logical size invalid');
         const auto = get('ui.viewport.auto');
         const scale = get('ui.viewport.scale');
-        need((auto || (scale>=0.25 && scale<=2)), 'Scale out of range or auto mis-set');
+        need((auto || (scale >= 0.25 && scale <= 2)), 'Scale out of range or auto mis-set');
         const bar = document.getElementById('lumi-viewport-bar-root');
         need(!!bar, 'TopViewportBar not mounted');
         const stage = document.getElementById('lumi-viewport-stage');
@@ -1518,7 +1520,7 @@ function bootstrap() {
         console.info(`[LUMI] preset=${p} ${logical.width}x${logical.height} scale=${scale} mode=${stageInfo.mode} (fallback:${stageInfo.fallback || 'none'}) enabled=${stageInfo.enabled}`);
         console.info('[LUMI SelfCheck] done');
       })();
-    } catch (_) {}
+    } catch (_) { }
 
     console.log('[LUMI] Initialized successfully');
   }
@@ -1528,7 +1530,7 @@ function bootstrap() {
     const host = window.location.host;
     return `lumi.sessions:${host}`;
   }
-  
+
   async function restoreSessions() {
     try {
       const key = getSessionsKey();
@@ -1569,21 +1571,21 @@ function bootstrap() {
       console.error('[LUMI] Restore sessions failed:', err);
     }
   }
-  
+
   function persistSessions() {
     try {
       const key = getSessionsKey();
       const list = stateManager.get('sessions.list') || [];
       const currentId = stateManager.get('sessions.currentId');
       const payload = { list, currentId, t: Date.now() };
-      
+
       console.log('[LUMI] Persisting sessions to key:', key, 'count:', list.length);
       chromeBridge.storageSet({ [key]: payload });
     } catch (err) {
       console.error('[LUMI] Persist sessions failed:', err);
     }
   }
-  
+
   // Persist UI state (dock open/close)
   function persistUIState() {
     try {

@@ -238,6 +238,17 @@ export default class DockRoot {
               this.updateSendState();
               return true;
             }
+            if (chip.dataset.shotId !== undefined) {
+              e.preventDefault();
+              e.stopPropagation();
+              const rawId = chip.dataset.shotId;
+              const numericId = Number(rawId);
+              const shotId = Number.isNaN(numericId) ? rawId : numericId;
+              this.eventBus.emit('screenshot:remove', shotId);
+              this.captureSelection();
+              this.updateSendState();
+              return true;
+            }
             return false;
           };
           const isEmptyText = (n) => n && n.nodeType === Node.TEXT_NODE && /^\s*$/.test(n.textContent || '');
@@ -1020,10 +1031,10 @@ export default class DockRoot {
       const serverWd = this.stateManager.get('server.workingDirectory');
       const debugProject = project && typeof project === 'object'
         ? {
-            id: project.id,
-            name: project.name,
-            workingDirectory: project.workingDirectory
-          }
+          id: project.id,
+          name: project.name,
+          workingDirectory: project.workingDirectory
+        }
         : null;
       // eslint-disable-next-line no-console
       console.log('[LUMI][Dock] updateProjectName', {
@@ -1351,6 +1362,9 @@ export default class DockRoot {
     // 1) Remove chips whose index is out of range or duplicates for same index
     const seen = new Set();
     chips.forEach((chip) => {
+      // Skip screenshot chips (they have data-shot-id instead of data-index)
+      if (chip.dataset.shotId !== undefined) return;
+
       const idx = Number(chip.dataset.index || '-1');
       const invalid = !(idx >= 0 && idx < elements.length);
       const duplicate = seen.has(idx);
@@ -1371,6 +1385,9 @@ export default class DockRoot {
     // 3) Decorate all according to current state
     const updated = this.getChipNodes();
     updated.forEach((chip) => {
+      // Skip screenshot chips
+      if (chip.dataset.shotId !== undefined) return;
+
       const idx = Number(chip.dataset.index || '-1');
       const item = elements[idx];
       if (item) this.decorateChip(chip, item, idx);
@@ -1439,8 +1456,14 @@ export default class DockRoot {
     close.addEventListener('click', (e) => {
       e.stopPropagation();
       const idRaw = chip.dataset.shotId;
+      console.log('[LUMI] Clicked remove on screenshot chip', idRaw);
       const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
-      try { this.eventBus.emit('screenshot:remove', id); } catch (_) { }
+      try {
+        console.log('[LUMI] Emitting screenshot:remove', id);
+        this.eventBus.emit('screenshot:remove', id);
+      } catch (err) {
+        console.error('[LUMI] Error emitting screenshot:remove', err);
+      }
     });
 
     chip.appendChild(labelBtn);
@@ -1462,8 +1485,12 @@ export default class DockRoot {
   renderScreenshotChips() {
     if (!this.editorEl) return;
     // Remove existing screenshot chips
-    this.editorEl.querySelectorAll('.chip[data-shot-id]').forEach(n => n.remove());
+    const existing = this.editorEl.querySelectorAll('.chip[data-shot-id]');
+    console.log('[LUMI] renderScreenshotChips removing', existing.length, 'existing chips');
+    existing.forEach(n => n.remove());
+
     const shots = this.stateManager.get('selection.screenshots') || [];
+    console.log('[LUMI] renderScreenshotChips adding', shots.length, 'new chips', shots);
     shots.forEach((shot) => {
       const chip = this.createScreenshotChip(shot);
       this.editorEl.appendChild(chip);
@@ -1480,16 +1507,44 @@ export default class DockRoot {
   reconcileSelectionWithChips() {
     try {
       const chips = this.getChipNodes();
-      const present = new Set(chips.map((c) => Number(c.dataset.index || '-1')).filter((i) => i >= 0));
-      const elements = (this.stateManager.get('selection.elements') || []);
-      if (!elements.length) return;
-      const toRemove = [];
-      for (let i = 0; i < elements.length; i += 1) {
-        if (!present.has(i)) toRemove.push(i);
+      const presentElements = new Set();
+      const presentShotIds = new Set();
+      chips.forEach((chip) => {
+        if (!chip || !chip.dataset) return;
+        if (chip.dataset.index !== undefined) {
+          const idx = Number(chip.dataset.index || '-1');
+          if (idx >= 0) presentElements.add(idx);
+          return;
+        }
+        if (chip.dataset.shotId !== undefined) {
+          presentShotIds.add(String(chip.dataset.shotId));
+        }
+      });
+
+      const elements = this.stateManager.get('selection.elements') || [];
+      if (elements.length) {
+        const toRemove = [];
+        for (let i = 0; i < elements.length; i += 1) {
+          if (!presentElements.has(i)) toRemove.push(i);
+        }
+        if (toRemove.length) {
+          toRemove.sort((a, b) => b - a).forEach((idx) => this.eventBus.emit('element:removed', idx));
+        }
       }
-      if (!toRemove.length) return;
-      // Remove from highest to lowest to keep indices consistent
-      toRemove.sort((a, b) => b - a).forEach((idx) => this.eventBus.emit('element:removed', idx));
+
+      const screenshots = this.stateManager.get('selection.screenshots') || [];
+      if (screenshots.length) {
+        const staleShots = [];
+        screenshots.forEach((shot) => {
+          if (!shot || shot.id === undefined) return;
+          if (!presentShotIds.has(String(shot.id))) {
+            staleShots.push(shot.id);
+          }
+        });
+        if (staleShots.length) {
+          staleShots.forEach((id) => this.eventBus.emit('screenshot:remove', id));
+        }
+      }
     } catch (_) { }
   }
 
