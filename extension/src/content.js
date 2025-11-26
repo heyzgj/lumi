@@ -1007,6 +1007,11 @@ function bootstrap() {
         try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
         dockRoot.updateSendState();
       }
+
+      // Sync modal if open
+      if (editModal && typeof editModal.refresh === 'function') {
+        editModal.refresh();
+      }
     });
 
     eventBus.on('wysiwyg:reset', () => {

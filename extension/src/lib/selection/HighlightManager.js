@@ -115,6 +115,71 @@ export default class HighlightManager {
       }
     });
 
+    // Inline Text Editing
+    halo.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Only allow if it's a text-like element
+      if (element.children.length > 0 && !['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN', 'A', 'LI', 'BUTTON'].includes(element.tagName)) return;
+
+      element.contentEditable = 'true';
+      element.focus();
+
+      // Disable pointer events on children to prevent link clicks
+      const children = element.querySelectorAll('*');
+      children.forEach(c => c.style.pointerEvents = 'none');
+
+      // Temporarily hide halo while editing
+      halo.style.display = 'none';
+
+      const originalText = element.textContent;
+
+      const finishEdit = () => {
+        element.removeAttribute('contenteditable');
+        // Restore pointer events
+        children.forEach(c => c.style.pointerEvents = '');
+
+        halo.style.display = 'block';
+
+        const newText = element.textContent;
+        if (newText !== originalText && this.eventBus) {
+          const idx = resolveIndex();
+          this.eventBus.emit('wysiwyg:apply', {
+            index: idx,
+            selector: this.readable(element),
+            changes: { text: newText },
+            summary: `Edit text content`
+          });
+        }
+
+        element.removeEventListener('blur', finishEdit);
+        element.removeEventListener('keydown', onKey);
+        element.removeEventListener('input', onInput);
+      };
+
+      const onKey = (ke) => {
+        if (ke.key === 'Enter' && !ke.shiftKey) {
+          ke.preventDefault();
+          element.blur(); // Triggers finishEdit
+        }
+        if (ke.key === 'Escape') {
+          element.textContent = originalText;
+          element.blur();
+        }
+      };
+
+      const onInput = () => {
+        if (this.eventBus) {
+          this.eventBus.emit('wysiwyg:sync', { text: element.textContent });
+        }
+      };
+
+      element.addEventListener('blur', finishEdit);
+      element.addEventListener('keydown', onKey);
+      element.addEventListener('input', onInput);
+    });
+
     this.doc.body.appendChild(halo);
     const nextIndex = this.selectionHighlights.push(halo) - 1;
     this.selectionElements.push(element);
@@ -134,6 +199,7 @@ export default class HighlightManager {
     this.selectionListeners.set(element, { onEnter, onLeave });
 
     halo.dataset.index = String(nextIndex);
+
     this.ensureObservers();
     return nextIndex;
   }
@@ -253,32 +319,32 @@ export default class HighlightManager {
   ensureObservers() {
     if (this._mo) return;
     this._mo = new MutationObserver(() => this.scheduleUpdate());
-    try { this._mo.observe(this.doc.body, { attributes: true, childList: true, subtree: true }); } catch (_) {}
+    try { this._mo.observe(this.doc.body, { attributes: true, childList: true, subtree: true }); } catch (_) { }
     this.win.addEventListener('scroll', this._onScroll, true);
     this.win.addEventListener('resize', this._onResize, true);
     if (this._extraScrollEl) {
-      try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) {}
+      try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) { }
     }
   }
 
   teardownObservers() {
-    if (this._mo) { try { this._mo.disconnect(); } catch (_) {} this._mo = null; }
+    if (this._mo) { try { this._mo.disconnect(); } catch (_) { } this._mo = null; }
     this.win.removeEventListener('scroll', this._onScroll, true);
     this.win.removeEventListener('resize', this._onResize, true);
     if (this._extraScrollEl) {
-      try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) {}
+      try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) { }
     }
     if (this._raf) { this.win.cancelAnimationFrame ? this.win.cancelAnimationFrame(this._raf) : cancelAnimationFrame(this._raf); this._raf = null; }
   }
 
   setExtraScrollContainer(el) {
     if (this._extraScrollEl && this._extraScrollEl !== el) {
-      try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) {}
+      try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) { }
     }
     this._extraScrollEl = el || null;
     // If observers are active, attach immediately
     if (this._extraScrollEl && this._mo) {
-      try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) {}
+      try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) { }
     }
   }
 
@@ -302,7 +368,7 @@ export default class HighlightManager {
       halo.style.width = r.width + 'px';
       halo.style.height = r.height + 'px';
       // keep radius in sync if element style changed
-      try { halo.style.borderRadius = this.win.getComputedStyle(el).borderRadius || '14px'; } catch (_) {}
+      try { halo.style.borderRadius = this.win.getComputedStyle(el).borderRadius || '14px'; } catch (_) { }
     });
   }
 }

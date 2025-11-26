@@ -185,15 +185,6 @@ async function checkServerHealth() {
 }
 
 // Handle extension icon click - inject content script
-function isAllowedHost(url = '') {
-  try {
-    const { hostname } = new URL(url);
-    return hostname === 'localhost' || hostname === '127.0.0.1';
-  } catch (_) {
-    return false;
-  }
-}
-
 chrome.action.onClicked.addListener(async (tab) => {
   // Allow toggling/injection on any host; page-level blocking is handled in-app
   console.info('[LUMI] action clicked for', tab?.url || 'unknown', 'inject=forced');
@@ -471,6 +462,13 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
     const { engine, context, streamId } = message.payload || {};
     const tabId = sender?.tab?.id;
     bgLog('EXECUTE_STREAM', { engine, intent: context?.intent?.slice?.(0, 60), streamId });
+    
+    if (!tabId) {
+      console.warn('[LUMI] EXECUTE_STREAM missing tabId');
+      sendResponse({ success: false, error: 'Missing tab ID for stream request' });
+      return true;
+    }
+    
     forwardStreamToServer(engine, context, tabId, streamId).catch((error) => {
       console.error('[LUMI] EXECUTE_STREAM failed:', error);
       try {

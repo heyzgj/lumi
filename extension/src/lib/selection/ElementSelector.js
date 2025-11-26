@@ -14,7 +14,7 @@ export default class ElementSelector {
     this.win = rootWindow || window;
     this.isActive = false;
     this._blockers = [];
-    
+
     // Bind methods
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleClick = this.handleClick.bind(this);
@@ -25,59 +25,59 @@ export default class ElementSelector {
     try {
       if (!el) return false;
       const tag = (el.tagName || '').toLowerCase();
-      if (['input','textarea','img','video','canvas','svg'].includes(tag)) return false;
+      if (['input', 'textarea', 'img', 'video', 'canvas', 'svg'].includes(tag)) return false;
       return el.childElementCount === 0;
     } catch (_) { return false; }
   }
 
   activate() {
     if (this.isActive) return;
-    
+
     this.isActive = true;
     this.stateManager.set('ui.mode', 'element');
-    
+
     this.topBanner.update('Click to select element');
-    
+
     this.doc.addEventListener('mousemove', this.handleMouseMove, true);
     this.doc.addEventListener('click', this.handleClick, true);
     // Block page interactions while picking
     const block = (e) => { e.preventDefault(); e.stopPropagation(); };
-    ['pointerdown','mousedown','mouseup','click','dblclick','contextmenu'].forEach(evt => {
+    ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(evt => {
       this.doc.addEventListener(evt, block, true);
       this._blockers.push({ evt, block });
     });
     this.doc.documentElement.classList.add('lumi-element-cursor');
     this.doc.body.classList.add('lumi-element-cursor');
-    
+
     this.eventBus.emit('element-mode:activated');
   }
 
   deactivate() {
     if (!this.isActive) return;
-    
+
     this.isActive = false;
     this.stateManager.set('ui.mode', 'idle');
     this.stateManager.set('ui.dockState', 'normal');
-    
+
     this.topBanner.hide();
     this.highlightManager.hideHover();
-    
+
     this.doc.removeEventListener('mousemove', this.handleMouseMove, true);
     this.doc.removeEventListener('click', this.handleClick, true);
     // Remove blockers
-    this._blockers.forEach(({evt, block}) => {
+    this._blockers.forEach(({ evt, block }) => {
       this.doc.removeEventListener(evt, block, true);
     });
     this._blockers = [];
     this.doc.documentElement.classList.remove('lumi-element-cursor');
     this.doc.body.classList.remove('lumi-element-cursor');
-    
+
     this.eventBus.emit('element-mode:deactivated');
   }
 
   handleMouseMove(e) {
     if (!this.isActive || shouldIgnoreElement(e.target)) return;
-    
+
     const hoveredElement = this.stateManager.get('selection.hoveredElement');
     if (hoveredElement !== e.target) {
       this.stateManager.set('selection.hoveredElement', e.target);
@@ -98,14 +98,14 @@ export default class ElementSelector {
 
   addElement(element) {
     const elements = this.stateManager.get('selection.elements');
-    
+
     // Check if already selected
     const exists = elements.some(item => item.element === element);
     if (exists) return;
-    
+
     const selector = getElementSelector(element);
     const bbox = element.getBoundingClientRect();
-    
+
     // Capture a baseline snapshot for Reset semantics across multiple edits
     const baselineInline = {
       color: element.style.color,
@@ -136,7 +136,7 @@ export default class ElementSelector {
         inline: baselineInline
       }
     };
-    
+
     const updated = [...elements, item];
     this.stateManager.set('selection.elements', updated);
 

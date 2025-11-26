@@ -192,12 +192,14 @@
      */
     set(path, value, silent = false) {
       const oldValue = this.get(path);
-      
+
       // Only update if value actually changed
-      if (oldValue === value) return;
-      
-      this._setNestedValue(this.state, path, value);
-      
+      const sameRef = oldValue === value;
+      if (!sameRef) {
+        this._setNestedValue(this.state, path, value);
+      }
+
+      // Even when references match (objects/arrays mutated in place), still notify subscribers
       if (!silent) {
         this._notify(path, value, oldValue);
       }
@@ -209,10 +211,10 @@
      */
     batch(updates) {
       Object.entries(updates).forEach(([path, value]) => {
-        this.set(path, value, true); // Silent updates
+        this.set(path, value, false);
       });
-      
-      // Single notification for all changes
+
+      // Single notification for all changes (aggregated payload)
       this.eventBus.emit('state:batch-update', updates);
     }
 
@@ -742,6 +744,71 @@
         }
       });
 
+      // Inline Text Editing
+      halo.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Only allow if it's a text-like element
+        if (element.children.length > 0 && !['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN', 'A', 'LI', 'BUTTON'].includes(element.tagName)) return;
+
+        element.contentEditable = 'true';
+        element.focus();
+
+        // Disable pointer events on children to prevent link clicks
+        const children = element.querySelectorAll('*');
+        children.forEach(c => c.style.pointerEvents = 'none');
+
+        // Temporarily hide halo while editing
+        halo.style.display = 'none';
+
+        const originalText = element.textContent;
+
+        const finishEdit = () => {
+          element.removeAttribute('contenteditable');
+          // Restore pointer events
+          children.forEach(c => c.style.pointerEvents = '');
+
+          halo.style.display = 'block';
+
+          const newText = element.textContent;
+          if (newText !== originalText && this.eventBus) {
+            const idx = resolveIndex();
+            this.eventBus.emit('wysiwyg:apply', {
+              index: idx,
+              selector: this.readable(element),
+              changes: { text: newText },
+              summary: `Edit text content`
+            });
+          }
+
+          element.removeEventListener('blur', finishEdit);
+          element.removeEventListener('keydown', onKey);
+          element.removeEventListener('input', onInput);
+        };
+
+        const onKey = (ke) => {
+          if (ke.key === 'Enter' && !ke.shiftKey) {
+            ke.preventDefault();
+            element.blur(); // Triggers finishEdit
+          }
+          if (ke.key === 'Escape') {
+            element.textContent = originalText;
+            element.blur();
+          }
+        };
+
+        const onInput = () => {
+          if (this.eventBus) {
+            this.eventBus.emit('wysiwyg:sync', { text: element.textContent });
+          }
+        };
+
+        element.addEventListener('blur', finishEdit);
+        element.addEventListener('keydown', onKey);
+        element.addEventListener('input', onInput);
+      });
+
       this.doc.body.appendChild(halo);
       const nextIndex = this.selectionHighlights.push(halo) - 1;
       this.selectionElements.push(element);
@@ -761,6 +828,7 @@
       this.selectionListeners.set(element, { onEnter, onLeave });
 
       halo.dataset.index = String(nextIndex);
+
       this.ensureObservers();
       return nextIndex;
     }
@@ -880,32 +948,32 @@
     ensureObservers() {
       if (this._mo) return;
       this._mo = new MutationObserver(() => this.scheduleUpdate());
-      try { this._mo.observe(this.doc.body, { attributes: true, childList: true, subtree: true }); } catch (_) {}
+      try { this._mo.observe(this.doc.body, { attributes: true, childList: true, subtree: true }); } catch (_) { }
       this.win.addEventListener('scroll', this._onScroll, true);
       this.win.addEventListener('resize', this._onResize, true);
       if (this._extraScrollEl) {
-        try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) {}
+        try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) { }
       }
     }
 
     teardownObservers() {
-      if (this._mo) { try { this._mo.disconnect(); } catch (_) {} this._mo = null; }
+      if (this._mo) { try { this._mo.disconnect(); } catch (_) { } this._mo = null; }
       this.win.removeEventListener('scroll', this._onScroll, true);
       this.win.removeEventListener('resize', this._onResize, true);
       if (this._extraScrollEl) {
-        try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) {}
+        try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) { }
       }
       if (this._raf) { this.win.cancelAnimationFrame ? this.win.cancelAnimationFrame(this._raf) : cancelAnimationFrame(this._raf); this._raf = null; }
     }
 
     setExtraScrollContainer(el) {
       if (this._extraScrollEl && this._extraScrollEl !== el) {
-        try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) {}
+        try { this._extraScrollEl.removeEventListener('scroll', this._onScroll); } catch (_) { }
       }
       this._extraScrollEl = el || null;
       // If observers are active, attach immediately
       if (this._extraScrollEl && this._mo) {
-        try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) {}
+        try { this._extraScrollEl.addEventListener('scroll', this._onScroll, { passive: true }); } catch (_) { }
       }
     }
 
@@ -929,7 +997,7 @@
         halo.style.width = r.width + 'px';
         halo.style.height = r.height + 'px';
         // keep radius in sync if element style changed
-        try { halo.style.borderRadius = this.win.getComputedStyle(el).borderRadius || '14px'; } catch (_) {}
+        try { halo.style.borderRadius = this.win.getComputedStyle(el).borderRadius || '14px'; } catch (_) { }
       });
     }
   }
@@ -949,7 +1017,7 @@
       this.win = rootWindow || window;
       this.isActive = false;
       this._blockers = [];
-      
+
       // Bind methods
       this.handleMouseMove = this.handleMouseMove.bind(this);
       this.handleClick = this.handleClick.bind(this);
@@ -960,59 +1028,59 @@
       try {
         if (!el) return false;
         const tag = (el.tagName || '').toLowerCase();
-        if (['input','textarea','img','video','canvas','svg'].includes(tag)) return false;
+        if (['input', 'textarea', 'img', 'video', 'canvas', 'svg'].includes(tag)) return false;
         return el.childElementCount === 0;
       } catch (_) { return false; }
     }
 
     activate() {
       if (this.isActive) return;
-      
+
       this.isActive = true;
       this.stateManager.set('ui.mode', 'element');
-      
+
       this.topBanner.update('Click to select element');
-      
+
       this.doc.addEventListener('mousemove', this.handleMouseMove, true);
       this.doc.addEventListener('click', this.handleClick, true);
       // Block page interactions while picking
       const block = (e) => { e.preventDefault(); e.stopPropagation(); };
-      ['pointerdown','mousedown','mouseup','click','dblclick','contextmenu'].forEach(evt => {
+      ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(evt => {
         this.doc.addEventListener(evt, block, true);
         this._blockers.push({ evt, block });
       });
       this.doc.documentElement.classList.add('lumi-element-cursor');
       this.doc.body.classList.add('lumi-element-cursor');
-      
+
       this.eventBus.emit('element-mode:activated');
     }
 
     deactivate() {
       if (!this.isActive) return;
-      
+
       this.isActive = false;
       this.stateManager.set('ui.mode', 'idle');
       this.stateManager.set('ui.dockState', 'normal');
-      
+
       this.topBanner.hide();
       this.highlightManager.hideHover();
-      
+
       this.doc.removeEventListener('mousemove', this.handleMouseMove, true);
       this.doc.removeEventListener('click', this.handleClick, true);
       // Remove blockers
-      this._blockers.forEach(({evt, block}) => {
+      this._blockers.forEach(({ evt, block }) => {
         this.doc.removeEventListener(evt, block, true);
       });
       this._blockers = [];
       this.doc.documentElement.classList.remove('lumi-element-cursor');
       this.doc.body.classList.remove('lumi-element-cursor');
-      
+
       this.eventBus.emit('element-mode:deactivated');
     }
 
     handleMouseMove(e) {
       if (!this.isActive || shouldIgnoreElement(e.target)) return;
-      
+
       const hoveredElement = this.stateManager.get('selection.hoveredElement');
       if (hoveredElement !== e.target) {
         this.stateManager.set('selection.hoveredElement', e.target);
@@ -1033,14 +1101,14 @@
 
     addElement(element) {
       const elements = this.stateManager.get('selection.elements');
-      
+
       // Check if already selected
       const exists = elements.some(item => item.element === element);
       if (exists) return;
-      
+
       const selector = getElementSelector(element);
       const bbox = element.getBoundingClientRect();
-      
+
       // Capture a baseline snapshot for Reset semantics across multiple edits
       const baselineInline = {
         color: element.style.color,
@@ -1071,7 +1139,7 @@
           inline: baselineInline
         }
       };
-      
+
       const updated = [...elements, item];
       this.stateManager.set('selection.elements', updated);
 
@@ -2319,14 +2387,14 @@ ${TOKENS_CSS}
 
     async execute(engine, intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
       const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots, edits);
-      
+
       try {
         const result = await this.chromeBridge.executeOnServer(
           engine,
           context,
           screenshot?.dataUrl
         );
-        
+
         return result;
       } catch (error) {
         console.error('[ServerClient] Execution failed:', error);
@@ -5592,6 +5660,185 @@ ${TOKENS_CSS}
    * ElementSchema - Derive control schema for the Property Panel
    */
 
+  const TEXT_TAGS = new Set([
+    'p', 'span', 'strong', 'em', 'label', 'li', 'dt', 'dd',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+  ]);
+
+  const BUTTON_TAGS = new Set(['button']);
+  const LINK_TAGS = new Set(['a']);
+  const INPUT_TAGS = new Set(['input', 'textarea', 'select']);
+  const IMAGE_TAGS = new Set(['img', 'picture', 'figure']);
+
+  const CONTROL_DEFS = {
+    text: {
+      id: 'text',
+      label: 'Text',
+      type: 'textarea',
+      group: 'content'
+    },
+    textColor: {
+      id: 'color',
+      label: 'Text Color',
+      type: 'color',
+      group: 'color',
+      property: 'color'
+    },
+    backgroundColor: {
+      id: 'backgroundColor',
+      label: 'Background',
+      type: 'color',
+      group: 'color',
+      property: 'backgroundColor'
+    },
+    fontSize: {
+      id: 'fontSize',
+      label: 'Font Size',
+      type: 'number',
+      unit: 'px',
+      group: 'typography',
+      property: 'fontSize',
+      min: 8,
+      max: 128
+    },
+    fontWeight: {
+      id: 'fontWeight',
+      label: 'Font Weight',
+      type: 'select',
+      options: ['300', '400', '500', '600', '700'],
+      group: 'typography',
+      property: 'fontWeight'
+    },
+    lineHeight: {
+      id: 'lineHeight',
+      label: 'Line Height',
+      type: 'number',
+      unit: null,
+      step: 0.05,
+      min: 0.5,
+      max: 3,
+      group: 'typography',
+      property: 'lineHeight'
+    },
+    borderRadius: {
+      id: 'borderRadius',
+      label: 'Border Radius',
+      type: 'number',
+      unit: 'px',
+      group: 'appearance',
+      property: 'borderRadius',
+      min: 0,
+      max: 128
+    },
+    padding: {
+      id: 'padding',
+      label: 'Padding',
+      type: 'padding',
+      group: 'spacing',
+      property: 'padding'
+    },
+    boxShadow: {
+      id: 'boxShadow',
+      label: 'Shadow',
+      type: 'shadow',
+      group: 'effects',
+      property: 'boxShadow'
+    }
+  };
+
+  const GROUP_ORDER = ['content', 'color', 'typography', 'spacing', 'appearance', 'effects'];
+
+  const GROUP_LABELS = {
+    content: 'Content',
+    color: 'Color',
+    typography: 'Typography',
+    spacing: 'Spacing',
+    appearance: 'Appearance',
+    effects: 'Effects'
+  };
+
+  function inferType(element) {
+    const tag = element.tagName?.toLowerCase() || '';
+
+    if (BUTTON_TAGS.has(tag)) return 'button';
+    if (LINK_TAGS.has(tag)) return 'link';
+    if (INPUT_TAGS.has(tag)) return 'form';
+    if (IMAGE_TAGS.has(tag)) return 'image';
+    if (TEXT_TAGS.has(tag)) return 'text';
+
+    return 'container';
+  }
+
+  function supportsTextControls(elementType) {
+    return elementType === 'text' || elementType === 'button' || elementType === 'link' || elementType === 'form';
+  }
+
+  function supportsBackground(elementType) {
+    return elementType !== 'image';
+  }
+
+  function supportsTypography(elementType) {
+    return elementType !== 'image';
+  }
+
+  function supportsPadding(elementType) {
+    return elementType !== 'image';
+  }
+
+  function supportsShadow(elementType) {
+    return elementType !== 'form';
+  }
+
+  function getElementSchema(element) {
+    if (!element) {
+      return {
+        type: 'unknown',
+        controls: new Map(),
+        order: []
+      };
+    }
+
+    const type = inferType(element);
+    const controls = new Map();
+
+    if (supportsTextControls(type)) {
+      controls.set('content', [CONTROL_DEFS.text]);
+    }
+
+    const colorControls = [];
+    colorControls.push(CONTROL_DEFS.textColor);
+    if (supportsBackground(type)) {
+      colorControls.push(CONTROL_DEFS.backgroundColor);
+    }
+    controls.set('color', colorControls);
+
+    if (supportsTypography(type)) {
+      controls.set('typography', [
+        CONTROL_DEFS.fontSize,
+        CONTROL_DEFS.fontWeight,
+        CONTROL_DEFS.lineHeight
+      ]);
+    }
+
+    if (supportsPadding(type)) {
+      controls.set('spacing', [CONTROL_DEFS.padding]);
+    }
+
+    controls.set('appearance', [CONTROL_DEFS.borderRadius]);
+
+    if (supportsShadow(type)) {
+      controls.set('effects', [CONTROL_DEFS.boxShadow]);
+    }
+
+    const order = GROUP_ORDER.filter(group => controls.has(group));
+
+    return {
+      type,
+      controls,
+      order,
+      labels: GROUP_LABELS
+    };
+  }
 
   function describeChanges(changes) {
     if (!changes) return 'Edited';
@@ -5616,727 +5863,1235 @@ ${TOKENS_CSS}
     return Array.from(new Set(labels)).join(', ');
   }
 
+  /**
+   * TokenScanner - Scans the page for Design Tokens (CSS Variables & Common Values)
+   */
+
+  class TokenScanner {
+      constructor() {
+          this.tokens = {
+              colors: [],
+              spacing: [],
+              typography: [],
+              radius: []
+          };
+          this.scanned = false;
+      }
+
+      scan() {
+          if (this.scanned) return this.tokens;
+
+          const colorVars = new Map();
+          const spacingVars = new Map();
+          const radiusVars = new Map();
+
+          // 1. Scan CSS Variables from document.styleSheets (if accessible)
+          // Note: accessing cssRules can be blocked by CORS for external sheets.
+          // We'll try our best, and fallback to computed styles on :root.
+
+          // Scan :root computed style for variables
+          window.getComputedStyle(document.documentElement);
+          // There is no API to enumerate all defined variables on an element.
+          // We have to rely on iterating styleSheets or known conventions.
+          // However, we can try to guess common prefixes or just rely on what we find in sheets.
+
+          try {
+              Array.from(document.styleSheets).forEach(sheet => {
+                  try {
+                      Array.from(sheet.cssRules).forEach(rule => {
+                          if (rule.type === 1 && (rule.selectorText === ':root' || rule.selectorText === 'html' || rule.selectorText === 'body')) {
+                              const style = rule.style;
+                              for (let i = 0; i < style.length; i++) {
+                                  const prop = style[i];
+                                  if (prop.startsWith('--')) {
+                                      const val = style.getPropertyValue(prop).trim();
+                                      this.categorizeVar(prop, val, { colorVars, spacingVars, radiusVars });
+                                  }
+                              }
+                          }
+                      });
+                  } catch (e) {
+                      // CORS or other access error, ignore
+                  }
+              });
+          } catch (e) { }
+
+          // Convert Maps to Arrays
+          this.tokens.colors = Array.from(colorVars.entries()).map(([name, value]) => ({ name, value }));
+          this.tokens.spacing = Array.from(spacingVars.entries()).map(([name, value]) => ({ name, value }));
+          this.tokens.radius = Array.from(radiusVars.entries()).map(([name, value]) => ({ name, value }));
+
+          // Sort tokens
+          this.tokens.spacing.sort((a, b) => this.parsePx(a.value) - this.parsePx(b.value));
+
+          this.scanned = true;
+          return this.tokens;
+      }
+
+      categorizeVar(name, value, { colorVars, spacingVars, radiusVars }) {
+          // Colors
+          if (name.includes('color') || name.includes('bg') || name.includes('text') || name.includes('primary') || name.includes('accent') || name.includes('gray') || value.startsWith('#') || value.startsWith('rgb') || value.startsWith('hsl')) {
+              // Basic check if value is a color
+              if (this.isColor(value)) {
+                  colorVars.set(name, value);
+                  return;
+              }
+          }
+
+          // Spacing
+          if (name.includes('spacing') || name.includes('gap') || name.includes('margin') || name.includes('padding')) {
+              if (value.endsWith('px') || value.endsWith('rem') || value.endsWith('em')) {
+                  spacingVars.set(name, value);
+                  return;
+              }
+          }
+
+          // Radius
+          if (name.includes('radius')) {
+              radiusVars.set(name, value);
+              return;
+          }
+      }
+
+      isColor(value) {
+          const s = new Option().style;
+          s.color = value;
+          return s.color !== '';
+      }
+
+      parsePx(value) {
+          if (value.endsWith('px')) return parseFloat(value);
+          if (value.endsWith('rem')) return parseFloat(value) * 16; // Assumption
+          return 0;
+      }
+
+      getColors() {
+          this.scan();
+          return this.tokens.colors;
+      }
+
+      getSpacing() {
+          this.scan();
+          return this.tokens.spacing;
+      }
+  }
+
   const SHADOW_PRESETS = {
-    none: 'none',
-    soft: '0 6px 18px color-mix(in srgb, var(--dock-fg) 12%, transparent)',
-    medium: '0 12px 28px color-mix(in srgb, var(--dock-fg) 16%, transparent)',
-    deep: '0 24px 44px color-mix(in srgb, var(--dock-fg) 20%, transparent)'
+      none: 'none',
+      soft: '0 6px 18px color-mix(in srgb, var(--dock-fg) 12%, transparent)',
+      medium: '0 12px 28px color-mix(in srgb, var(--dock-fg) 16%, transparent)',
+      deep: '0 24px 44px color-mix(in srgb, var(--dock-fg) 20%, transparent)'
   };
 
   class DockEditModal {
-    constructor(eventBus, stateManager, mountRoot) {
-      this.eventBus = eventBus;
-      this.stateManager = stateManager;
-      this.mountRoot = mountRoot || document.body;
-      this.container = null;
-      this.backdrop = null;
-      this.form = null;
-      this.targets = [];
-      this.indices = [];
-      this.base = null;
-      this.inline = null;
-      this.current = {};
-      this.bodyScrollLocked = false;
-      // Preview-level history (undo before Apply)
-      this.previewHistory = [];
-      this.lastPreviewState = {};
-    }
+      constructor(eventBus, stateManager, mountRoot) {
+          this.eventBus = eventBus;
+          this.stateManager = stateManager;
+          this.mountRoot = mountRoot || document.body;
+          this.container = null;
+          this.backdrop = null;
+          this.form = null;
+          this.targets = [];
+          this.indices = [];
+          this.base = null;
+          this.inline = null;
+          this.current = {};
+          this.intents = {}; // Store semantic intents for keys
+          this.bodyScrollLocked = false;
+          this.previewHistory = [];
+          this.lastPreviewState = {};
 
-    mount() {
-      if (this.container) return;
-      this.backdrop = document.createElement('div');
-      this.backdrop.id = 'dock-edit-overlay';
-      this.backdrop.style.cssText = `
-      position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      left: auto;
-      right: 0; /* Pin to the right edge to align with Dock */
-      width: 420px; /* updated dynamically in open() */
-      box-sizing: border-box;
+          this._blockerEnabled = false;
+          this._blockRegistrations = [];
+          this._iframeWindow = null;
+
+          this.tokenScanner = new TokenScanner();
+          this.tokens = { colors: [], spacing: [], radius: [] };
+      }
+
+      mount() {
+          if (this.container) return;
+          this.backdrop = document.createElement('div');
+          this.backdrop.id = 'dock-edit-overlay';
+          this.backdrop.style.cssText = `
+      position: fixed; top: 0; right: 0; bottom: 0; left: auto; width: 420px;
       background: color-mix(in srgb, var(--dock-fg, #0f172a) 22%, transparent);
-      backdrop-filter: blur(8px);
-      z-index: 2147483647;
-      display: none;
-      `;
-      this.backdrop.addEventListener('click', () => this.close(true));
+      backdrop-filter: blur(8px); z-index: 2147483647; display: none;
+    `;
+          this.backdrop.addEventListener('click', () => this.close(true));
 
-      this.container = document.createElement('div');
-      this.container.id = 'dock-edit-modal';
-      this.container.style.cssText = `
-      position: fixed;
-      right: 24px;
-      top: 72px;
-      width: 360px;
-      text-align: left;
-      box-sizing: border-box;
-      background: var(--dock-bg);
-      backdrop-filter: blur(24px);
-      border-radius: var(--radius-panel, 18px);
-      border: 1px solid var(--dock-stroke);
-      box-shadow: var(--shadow);
-      padding: 20px 22px;
-      display: none; /* hidden by default; becomes flex on open() */
-      z-index: 2147483647;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: var(--dock-fg);
-      max-height: calc(100vh - 144px);
-      overflow: hidden;
-      flex-direction: column;
+          this.container = document.createElement('div');
+          this.container.id = 'dock-edit-modal';
+          this.container.style.cssText = `
+      position: fixed; right: 24px; top: 72px; width: 360px;
+      background: var(--dock-bg); backdrop-filter: blur(24px);
+      border-radius: var(--radius-panel, 18px); border: 1px solid var(--dock-stroke);
+      box-shadow: var(--shadow); padding: 20px 22px; display: none;
+      z-index: 2147483647; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--dock-fg); max-height: calc(100vh - 144px);
+      overflow: hidden; flex-direction: column;
     `;
 
-      this.container.innerHTML = `
+          this.container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0;">
         <div id="dock-edit-title" style="font-weight:600;font-size:14px;">Edit</div>
         <button id="dock-edit-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--dock-fg-2);">×</button>
       </div>
       <div id="dock-edit-scroll" style="flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding-right:4px;min-height:0;">
-        <form id="dock-edit-form" class="dock-edit-form" style="display:flex;flex-direction:column;gap:14px;"></form>
+        <form id="dock-edit-form" class="dock-edit-form" style="display:flex;flex-direction:column;gap:18px;"></form>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-shrink:0;">
-        <button type="button" id="dock-edit-undo" class="dock-edit-btn" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);">Undo</button>
-        <button type="button" id="dock-edit-apply" class="dock-edit-apply" style="border:1px solid var(--dock-stroke);background:var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent));border-radius:12px;padding:6px 12px;color:var(--dock-fg);">Apply</button>
+        <button type="button" id="dock-edit-reset" style="border:1px solid var(--dock-stroke);background:transparent;border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);cursor:pointer;margin-right:auto;">Reset</button>
+        <button type="button" id="dock-edit-undo" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);cursor:pointer;">Undo</button>
+        <button type="button" id="dock-edit-apply" style="border:1px solid var(--dock-stroke);background:var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent));border-radius:12px;padding:6px 12px;color:var(--dock-fg);cursor:pointer;">Apply</button>
       </div>
     `;
 
-      this.form = this.container.querySelector('#dock-edit-form');
-      this.scrollContainer = this.container.querySelector('#dock-edit-scroll');
-      this.container.querySelector('#dock-edit-close').addEventListener('click', () => this.close(true));
-      this.undoBtn = this.container.querySelector('#dock-edit-undo');
-      if (this.undoBtn) this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) {} });
-      this.container.querySelector('#dock-edit-apply').addEventListener('click', () => this.applyChanges());
+          this.form = this.container.querySelector('#dock-edit-form');
+          this.scrollContainer = this.container.querySelector('#dock-edit-scroll');
+          this.container.setAttribute('tabindex', '-1');
+          this.container.querySelector('#dock-edit-close').addEventListener('click', () => this.close(true));
+          this.container.querySelector('#dock-edit-reset').addEventListener('click', () => this.resetChanges());
+          this.undoBtn = this.container.querySelector('#dock-edit-undo');
+          if (this.undoBtn) this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) { } });
+          this.applyBtn = this.container.querySelector('#dock-edit-apply');
+          if (this.applyBtn) this.applyBtn.addEventListener('click', () => this.applyChanges());
 
-      // Prevent scroll events from bubbling to page
-      this.container.addEventListener('wheel', (e) => {
-        e.stopPropagation();
-      }, { passive: true });
-
-      // Keyboard: Cmd/Ctrl+Z for Undo while modal is open
-      this.container.addEventListener('keydown', (e) => {
-        const isUndo = (e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z');
-        if (isUndo) {
-          e.preventDefault();
-          try { this.eventBus.emit('wysiwyg:undo'); } catch (_) {}
-        }
-      });
-      
-      // Ensure scroll only happens within modal
-      if (this.scrollContainer) {
-        this.scrollContainer.addEventListener('wheel', (e) => {
-          const { scrollTop, scrollHeight, clientHeight } = this.scrollContainer;
-          const isScrollingUp = e.deltaY < 0;
-          const isScrollingDown = e.deltaY > 0;
-          const isAtTop = scrollTop === 0;
-          const isAtBottom = scrollTop + clientHeight >= scrollHeight;
-          
-          if ((isAtTop && isScrollingUp) || (isAtBottom && isScrollingDown)) {
-            e.preventDefault();
-          }
-          e.stopPropagation();
-        }, { passive: false });
-      }
-
-      if (!this.mountRoot) return;
-      this.mountRoot.appendChild(this.backdrop);
-      this.mountRoot.appendChild(this.container);
-      this.updateUndoAvailability();
-    }
-
-    open({ index, element } = {}) {
-      this.mount();
-      const selection = this.stateManager.get('selection.elements') || [];
-      if (!Array.isArray(selection) || selection.length === 0) return;
-
-      let indices = [];
-      if (typeof index === 'number' && selection[index]) {
-        indices = [index];
-      } else if (element) {
-        const found = selection.findIndex(item => item.element === element);
-        if (found >= 0) indices = [found];
-      }
-      if (!indices.length) {
-        indices = selection.map((_, i) => i);
-      }
-
-      this.indices = indices;
-      this.targets = indices
-        .map((i) => {
-          const item = selection[i];
-          return item && item.element ? { element: item.element, selector: item.selector } : null;
-        })
-        .filter(Boolean);
-
-      if (!this.targets.length) return;
-
-      this.current = {};
-      this.collectBase();
-      this.renderForm();
-      this.stateManager.set('wysiwyg.pending', null);
-      this.stateManager.set('wysiwyg.active', true);
-      // Reset preview history every time modal opens
-      this.previewHistory = [];
-      this.lastPreviewState = {};
-      if (!this.bodyScrollLocked) {
-        document.body.classList.add('lumi-scroll-lock');
-        this.bodyScrollLocked = true;
-      }
-      // Ensure overlay only covers Dock area
-      this.positionOverlay();
-      this.backdrop.style.display = 'block';
-      this.container.style.display = 'flex';
-    }
-
-    close(cancel = false) {
-      if (!this.container) return;
-      if (cancel) {
-        this.restoreBase();
-      }
-      this.backdrop.style.display = 'none';
-      this.container.style.display = 'none';
-      window.removeEventListener('resize', this._onResize);
-      this.form.innerHTML = '';
-      this.current = {};
-      this.targets = [];
-      this.indices = [];
-      this.stateManager.set('wysiwyg.pending', null);
-      this.stateManager.set('wysiwyg.active', false);
-      if (this.bodyScrollLocked) {
-        document.body.classList.remove('lumi-scroll-lock');
-        this.bodyScrollLocked = false;
-      }
-    }
-
-    getVar(name) {
-      try {
-        const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-        return v || '';
-      } catch (_) { return ''; }
-    }
-
-    positionOverlay() {
-      try {
-        // Measure dock host rect for precise alignment
-        const host = document.getElementById('lumi-dock-root');
-        const rect = host ? host.getBoundingClientRect() : null;
-        const fallbackWidth = this.stateManager.get('ui.dockWidth') || 420;
-        const hasVisibleDock = !!rect && rect.width >= 40 && rect.right > 0;
-
-        const dockWidth = Math.round(hasVisibleDock ? rect.width : fallbackWidth);
-        if (hasVisibleDock) {
-          // Pin overlay exactly over visible dock area
-          const dockLeft = Math.max(0, Math.round(rect.left));
-          this.backdrop.style.left = dockLeft + 'px';
-          this.backdrop.style.right = '';
-          this.backdrop.style.width = dockWidth + 'px';
-        } else {
-          // Dock hidden: fallback to right-anchored overlay (avoid jumping to left)
-          this.backdrop.style.left = '';
-          this.backdrop.style.right = '0px';
-          this.backdrop.style.width = dockWidth + 'px';
-        }
-
-        // Ensure modal fits within dock area
-        const maxModal = Math.max(260, dockWidth - 48);
-        const modalWidth = Math.min(360, maxModal);
-        this.container.style.width = modalWidth + 'px';
-        this.container.style.right = '24px';
-      } catch (_) {}
-      if (!this._onResize) {
-        this._onResize = () => this.positionOverlay();
-      }
-      window.addEventListener('resize', this._onResize, { passive: true });
-    }
-
-    collectBase() {
-      const base = {
-        text: null,
-        color: null,
-        backgroundColor: null,
-        fontSize: null,
-        fontWeight: null,
-        lineHeight: null,
-        paddingTop: null,
-        paddingRight: null,
-        paddingBottom: null,
-        paddingLeft: null,
-        borderRadius: null,
-        boxShadow: null
-      };
-      const inline = [];
-      this.targets.forEach(({ element }) => {
-        const style = window.getComputedStyle(element);
-        const entry = {
-          text: element.textContent,
-          color: style.color,
-          backgroundColor: style.backgroundColor,
-          fontSize: style.fontSize,
-          fontWeight: style.fontWeight,
-          lineHeight: style.lineHeight,
-          paddingTop: style.paddingTop,
-          paddingRight: style.paddingRight,
-          paddingBottom: style.paddingBottom,
-          paddingLeft: style.paddingLeft,
-          borderRadius: style.borderRadius,
-          boxShadow: style.boxShadow,
-          inline: {
-            color: element.style.color,
-            backgroundColor: element.style.backgroundColor,
-            fontSize: element.style.fontSize,
-            fontWeight: element.style.fontWeight,
-            lineHeight: element.style.lineHeight,
-            paddingTop: element.style.paddingTop,
-            paddingRight: element.style.paddingRight,
-            paddingBottom: element.style.paddingBottom,
-            paddingLeft: element.style.paddingLeft,
-            borderRadius: element.style.borderRadius,
-            boxShadow: element.style.boxShadow
-          }
-        };
-        inline.push(entry);
-        Object.keys(base).forEach((key) => {
-          if (base[key] === null) {
-            base[key] = entry[key];
-          } else if (base[key] !== entry[key]) {
-            base[key] = 'mixed';
-          }
-        });
-      });
-      this.base = base;
-      this.inline = inline;
-    }
-
-    restoreBase() {
-      // Restore to the snapshot from when the modal was opened (non-destructive cancel)
-      this.targets.forEach(({ element }, idx) => {
-        const data = this.inline[idx];
-        if (!data) return;
-        // Only restore text for text-only elements
-        if (this.canEditText(element)) {
-          element.textContent = data.text;
-        }
-        element.style.color = data.inline.color;
-        element.style.backgroundColor = data.inline.backgroundColor;
-        element.style.fontSize = data.inline.fontSize;
-        element.style.fontWeight = data.inline.fontWeight;
-        element.style.lineHeight = data.inline.lineHeight;
-        element.style.paddingTop = data.inline.paddingTop;
-        element.style.paddingRight = data.inline.paddingRight;
-        element.style.paddingBottom = data.inline.paddingBottom;
-        element.style.paddingLeft = data.inline.paddingLeft;
-        element.style.borderRadius = data.inline.borderRadius;
-        element.style.boxShadow = data.inline.boxShadow;
-      });
-    }
-
-    restoreBaseline() {
-      // Restore to the original baseline captured at selection-time (spanning multiple edits)
-      const selection = this.stateManager.get('selection.elements') || [];
-      this.targets.forEach(({ element }, idx) => {
-        const index = this.indices[idx];
-        const selItem = selection && typeof index === 'number' ? selection[index] : null;
-        const base = selItem && selItem.baseline ? selItem.baseline : null;
-        if (!base) return;
-        const inline = base.inline || {};
-        // Only restore text for text-only elements
-        if (this.canEditText(element) && base.text !== null && base.text !== undefined) {
-          element.textContent = base.text;
-        }
-        element.style.color = inline.color || '';
-        element.style.backgroundColor = inline.backgroundColor || '';
-        element.style.fontSize = inline.fontSize || '';
-        element.style.fontWeight = inline.fontWeight || '';
-        element.style.lineHeight = inline.lineHeight || '';
-        element.style.paddingTop = inline.paddingTop || '';
-        element.style.paddingRight = inline.paddingRight || '';
-        element.style.paddingBottom = inline.paddingBottom || '';
-        element.style.paddingLeft = inline.paddingLeft || '';
-        element.style.borderRadius = inline.borderRadius || '';
-        element.style.boxShadow = inline.boxShadow || '';
-      });
-    }
-
-    renderForm() {
-      const base = this.base;
-      const form = this.form;
-      form.innerHTML = '';
-
-      const title = this.container.querySelector('#dock-edit-title');
-      if (this.targets.length > 1) {
-        title.textContent = `${this.targets.length} elements selected`;
-      } else {
-        const el = this.targets[0].element;
-        title.textContent = readableElementName(el);
-      }
-
-      // Text field only for single, text-only elements
-      const allowText = this.targets.length === 1 && this.canEditText(this.targets[0].element);
-      if (allowText) {
-        form.appendChild(this.renderTextField('Text', 'text', base.text));
-      }
-      form.appendChild(this.renderColorField('Text Color', 'color', base.color));
-      form.appendChild(this.renderColorField('Background', 'backgroundColor', base.backgroundColor));
-      form.appendChild(this.renderNumberField('Font Size (px)', 'fontSize', base.fontSize, { unit: 'px' }));
-      form.appendChild(this.renderSelectField('Font Weight', 'fontWeight', base.fontWeight, ['300','400','500','600','700']));
-      form.appendChild(this.renderNumberField('Line Height', 'lineHeight', base.lineHeight));
-
-      form.appendChild(this.renderPaddingGroup(base));
-      form.appendChild(this.renderNumberField('Border Radius (px)', 'borderRadius', base.borderRadius, {unit:'px'}));
-      form.appendChild(this.renderShadowField(base.boxShadow));
-    }
-
-    canEditText(element) {
-      try {
-        if (!element) return false;
-        const tag = (element.tagName || '').toLowerCase();
-        if (['input','textarea','img','video','canvas','svg'].includes(tag)) return false;
-        // Only when there are no element children (text-only nodes)
-        return element.childElementCount === 0;
-      } catch (_) { return false; }
-    }
-
-    renderTextField(label, key, value) {
-      const wrapper = document.createElement('label');
-      wrapper.style.display = 'flex';
-      wrapper.style.flexDirection = 'column';
-      wrapper.style.gap = '6px';
-      wrapper.style.textAlign = 'left';
-      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
-      const textarea = document.createElement('textarea');
-      textarea.style.fontSize = '13px';
-      textarea.style.padding = '8px 10px';
-      textarea.style.border = '1px solid var(--dock-stroke)';
-      textarea.style.borderRadius = '10px';
-      textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
-      textarea.style.color = 'var(--dock-fg)';
-      textarea.style.resize = 'vertical';
-      textarea.value = value === 'mixed' ? '' : (value || '');
-      textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
-      textarea.addEventListener('input', () => {
-        if (value === 'mixed' && !textarea.value.trim()) {
-          delete this.current[key];
-        } else {
-          this.current[key] = textarea.value;
-        }
-        this.preview();
-      });
-      wrapper.appendChild(textarea);
-      return wrapper;
-    }
-
-    renderColorField(label, key, value) {
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'flex';
-      wrapper.style.flexDirection = 'column';
-      wrapper.style.gap = '6px';
-      wrapper.style.textAlign = 'left';
-      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
-      const input = document.createElement('input');
-      input.type = 'color';
-      input.value = this.toHex(value === 'mixed' ? (this.getVar('--dock-fg-2') || 'gray') : value);
-      input.style.background = 'var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent))';
-      input.style.color = 'var(--dock-fg)';
-      input.addEventListener('input', () => {
-        this.current[key] = input.value;
-        this.preview();
-      });
-      wrapper.appendChild(input);
-      return wrapper;
-    }
-
-    renderNumberField(label, key, value, opts = {}) {
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'flex';
-      wrapper.style.flexDirection = 'column';
-      wrapper.style.gap = '6px';
-      wrapper.style.textAlign = 'left';
-      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.style.padding = '6px 10px';
-      input.style.border = '1px solid var(--dock-stroke)';
-      input.style.borderRadius = '10px';
-      input.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
-      input.style.color = 'var(--dock-fg)';
-      input.step = opts.step || '1';
-      if (value !== 'mixed' && value !== null) {
-        input.value = this.parseNumeric(value, opts.unit);
-      } else {
-        input.placeholder = 'Mixed';
-      }
-      input.addEventListener('input', () => {
-        if (input.value === '') {
-          delete this.current[key];
-        } else {
-          const unit = opts.unit || '';
-          this.current[key] = unit ? `${input.value}${unit}` : input.value;
-        }
-        this.preview();
-      });
-      wrapper.appendChild(input);
-      return wrapper;
-    }
-
-    renderSelectField(label, key, value, options) {
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'flex';
-      wrapper.style.flexDirection = 'column';
-      wrapper.style.gap = '6px';
-      wrapper.style.textAlign = 'left';
-      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
-      const select = document.createElement('select');
-      select.style.padding = '6px 10px';
-      select.style.border = '1px solid var(--dock-stroke)';
-      select.style.borderRadius = '10px';
-      select.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
-      select.style.color = 'var(--dock-fg)';
-      select.innerHTML = `<option value="">Mixed</option>` + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
-      if (value && value !== 'mixed') {
-        select.value = value.replace(/[^0-9]/g, '') || value;
-      }
-      select.addEventListener('change', () => {
-        if (!select.value) {
-          delete this.current[key];
-        } else {
-          this.current[key] = select.value;
-        }
-        this.preview();
-      });
-      wrapper.appendChild(select);
-      return wrapper;
-    }
-
-    renderPaddingGroup(base) {
-      const wrapper = document.createElement('div');
-      wrapper.style.textAlign = 'left';
-      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Padding (px)</span>`;
-      const grid = document.createElement('div');
-      grid.style.display = 'grid';
-      grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-      grid.style.gap = '10px';
-
-      ['Top','Right','Bottom','Left'].forEach(side => {
-        const key = `padding${side}`;
-        const cell = this.renderNumberField(side, key, base[key], { unit: 'px' });
-        grid.appendChild(cell);
-      });
-      wrapper.appendChild(grid);
-      return wrapper;
-    }
-
-    renderShadowField(value) {
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'flex';
-      wrapper.style.flexDirection = 'column';
-      wrapper.style.gap = '6px';
-      wrapper.style.textAlign = 'left';
-      wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Shadow</span>`;
-      const select = document.createElement('select');
-      select.style.padding = '6px 10px';
-      select.style.border = '1px solid var(--dock-stroke)';
-      select.style.borderRadius = '10px';
-      select.style.background = 'color-mix(in srgb, var(--dock-bg) 96%, transparent)';
-      select.innerHTML = `
-      <option value="none">None</option>
-      <option value="soft">Soft</option>
-      <option value="medium">Medium</option>
-      <option value="deep">Deep</option>
-    `;
-      const matched = Object.entries(SHADOW_PRESETS).find(([key, preset]) => preset === value);
-      select.value = matched ? matched[0] : 'none';
-      select.addEventListener('change', () => {
-        const preset = SHADOW_PRESETS[select.value] || 'none';
-        this.current.boxShadow = preset;
-        this.preview();
-      });
-      wrapper.appendChild(select);
-      return wrapper;
-    }
-
-    preview() {
-      const changes = this.current;
-      // Compute trimmed current state (keys with non-empty values)
-      const trimmed = {};
-      Object.entries(changes || {}).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          trimmed[key] = value;
-        }
-      });
-      // Determine changed keys vs last preview state
-      const changedKeys = Object.keys(trimmed).filter(k => this.lastPreviewState[k] !== trimmed[k]);
-      // If keys removed (no longer present), also treat as change to clear styles
-      Object.keys(this.lastPreviewState).forEach((k) => {
-        if (!Object.prototype.hasOwnProperty.call(trimmed, k)) changedKeys.push(k);
-      });
-      // Record a preview step before applying
-      if (changedKeys.length) {
-        const step = { prevByIndex: new Map(), keys: Array.from(new Set(changedKeys)) };
-        this.targets.forEach((t, i) => {
-          const idx = this.indices[i];
-          const el = t.element;
-          const prev = {};
-          step.keys.forEach((key) => {
-            if (key === 'text') {
-              if (this.canEditText(el)) prev.text = el.textContent;
-            } else {
-              prev[key] = el.style[key] || '';
-            }
+          // Prevent scroll events from bubbling
+          this.container.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+          this.container.addEventListener('keydown', (e) => {
+              if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+                  e.preventDefault();
+                  try { this.eventBus.emit('wysiwyg:undo'); } catch (_) { }
+              }
           });
-          step.prevByIndex.set(idx, prev);
-        });
-        this.previewHistory.push(step);
-        this.lastPreviewState = { ...trimmed };
-      }
-      this.targets.forEach(({ element }) => {
-        if (changes.text !== undefined && this.canEditText(element)) {
-          element.textContent = changes.text;
-        }
-        if (changes.color !== undefined) element.style.color = changes.color;
-        if (changes.backgroundColor !== undefined) element.style.backgroundColor = changes.backgroundColor;
-        if (changes.fontSize !== undefined) element.style.fontSize = this.withUnit(changes.fontSize, 'px');
-        if (changes.fontWeight !== undefined) element.style.fontWeight = changes.fontWeight;
-        if (changes.lineHeight !== undefined) element.style.lineHeight = changes.lineHeight;
-        if (changes.paddingTop !== undefined) element.style.paddingTop = this.withUnit(changes.paddingTop, 'px');
-        if (changes.paddingRight !== undefined) element.style.paddingRight = this.withUnit(changes.paddingRight, 'px');
-        if (changes.paddingBottom !== undefined) element.style.paddingBottom = this.withUnit(changes.paddingBottom, 'px');
-        if (changes.paddingLeft !== undefined) element.style.paddingLeft = this.withUnit(changes.paddingLeft, 'px');
-        if (changes.borderRadius !== undefined) element.style.borderRadius = this.withUnit(changes.borderRadius, 'px');
-        if (changes.boxShadow !== undefined) element.style.boxShadow = changes.boxShadow;
-      });
-      this.syncPending();
-      this.updateUndoAvailability();
-    }
 
-    undoPreviewStep() {
-      if (!this.previewHistory || this.previewHistory.length === 0) return false;
-      const step = this.previewHistory.pop();
-      if (!step) return false;
-      // Revert values per target
-      this.targets.forEach((t, i) => {
-        const idx = this.indices[i];
-        const prev = step.prevByIndex.get(idx) || {};
-        const el = t.element;
-        step.keys.forEach((key) => {
-          if (key === 'text') {
-            if (this.canEditText(el) && Object.prototype.hasOwnProperty.call(prev, 'text')) {
-              el.textContent = prev.text;
-            }
-          } else {
-            const val = prev[key];
-            el.style[key] = val || '';
+          if (!this.mountRoot) return;
+          this.mountRoot.appendChild(this.backdrop);
+          this.mountRoot.appendChild(this.container);
+          this.updateUndoAvailability();
+
+          // Listen for inline edit sync
+          this.eventBus.on('wysiwyg:sync', ({ text }) => {
+              if (this.current.text !== text) {
+                  this.current.text = text;
+                  const textarea = this.form.querySelector('textarea');
+                  if (textarea) textarea.value = text;
+                  this.syncPending();
+              }
+          });
+
+          // Track viewport iframe for interaction blocking
+          this.eventBus.on('viewport:iframe-ready', ({ iframe }) => {
+              try {
+                  this._iframeWindow = iframe?.contentWindow || null;
+                  if (this._blockerEnabled) {
+                      this._attachBlockers(this._iframeWindow);
+                  }
+              } catch (_) {
+                  this._iframeWindow = null;
+              }
+          });
+      }
+
+      open({ index, element } = {}) {
+          this.mount();
+          const selection = this.stateManager.get('selection.elements') || [];
+          if (!Array.isArray(selection) || selection.length === 0) return;
+
+          let indices = [];
+          if (typeof index === 'number' && selection[index]) indices = [index];
+          else if (element) {
+              const found = selection.findIndex(item => item.element === element);
+              if (found >= 0) indices = [found];
           }
-        });
-      });
-      // Reset current and last preview snapshot to reflect DOM after revert
-      this.current = {};
-      this.lastPreviewState = {};
-      // Refresh controls from DOM
-      this.collectBase();
-      this.renderForm();
-      this.syncPending();
-      this.updateUndoAvailability();
-      return true;
-    }
+          if (!indices.length) indices = selection.map((_, i) => i);
 
-    isOpen() {
-      return !!this.container && this.container.style.display === 'flex';
-    }
+          this.indices = indices;
+          this.targets = indices.map(i => selection[i] && selection[i].element ? { element: selection[i].element, selector: selection[i].selector } : null).filter(Boolean);
 
-    resetChanges() {
-      // Reset to original page state (baseline), even across multiple edit sessions
-      this.restoreBaseline();
-      this.current = {};
-      // Re-collect base from the now-restored DOM so controls reflect baseline
-      this.collectBase();
-      this.renderForm();
-      this.syncPending();
-      this.updateUndoAvailability();
-    }
+          if (!this.targets.length) return;
 
-    applyChanges() {
-      if (!this.targets.length) return;
-      const changes = { ...this.current };
-      // Remove text change if not applicable
-      if (Object.prototype.hasOwnProperty.call(changes, 'text')) {
-        const allow = this.targets.length === 1 && this.canEditText(this.targets[0].element);
-        if (!allow) delete changes.text;
+          // Scan tokens on open
+          this.tokens = this.tokenScanner.scan();
+
+          this.current = {};
+          this.intents = {};
+          this.collectBase();
+          this.renderForm();
+
+          this.stateManager.set('wysiwyg.pending', null);
+          this.stateManager.set('wysiwyg.active', true);
+          this.previewHistory = [];
+          this.lastPreviewState = {};
+
+          if (!this.bodyScrollLocked) {
+              document.body.classList.add('lumi-scroll-lock');
+              this.bodyScrollLocked = true;
+          }
+          this.positionOverlay();
+          this.backdrop.style.display = 'block';
+          this.container.style.display = 'flex';
+          try { this.container.focus({ preventScroll: true }); } catch (_) { }
+
+          // Block page interactions via event capture
+          this.enableInteractionBlocker();
       }
-      // Trim empty/undefined changes
-      Object.keys(changes).forEach(key => {
-        if (changes[key] === undefined || changes[key] === null || changes[key] === '') delete changes[key];
-      });
-      const hasDiff = Object.keys(changes).length > 0;
-      const summary = describeChanges(changes) || 'Edited';
-      this.targets.forEach(({ selector }, idx) => {
-        const index = this.indices[idx];
-        this.eventBus.emit('wysiwyg:apply', {
-          index,
-          selector,
-          changes,
-          summary
-        });
-      });
-      // Only auto-close when there are effective diffs
-      if (hasDiff) this.close();
-      this.updateUndoAvailability();
-    }
 
-    updateUndoAvailability() {
-      try {
-        if (!this.undoBtn) return;
-        const canUndo = Array.isArray(this.previewHistory) && this.previewHistory.length > 0;
-        this.undoBtn.disabled = !canUndo;
-        this.undoBtn.style.opacity = canUndo ? '1' : '0.5';
-        this.undoBtn.style.cursor = canUndo ? 'pointer' : 'not-allowed';
-      } catch (_) {}
-    }
+      close(cancel = false) {
+          if (!this.container) return;
+          if (cancel) this.restoreBase();
+          this.backdrop.style.display = 'none';
+          this.container.style.display = 'none';
+          window.removeEventListener('resize', this._onResize);
+          this.form.innerHTML = '';
+          this.current = {};
+          this.intents = {};
+          this.targets = [];
+          this.indices = [];
+          this.stateManager.set('wysiwyg.pending', null);
+          this.stateManager.set('wysiwyg.active', false);
+          if (this.bodyScrollLocked) {
+              document.body.classList.remove('lumi-scroll-lock');
+              this.bodyScrollLocked = false;
+          }
 
-    parseNumeric(value, unit) {
-      if (!value || value === 'mixed') return '';
-      if (unit === 'px') {
-        const match = String(value).match(/-?\d+(?:\.\d+)?/);
-        return match ? match[0] : '';
+          // Remove page blocker
+          this.disableInteractionBlocker();
       }
-      if (String(value).endsWith('px')) return value.replace('px', '');
-      return value;
-    }
 
-    withUnit(value, unit) {
-      if (value === undefined || value === null || value === '') return '';
-      if (String(value).endsWith(unit)) return value;
-      return `${value}${unit}`;
-    }
+      enableInteractionBlocker() {
+          if (this._blockerEnabled) return;
+          // Blur active element to avoid lingering focus triggers
+          try { if (document.activeElement) document.activeElement.blur(); } catch (_) { }
 
-    toHex(color) {
-      const fallback = this.getVar('--dock-fg') || 'black';
-      if (!color) return fallback;
-      if (color.startsWith('#')) return color.length === 7 ? color : fallback;
-      const ctx = document.createElement('canvas').getContext('2d');
-      ctx.fillStyle = color;
-      const computed = ctx.fillStyle;
-      return /^#/.test(computed) ? computed : fallback;
-    }
+          // Opportunistically capture current viewport iframe if present
+          if (!this._iframeWindow) {
+              try {
+                  const iframe = document.getElementById('lumi-viewport-iframe');
+                  if (iframe && iframe.contentWindow) this._iframeWindow = iframe.contentWindow;
+              } catch (_) { this._iframeWindow = null; }
+          }
 
-    syncPending() {
-      if (!this.indices.length || this.indices.length !== 1) {
-        this.stateManager.set('wysiwyg.pending', null);
-        return;
+          this._blockerEnabled = true;
+          this._blockRegistrations = [];
+          this._attachBlockers(window);
+          if (this._iframeWindow) this._attachBlockers(this._iframeWindow);
       }
-      const trimmed = {};
-      Object.entries(this.current || {}).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          trimmed[key] = value;
-        }
-      });
-      if (Object.keys(trimmed).length) {
-        this.stateManager.set('wysiwyg.pending', {
-          index: this.indices[0],
-          changes: trimmed
-        });
-      } else {
-        this.stateManager.set('wysiwyg.pending', null);
+
+      disableInteractionBlocker() {
+          if (!this._blockerEnabled) return;
+          this._blockRegistrations.forEach((entry) => {
+              try {
+                  if (typeof entry === 'function') entry();
+                  else if (entry && typeof entry.remove === 'function') entry.remove();
+              } catch (_) { }
+          });
+          this._blockRegistrations = [];
+          this._blockerEnabled = false;
       }
-    }
+
+      _attachBlockers(win) {
+          if (!win) return;
+          // Avoid duplicate attachment
+          if (this._blockRegistrations.some(entry => entry && entry.win === win)) return;
+
+          const registrations = [];
+          const add = (type, handler, options = { capture: true }) => {
+              try {
+                  win.addEventListener(type, handler, options);
+                  registrations.push({ win, remove: () => win.removeEventListener(type, handler, options) });
+              } catch (_) { }
+          };
+
+          const pointerHandler = (e) => this._handleBlockEvent(e);
+          const keyHandler = (e) => this._handleKeyBlock(e);
+          const focusHandler = (e) => this._handleFocusBlock(e);
+
+          ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'dblclick', 'auxclick', 'contextmenu'].forEach(evt => add(evt, pointerHandler));
+          add('keydown', keyHandler);
+          add('focusin', focusHandler);
+
+          this._blockRegistrations.push(...registrations);
+      }
+
+      _isLumiTarget(target) {
+          if (!target) return false;
+          if (this.container && this.container.contains(target)) return true;
+          if (this.backdrop && this.backdrop.contains(target)) return true;
+          if (target.id === 'lumi-dock-root' || target.closest?.('#lumi-dock-root')) return true;
+          if (target.id === 'dock-edit-overlay' || target.closest?.('#dock-edit-overlay')) return true;
+          if (target.id === 'dock-edit-modal' || target.closest?.('#dock-edit-modal')) return true;
+          if (target.id === 'lumi-dock-launcher' || target.closest?.('#lumi-dock-launcher')) return true;
+          if (target.closest?.('#lumi-bubble-container')) return true;
+          if (target.closest?.('#lumi-top-banner')) return true;
+          if (target.closest?.('#lumi-interaction-bubble')) return true;
+          if (target.closest?.('#lumi-controls-overlay')) return true;
+          if (target.classList?.contains('lumi-highlight') || target.closest?.('.lumi-highlight')) return true;
+          if (target.classList?.contains('lumi-screenshot-overlay') || target.closest?.('.lumi-screenshot-overlay')) return true;
+          if (target.classList?.contains('lumi-highlight-pen')) return true;
+          // Shadow host check for dock
+          try {
+              const root = target.getRootNode && target.getRootNode();
+              if (root && root.host && root.host.id === 'lumi-dock-root') return true;
+          } catch (_) { }
+          return false;
+      }
+
+      _isSelectedTextTarget(target) {
+          if (!target) return false;
+          return this.targets.some(({ element }) => {
+              if (!element) return false;
+              return (element === target || element.contains(target)) && this.canEditText(element);
+          });
+      }
+
+      _handleBlockEvent(e) {
+          const target = e.target;
+          if (this._isLumiTarget(target)) return;
+
+          if (this._isSelectedTextTarget(target)) {
+              if (e.type === 'dblclick') return; // allow inline text edits
+              if (e.type === 'mousedown' || e.type === 'mouseup' || e.type === 'pointerdown' || e.type === 'pointerup') return;
+              if (e.type === 'click') { e.preventDefault(); e.stopPropagation(); return; }
+          }
+
+          // Block all other interactions
+          e.preventDefault();
+          e.stopPropagation();
+      }
+
+      _handleKeyBlock(e) {
+          const target = e.target;
+          if (this._isLumiTarget(target)) return;
+          if (this._isSelectedTextTarget(target)) return;
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+              e.preventDefault();
+              e.stopPropagation();
+          }
+      }
+
+      _handleFocusBlock(e) {
+          const target = e.target;
+          if (this._isLumiTarget(target)) return;
+          if (this._isSelectedTextTarget(target)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this._focusModal();
+      }
+
+      _focusModal() {
+          try {
+              const focusable = this.container?.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+              if (focusable) focusable.focus({ preventScroll: true });
+              else if (this.container) this.container.focus({ preventScroll: true });
+          } catch (_) { }
+      }
+
+      // ... (getVar, positionOverlay, collectBase, restoreBase, restoreBaseline same as before) ...
+      getVar(name) { try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || ''; } catch (_) { return ''; } }
+      positionOverlay() { /* ... same implementation ... */
+          try {
+              const host = document.getElementById('lumi-dock-root');
+              const rect = host ? host.getBoundingClientRect() : null;
+              const fallbackWidth = this.stateManager.get('ui.dockWidth') || 420;
+              const hasVisibleDock = !!rect && rect.width >= 40 && rect.right > 0;
+              const dockWidth = Math.round(hasVisibleDock ? rect.width : fallbackWidth);
+              if (hasVisibleDock) {
+                  const dockLeft = Math.max(0, Math.round(rect.left));
+                  this.backdrop.style.left = dockLeft + 'px';
+                  this.backdrop.style.right = '';
+                  this.backdrop.style.width = dockWidth + 'px';
+              } else {
+                  this.backdrop.style.left = '';
+                  this.backdrop.style.right = '0px';
+                  this.backdrop.style.width = dockWidth + 'px';
+              }
+              const maxModal = Math.max(260, dockWidth - 48);
+              const modalWidth = Math.min(360, maxModal);
+              this.container.style.width = modalWidth + 'px';
+              this.container.style.right = '24px';
+          } catch (_) { }
+          if (!this._onResize) {
+              this._onResize = () => this.positionOverlay();
+          }
+          window.addEventListener('resize', this._onResize, { passive: true });
+      }
+
+      collectBase() {
+          const base = {
+              text: null, color: null, backgroundColor: null, fontSize: null, fontWeight: null, lineHeight: null,
+              paddingTop: null, paddingRight: null, paddingBottom: null, paddingLeft: null,
+              marginTop: null, marginRight: null, marginBottom: null, marginLeft: null,
+              borderRadius: null, boxShadow: null
+          };
+          const inline = [];
+          this.targets.forEach(({ element }) => {
+              const style = window.getComputedStyle(element);
+
+              // Calculate proper line height (convert px to unitless ratio if needed)
+              let lineHeight = style.lineHeight;
+              if (lineHeight && lineHeight !== 'normal' && lineHeight.includes('px')) {
+                  const lineHeightPx = parseFloat(lineHeight);
+                  const fontSizePx = parseFloat(style.fontSize);
+                  if (fontSizePx > 0) {
+                      lineHeight = (lineHeightPx / fontSizePx).toFixed(2);
+                  }
+              }
+
+              const entry = {
+                  text: element.textContent,
+                  color: style.color, backgroundColor: style.backgroundColor,
+                  fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: lineHeight,
+                  paddingTop: style.paddingTop, paddingRight: style.paddingRight, paddingBottom: style.paddingBottom, paddingLeft: style.paddingLeft,
+                  marginTop: style.marginTop, marginRight: style.marginRight, marginBottom: style.marginBottom, marginLeft: style.marginLeft,
+                  borderRadius: style.borderRadius, boxShadow: style.boxShadow,
+                  inline: { ...element.style }
+              };
+              inline.push(entry);
+              Object.keys(base).forEach((key) => {
+                  if (base[key] === null) base[key] = entry[key];
+                  else if (base[key] !== entry[key]) base[key] = 'mixed';
+              });
+          });
+          this.base = base;
+          this.inline = inline;
+      }
+
+      restoreBase() {
+          this.targets.forEach(({ element }, idx) => {
+              const data = this.inline[idx];
+              if (!data) return;
+              if (this.canEditText(element)) element.textContent = data.text;
+              // Cannot use Object.assign on CSSStyleDeclaration, must set properties individually
+              const inlineStyle = data.inline || {};
+              Object.keys(inlineStyle).forEach(prop => {
+                  try {
+                      if (typeof prop === 'string' && inlineStyle[prop] !== undefined) {
+                          element.style[prop] = inlineStyle[prop];
+                      }
+                  } catch (e) { }
+              });
+          });
+      }
+
+      restoreBaseline() {
+          const selection = this.stateManager.get('selection.elements') || [];
+          this.targets.forEach(({ element }, idx) => {
+              const index = this.indices[idx];
+              const selItem = selection && typeof index === 'number' ? selection[index] : null;
+              const base = selItem && selItem.baseline ? selItem.baseline : null;
+              if (!base) return;
+              if (this.canEditText(element) && base.text !== undefined) element.textContent = base.text;
+              // Cannot use Object.assign on CSSStyleDeclaration
+              const inlineStyle = base.inline || {};
+              Object.keys(inlineStyle).forEach(prop => {
+                  try {
+                      if (typeof prop === 'string' && inlineStyle[prop] !== undefined) {
+                          element.style[prop] = inlineStyle[prop];
+                      }
+                  } catch (e) { }
+              });
+          });
+      }
+
+      renderForm() {
+          const base = this.base;
+          const form = this.form;
+          form.innerHTML = '';
+
+          const title = this.container.querySelector('#dock-edit-title');
+          if (this.targets.length > 1) title.textContent = `${this.targets.length} elements selected`;
+          else title.textContent = readableElementName(this.targets[0].element);
+
+          // Use ElementSchema to determine controls
+          // For multiple selection, we intersect the schemas or just use 'container' fallback
+          const schema = this.targets.length === 1 ? getElementSchema(this.targets[0].element) : getElementSchema(null);
+
+          // Render Groups based on Schema
+          if (schema.controls.has('content')) {
+              const allowText = this.targets.length === 1 && this.canEditText(this.targets[0].element);
+              if (allowText) form.appendChild(this.renderTextField('Content', 'text', base.text));
+
+              // Image Replacement
+              if (this.targets.length === 1 && this.targets[0].element.tagName === 'IMG') {
+                  const group = document.createElement('div');
+                  group.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+                  group.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Image Source</span>`;
+                  const input = document.createElement('input');
+                  input.type = 'text';
+                  input.value = this.targets[0].element.src;
+                  input.style.cssText = 'padding:6px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);font-size:12px;';
+                  input.addEventListener('change', () => {
+                      this.current['src'] = input.value;
+                      this.intents['src'] = `Replace image source`;
+                      this.targets[0].element.src = input.value; // Direct preview for image
+                      this.syncPending();
+                  });
+                  group.appendChild(input);
+                  form.appendChild(group);
+              }
+          }
+
+          // Typography First
+          if (schema.controls.has('typography')) {
+              const group = document.createElement('div');
+              group.style.display = 'flex'; group.style.flexDirection = 'column'; group.style.gap = '12px';
+              group.innerHTML = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dock-fg-2);">Typography</div>`;
+              form.appendChild(group);
+
+              // Font Family
+              group.appendChild(this.renderSelectField('Font Family', 'fontFamily', base.fontFamily,
+                  ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'system-ui', 'serif', 'monospace']));
+
+              // Row 1: Size & Weight
+              const row1 = document.createElement('div');
+              row1.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+              row1.appendChild(this.renderNumberField('Size', 'fontSize', base.fontSize, { unit: 'px' }));
+              row1.appendChild(this.renderSelectField('Weight', 'fontWeight', base.fontWeight, ['300', '400', '500', '600', '700', '800', '900']));
+              group.appendChild(row1);
+
+              // Row 2: Line Height & Style/Deco
+              const row2 = document.createElement('div');
+              row2.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;';
+              row2.appendChild(this.renderNumberField('Line Height', 'lineHeight', base.lineHeight, { min: 0.5, step: 0.1, preserveUnitless: true }));
+
+              // Style Icons (Italic, Underline)
+              const styleWrap = document.createElement('div');
+              styleWrap.style.cssText = 'display:flex;gap:2px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);padding:2px;border-radius:6px;height:32px;align-items:center;';
+
+              const renderIconBtn = (icon, active, onClick) => {
+                  const btn = document.createElement('button');
+                  btn.type = 'button';
+                  btn.innerHTML = icon;
+                  btn.style.cssText = `flex:1;border:none;background:${active ? 'color-mix(in srgb, var(--dock-fg) 10%, var(--dock-bg))' : 'transparent'};color:${active ? 'var(--dock-fg)' : 'var(--dock-fg-2)'};cursor:pointer;border-radius:4px;height:28px;display:flex;align-items:center;justify-content:center;`;
+                  btn.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+                  return btn;
+              };
+
+              const currentFontStyle = this.current.fontStyle !== undefined ? this.current.fontStyle : base.fontStyle;
+              const currentTextDeco = this.current.textDecoration !== undefined ? this.current.textDecoration : base.textDecoration;
+
+              styleWrap.appendChild(renderIconBtn('<i>I</i>', currentFontStyle === 'italic', () => {
+                  const val = (this.current.fontStyle || base.fontStyle) === 'italic' ? 'normal' : 'italic';
+                  this.current.fontStyle = val;
+                  this.intents.fontStyle = `Set font style to ${val}`;
+                  this.preview();
+                  this.renderForm(); // Re-render to update active state
+              }));
+
+              styleWrap.appendChild(renderIconBtn('<u>U</u>', currentTextDeco && currentTextDeco.includes('underline'), () => {
+                  const current = this.current.textDecoration || base.textDecoration || '';
+                  const val = current.includes('underline') ? 'none' : 'underline';
+                  this.current.textDecoration = val;
+                  this.intents.textDecoration = `Set text decoration to ${val}`;
+                  this.preview();
+                  this.renderForm();
+              }));
+
+              row2.appendChild(styleWrap);
+              group.appendChild(row2);
+
+              // Alignment Icons
+              const alignWrap = document.createElement('div');
+              alignWrap.style.cssText = 'display:flex;gap:2px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);padding:2px;border-radius:6px;height:32px;align-items:center;margin-top:4px;';
+              const alignments = [
+                  { value: 'left', label: 'Align Left', path: 'M3 21h18v-2H3v2zm0-4h12v-2H3v2zm0-4h18v-2H3v2zm0-4h12V7H3v2zm0-6v2h18V3H3z' },
+                  { value: 'center', label: 'Align Center', path: 'M7 15v2h10v-2H7zm-4 6h18v-2H3v2zm0-8h18v-2H3v2zm4-6v2h10V7H7zM3 3v2h18V3H3z' },
+                  { value: 'right', label: 'Align Right', path: 'M3 21h18v-2H3v2zm6-4h12v-2H9v2zm-6-4h18v-2H3v2zm6-4h12V7H9v2zm-6-6v2h18V3H3z' },
+                  { value: 'justify', label: 'Justify', path: 'M3 21h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18V7H3v2zm0-6v2h18V3H3z' }
+              ];
+              alignments.forEach(({ value, label, path }) => {
+                  const currentAlign = this.current.textAlign !== undefined ? this.current.textAlign : base.textAlign;
+                  const isActive = currentAlign === value;
+                  const btn = document.createElement('button');
+                  btn.type = 'button';
+                  btn.title = label;
+                  btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="${path}"/></svg>`;
+                  btn.style.cssText = `flex:1;border:none;background:${isActive ? 'color-mix(in srgb, var(--dock-fg) 10%, var(--dock-bg))' : 'transparent'};color:${isActive ? 'var(--dock-fg)' : 'var(--dock-fg-2)'};cursor:pointer;border-radius:4px;height:28px;display:flex;align-items:center;justify-content:center;`;
+                  btn.addEventListener('click', (e) => {
+                      e.preventDefault();
+                      this.current['textAlign'] = value;
+                      this.intents['textAlign'] = `Align text ${value}`;
+                      this.preview();
+                      this.renderForm();
+                  });
+                  alignWrap.appendChild(btn);
+              });
+              group.appendChild(alignWrap);
+          }
+
+          // Color Second (Dropdown style)
+          if (schema.controls.has('color')) {
+              const group = document.createElement('div');
+              group.style.display = 'flex'; group.style.flexDirection = 'column'; group.style.gap = '12px';
+              group.innerHTML = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dock-fg-2);">Color</div>`;
+              form.appendChild(group);
+
+              const row = document.createElement('div');
+              row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+
+              row.appendChild(this.renderColorDropdown('Text', 'color', base.color));
+              if (schema.type !== 'image') {
+                  row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor));
+              }
+              group.appendChild(row);
+          }
+
+          if (schema.controls.has('spacing')) {
+              const group = document.createElement('div');
+              group.style.display = 'flex'; group.style.flexDirection = 'column'; group.style.gap = '12px';
+              group.innerHTML = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dock-fg-2);">Spacing</div>`;
+              form.appendChild(group);
+
+              // Padding
+              const paddingLabel = document.createElement('div');
+              paddingLabel.style.cssText = 'font-size:10px;color:var(--dock-fg-2);margin-top:4px;';
+              paddingLabel.textContent = 'Padding';
+              group.appendChild(paddingLabel);
+              group.appendChild(this.renderPaddingGroup(base));
+
+              // Margin
+              const marginLabel = document.createElement('div');
+              marginLabel.style.cssText = 'font-size:10px;color:var(--dock-fg-2);margin-top:8px;';
+              marginLabel.textContent = 'Margin';
+              group.appendChild(marginLabel);
+              group.appendChild(this.renderMarginGroup(base));
+          }
+
+          if (schema.controls.has('appearance')) {
+              const group = document.createElement('div');
+              group.style.display = 'flex'; group.style.flexDirection = 'column'; group.style.gap = '12px';
+              group.innerHTML = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dock-fg-2);">Appearance</div>`;
+              form.appendChild(group);
+              group.appendChild(this.renderNumberField('Radius', 'borderRadius', base.borderRadius, { unit: 'px' }));
+              group.appendChild(this.renderShadowField(base.boxShadow));
+          }
+      }
+
+      // --- New Token-Aware Controls ---
+
+      renderColorDropdown(label, key, value) {
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = 'position:relative;display:flex;flex-direction:column;gap:6px;';
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+
+          const trigger = document.createElement('button');
+          trigger.type = 'button';
+          const displayVal = value === 'mixed' ? 'Mixed' : (value || 'None');
+          const displayColor = value === 'mixed' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : (value || 'transparent');
+
+          trigger.style.cssText = `
+            display:flex;align-items:center;gap:8px;padding:6px 8px;
+            border:1px solid var(--dock-stroke);border-radius:8px;
+            background:color-mix(in srgb, var(--dock-bg) 96%, transparent);
+            color:var(--dock-fg);cursor:pointer;width:100%;text-align:left;
+        `;
+          trigger.innerHTML = `
+            <div style="width:16px;height:16px;border-radius:4px;border:1px solid var(--dock-stroke);background:${displayColor};flex-shrink:0;"></div>
+            <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayVal}</span>
+        `;
+
+          const popover = document.createElement('div');
+          popover.style.cssText = `
+            position:absolute;top:100%;left:0;width:240px;z-index:100;
+            background:var(--dock-bg);border:1px solid var(--dock-stroke);
+            border-radius:12px;box-shadow:var(--shadow);padding:12px;
+            display:none;flex-direction:column;gap:12px;margin-top:4px;
+        `;
+
+          // Tabs inside popover
+          const tabs = document.createElement('div');
+          tabs.style.cssText = `display:flex;gap:4px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);padding:2px;border-radius:8px;`;
+          const btnTokens = document.createElement('button');
+          const btnCustom = document.createElement('button');
+
+          const styleBtn = (active) => `
+            flex:1;border:none;background:${active ? 'var(--dock-bg)' : 'transparent'};
+            color:${active ? 'var(--dock-fg)' : 'var(--dock-fg-2)'};
+            font-size:11px;padding:4px;border-radius:6px;cursor:pointer;
+            box-shadow:${active ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'};
+        `;
+
+          btnTokens.textContent = 'Tokens';
+          btnCustom.textContent = 'Custom';
+          btnTokens.type = 'button';
+          btnCustom.type = 'button';
+
+          const content = document.createElement('div');
+
+          const renderTokens = () => {
+              btnTokens.style.cssText = styleBtn(true);
+              btnCustom.style.cssText = styleBtn(false);
+              content.innerHTML = '';
+
+              if (this.tokens.colors.length > 0) {
+                  const search = document.createElement('input');
+                  search.placeholder = 'Search tokens...';
+                  search.style.cssText = `width:100%;padding:6px;border:1px solid var(--dock-stroke);border-radius:6px;background:transparent;color:var(--dock-fg);font-size:12px;margin-bottom:8px;`;
+                  content.appendChild(search);
+
+                  const list = document.createElement('div');
+                  list.style.cssText = `display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;`;
+
+                  const renderList = (filter = '') => {
+                      list.innerHTML = '';
+                      this.tokens.colors.filter(t => t.name.toLowerCase().includes(filter.toLowerCase())).forEach(token => {
+                          const row = document.createElement('div');
+                          row.style.cssText = `display:flex;align-items:center;gap:8px;padding:4px;cursor:pointer;border-radius:4px;`;
+                          row.innerHTML = `
+                            <div style="width:16px;height:16px;border-radius:4px;background:${token.value};border:1px solid var(--dock-stroke);"></div>
+                            <span style="font-size:12px;color:var(--dock-fg);">${token.name}</span>
+                        `;
+                          row.addEventListener('mouseenter', () => row.style.background = 'color-mix(in srgb, var(--dock-fg) 5%, transparent)');
+                          row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+                          row.addEventListener('click', (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              this.current[key] = token.value;
+                              this.intents[key] = `Set ${label.toLowerCase()} to var(${token.name})`;
+                              this.preview();
+                              popover.style.display = 'none';
+                              this.renderForm(); // Update trigger
+                          });
+                          list.appendChild(row);
+                      });
+                  };
+                  renderList();
+                  search.addEventListener('input', (e) => renderList(e.target.value));
+                  content.appendChild(list);
+              } else {
+                  content.innerHTML = `<div style="padding:8px;font-size:12px;color:var(--dock-fg-2);">No tokens found</div>`;
+              }
+          };
+
+          const renderCustom = () => {
+              btnTokens.style.cssText = styleBtn(false);
+              btnCustom.style.cssText = styleBtn(true);
+              content.innerHTML = '';
+
+              const row = document.createElement('div');
+              row.style.cssText = `display:flex;align-items:center;gap:8px;padding:4px;`;
+
+              const colorInput = document.createElement('input');
+              colorInput.type = 'color';
+              colorInput.value = this.toHex(value === 'mixed' ? '#000000' : value);
+              colorInput.style.cssText = `width:32px;height:32px;border:none;background:transparent;cursor:pointer;`;
+
+              const textInput = document.createElement('input');
+              textInput.type = 'text';
+              textInput.value = value === 'mixed' ? 'Mixed' : (value || '');
+              textInput.style.cssText = `flex:1;padding:6px;border:1px solid var(--dock-stroke);border-radius:6px;background:transparent;color:var(--dock-fg);font-size:12px;`;
+
+              const update = (val) => {
+                  this.current[key] = val;
+                  this.intents[key] = `Set ${label.toLowerCase()} to ${val}`;
+                  this.preview();
+              };
+
+              colorInput.addEventListener('input', (e) => { e.stopPropagation(); textInput.value = colorInput.value; update(colorInput.value); });
+              textInput.addEventListener('change', (e) => { e.stopPropagation(); update(textInput.value); colorInput.value = this.toHex(textInput.value); });
+
+              row.appendChild(colorInput);
+              row.appendChild(textInput);
+              content.appendChild(row);
+          };
+
+          btnTokens.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); renderTokens(); });
+          btnCustom.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); renderCustom(); });
+
+          tabs.appendChild(btnTokens);
+          tabs.appendChild(btnCustom);
+          popover.appendChild(tabs);
+          popover.appendChild(content);
+
+          // Toggle Popover
+          trigger.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const isVisible = popover.style.display === 'flex';
+              // Close others
+              this.form.querySelectorAll('.color-popover').forEach(el => el.style.display = 'none');
+              popover.style.display = isVisible ? 'none' : 'flex';
+              if (!isVisible) {
+                  if (this.tokens.colors.length > 0) renderTokens(); else renderCustom();
+              }
+          });
+
+          // Close on click outside
+          document.addEventListener('click', (e) => {
+              if (!wrapper.contains(e.target)) popover.style.display = 'none';
+          });
+
+          popover.classList.add('color-popover');
+          wrapper.appendChild(trigger);
+          wrapper.appendChild(popover);
+          return wrapper;
+      }
+
+      // --- Existing Controls (Simplified) ---
+
+      renderTextField(label, key, value) {
+          const wrapper = document.createElement('label');
+          wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+          const textarea = document.createElement('textarea');
+          textarea.style.cssText = 'font-size:13px;padding:8px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);resize:vertical;';
+          textarea.value = value === 'mixed' ? '' : (value || '');
+          textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
+          textarea.addEventListener('input', () => {
+              this.current[key] = textarea.value;
+              this.intents[key] = `Update text content`;
+              this.preview();
+          });
+          wrapper.appendChild(textarea);
+          return wrapper;
+      }
+
+      renderNumberField(label, key, value, opts = {}) {
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.style.cssText = 'padding:6px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);';
+          input.step = opts.step || '1';
+          if (opts.min !== undefined) input.min = opts.min;
+          if (opts.max !== undefined) input.max = opts.max;
+
+          if (value !== 'mixed' && value !== null) {
+              // For line-height, check if it's unitless (typically < 10)
+              const parsed = this.parseNumeric(value, opts.unit);
+              input.value = parsed;
+          } else {
+              input.placeholder = 'Mixed';
+          }
+
+          input.addEventListener('input', () => {
+              // For line-height, if value is small (< 10), keep it unitless, otherwise add px
+              let val = input.value;
+              if (opts.preserveUnitless && parseFloat(val) < 10) {
+                  // Keep unitless for values like 1.5, 2, etc.
+                  val = val;
+              } else if (opts.unit) {
+                  val = `${val}${opts.unit}`;
+              }
+              this.current[key] = val;
+              this.intents[key] = `Set ${label.toLowerCase()} to ${val}`;
+              this.preview();
+              this.updateApplyAvailability();
+          });
+          wrapper.appendChild(input);
+          return wrapper;
+      }
+
+      renderSelectField(label, key, value, options) {
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+          const select = document.createElement('select');
+          select.style.cssText = 'padding:6px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);';
+          select.innerHTML = `<option value="">Mixed</option>` + options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+          if (value && value !== 'mixed') select.value = value.replace(/[^0-9]/g, '') || value;
+
+          select.addEventListener('change', () => {
+              this.current[key] = select.value;
+              this.intents[key] = `Set ${label.toLowerCase()} to ${select.value}`;
+              this.preview();
+          });
+          wrapper.appendChild(select);
+          return wrapper;
+      }
+
+      renderPaddingGroup(base) {
+          const wrapper = document.createElement('div');
+          const grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+
+          const renderInput = (icon, key, val) => {
+              const wrap = document.createElement('div');
+              wrap.style.cssText = 'display:flex;align-items:center;gap:6px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);border:1px solid var(--dock-stroke);border-radius:6px;padding:0 6px;height:32px;';
+              wrap.innerHTML = `<span style="color:var(--dock-fg-2);font-size:14px;">${icon}</span>`;
+              const input = document.createElement('input');
+              input.type = 'number';
+              input.min = '0';
+              input.value = this.parseNumeric(val, 'px');
+              input.style.cssText = 'flex:1;border:none;background:transparent;color:var(--dock-fg);font-size:12px;width:0;';
+              input.addEventListener('input', () => {
+                  this.current[key] = input.value + 'px';
+                  this.intents[key] = `Set ${key} to ${input.value}px`;
+                  this.preview();
+                  this.updateApplyAvailability();
+              });
+              wrap.appendChild(input);
+              return wrap;
+          };
+
+          // Icons: Top, Right, Bottom, Left
+          grid.appendChild(renderInput('⭡', 'paddingTop', base.paddingTop));
+          grid.appendChild(renderInput('⭢', 'paddingRight', base.paddingRight));
+          grid.appendChild(renderInput('⭣', 'paddingBottom', base.paddingBottom));
+          grid.appendChild(renderInput('⭠', 'paddingLeft', base.paddingLeft));
+
+          wrapper.appendChild(grid);
+          return wrapper;
+      }
+
+      renderMarginGroup(base) {
+          const wrapper = document.createElement('div');
+          const grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+
+          const renderInput = (icon, key, val) => {
+              const wrap = document.createElement('div');
+              wrap.style.cssText = 'display:flex;align-items:center;gap:6px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);border:1px solid var(--dock-stroke);border-radius:6px;padding:0 6px;height:32px;';
+              wrap.innerHTML = `<span style="color:var(--dock-fg-2);font-size:14px;">${icon}</span>`;
+              const input = document.createElement('input');
+              input.type = 'number';
+              input.value = this.parseNumeric(val, 'px');
+              input.style.cssText = 'flex:1;border:none;background:transparent;color:var(--dock-fg);font-size:12px;width:0;';
+              input.addEventListener('input', () => {
+                  this.current[key] = input.value + 'px';
+                  this.intents[key] = `Set ${key} to ${input.value}px`;
+                  this.preview();
+                  this.updateApplyAvailability();
+              });
+              wrap.appendChild(input);
+              return wrap;
+          };
+
+          // Icons: Top, Right, Bottom, Left
+          grid.appendChild(renderInput('⭡', 'marginTop', base.marginTop));
+          grid.appendChild(renderInput('⭢', 'marginRight', base.marginRight));
+          grid.appendChild(renderInput('⭣', 'marginBottom', base.marginBottom));
+          grid.appendChild(renderInput('⭠', 'marginLeft', base.marginLeft));
+
+          wrapper.appendChild(grid);
+          return wrapper;
+      }
+
+      renderShadowField(value) {
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">Shadow</span>`;
+          const select = document.createElement('select');
+          select.style.cssText = 'padding:6px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);';
+          select.innerHTML = `<option value="none">None</option><option value="soft">Soft</option><option value="medium">Medium</option><option value="deep">Deep</option>`;
+          const matched = Object.entries(SHADOW_PRESETS).find(([k, v]) => v === value);
+          select.value = matched ? matched[0] : 'none';
+
+          select.addEventListener('change', () => {
+              const preset = SHADOW_PRESETS[select.value] || 'none';
+              this.current.boxShadow = preset;
+              this.intents.boxShadow = `Set shadow to ${select.value} preset`;
+              this.preview();
+          });
+          wrapper.appendChild(select);
+          return wrapper;
+      }
+
+      // ... (preview, undoPreviewStep, isOpen, resetChanges same as before, just ensure intents are handled) ...
+
+      preview() {
+          const changes = this.current;
+          // ... (same preview logic as before) ...
+          const trimmed = {};
+          Object.entries(changes || {}).forEach(([key, value]) => {
+              if (value !== undefined && value !== null && value !== '') trimmed[key] = value;
+          });
+          const changedKeys = Object.keys(trimmed).filter(k => this.lastPreviewState[k] !== trimmed[k]);
+          Object.keys(this.lastPreviewState).forEach((k) => { if (!Object.prototype.hasOwnProperty.call(trimmed, k)) changedKeys.push(k); });
+
+          if (changedKeys.length) {
+              const step = { prevByIndex: new Map(), keys: Array.from(new Set(changedKeys)) };
+              this.targets.forEach((t, i) => {
+                  const idx = this.indices[i];
+                  const el = t.element;
+                  const prev = {};
+                  step.keys.forEach((key) => {
+                      if (key === 'text') { if (this.canEditText(el)) prev.text = el.textContent; }
+                      else prev[key] = el.style[key] || '';
+                  });
+                  step.prevByIndex.set(idx, prev);
+              });
+              this.previewHistory.push(step);
+              this.lastPreviewState = { ...trimmed };
+          }
+          this.targets.forEach(({ element }) => {
+              if (changes.text !== undefined && this.canEditText(element)) element.textContent = changes.text;
+              Object.entries(changes).forEach(([k, v]) => {
+                  if (k !== 'text' && k !== 'src') {
+                      // Use !important for margin/padding to ensure they apply
+                      if (k.startsWith('margin') || k.startsWith('padding')) {
+                          element.style.setProperty(k, v, 'important');
+                      } else {
+                          element.style[k] = v;
+                      }
+                  }
+              });
+          });
+          this.syncPending();
+          this.updateUndoAvailability();
+          this.updateApplyAvailability();
+      }
+
+      undoPreviewStep() {
+          if (!this.previewHistory.length) return false;
+          const step = this.previewHistory.pop();
+          this.targets.forEach((t, i) => {
+              const idx = this.indices[i];
+              const prev = step.prevByIndex.get(idx) || {};
+              const el = t.element;
+              step.keys.forEach((key) => {
+                  if (key === 'text') { if (this.canEditText(el)) el.textContent = prev.text; }
+                  else el.style[key] = prev[key] || '';
+              });
+          });
+          this.current = {};
+          this.lastPreviewState = {};
+          this.collectBase();
+          this.renderForm();
+          this.syncPending();
+          this.updateUndoAvailability();
+          return true;
+      }
+
+      isOpen() { return !!this.container && this.container.style.display === 'flex'; }
+
+      resetChanges() {
+          // Reset to original page state (baseline from first selection)
+          this.restoreBaseline();
+          this.current = {};
+          this.intents = {};
+          // Re-collect base from the now-restored DOM
+          this.collectBase();
+          this.renderForm();
+          this.syncPending();
+          this.previewHistory = [];
+          this.lastPreviewState = {};
+          this.updateUndoAvailability();
+          this.updateApplyAvailability();
+      }
+
+      refresh() {
+          if (!this.isOpen()) return;
+          this.collectBase();
+          this.renderForm();
+          this.current = {};
+          this.intents = {};
+          this.stateManager.set('wysiwyg.pending', null);
+          this.previewHistory = [];
+          this.lastPreviewState = {};
+          this.updateUndoAvailability();
+      }
+
+      applyChanges() {
+          if (!this.targets.length) return;
+          const changes = { ...this.current };
+          if (Object.prototype.hasOwnProperty.call(changes, 'text')) {
+              const allow = this.targets.length === 1 && this.canEditText(this.targets[0].element);
+              if (!allow) delete changes.text;
+          }
+          Object.keys(changes).forEach(key => {
+              if (changes[key] === undefined || changes[key] === null || changes[key] === '') delete changes[key];
+          });
+
+          const hasDiff = Object.keys(changes).length > 0;
+
+          // Generate Hybrid Summary from Intents
+          const intentList = Object.keys(changes).map(k => this.intents[k]).filter(Boolean);
+          const summary = intentList.length > 0 ? intentList.join(', ') : (describeChanges(changes) || 'Edited');
+
+          this.targets.forEach(({ selector }, idx) => {
+              const index = this.indices[idx];
+              this.eventBus.emit('wysiwyg:apply', {
+                  index,
+                  selector,
+                  changes,
+                  summary
+              });
+          });
+          if (hasDiff) this.close();
+          this.updateUndoAvailability();
+      }
+
+      // ... (helpers) ...
+      canEditText(element) {
+          try {
+              if (!element) return false;
+              const tag = (element.tagName || '').toLowerCase();
+              if (['input', 'textarea', 'img', 'video', 'canvas', 'svg', 'hr', 'br'].includes(tag)) return false;
+
+              // Allow if no children
+              if (element.childElementCount === 0) return true;
+
+              // Allow if children are only inline phrasing content (span, b, i, strong, em, a, code, etc.)
+              // and NOT block elements (div, p, section, ul, li, etc.)
+              const blockTags = ['DIV', 'P', 'SECTION', 'ARTICLE', 'NAV', 'ASIDE', 'HEADER', 'FOOTER', 'MAIN', 'UL', 'OL', 'LI', 'TABLE', 'TR', 'TD', 'TH', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+              const children = Array.from(element.children);
+              const hasBlockChild = children.some(child => blockTags.includes(child.tagName));
+
+              return !hasBlockChild;
+          } catch (_) { return false; }
+      }
+      updateUndoAvailability() {
+          try {
+              if (!this.undoBtn) return;
+              const canUndo = this.previewHistory.length > 0;
+              this.undoBtn.disabled = !canUndo;
+              this.undoBtn.style.opacity = canUndo ? '1' : '0.5';
+              this.undoBtn.style.cursor = canUndo ? 'pointer' : 'not-allowed';
+          } catch (_) { }
+      }
+      updateApplyAvailability() {
+          try {
+              if (!this.applyBtn) return;
+              const trimmed = {};
+              Object.entries(this.current || {}).forEach(([key, value]) => {
+                  if (value !== undefined && value !== null && value !== '') trimmed[key] = value;
+              });
+              const hasChanges = Object.keys(trimmed).length > 0;
+              this.applyBtn.disabled = !hasChanges;
+              this.applyBtn.style.opacity = hasChanges ? '1' : '0.5';
+              this.applyBtn.style.cursor = hasChanges ? 'pointer' : 'not-allowed';
+          } catch (_) { }
+      }
+      parseNumeric(value, unit) {
+          if (!value || value === 'mixed') return '';
+
+          // For line-height, preserve unitless values
+          const str = String(value);
+          const match = str.match(/-?\d+(?:\.\d+)?/);
+          if (!match) return '';
+
+          const numericValue = match[0];
+
+          // If unit is specified in options and value has no unit, it's a unitless number
+          if (unit === 'px' && !str.includes('px') && !str.includes('%') && !str.includes('em')) {
+              // For properties like line-height that can be unitless, return as-is if < 10
+              const num = parseFloat(numericValue);
+              if (num < 10) return numericValue; // Likely unitless line-height
+          }
+
+          return numericValue;
+      }
+      toHex(color) {
+          const fallback = '#000000';
+          if (!color) return fallback;
+          if (color.startsWith('#')) return color.length === 7 ? color : fallback;
+          const ctx = document.createElement('canvas').getContext('2d');
+          ctx.fillStyle = color;
+          return ctx.fillStyle;
+      }
+      syncPending() {
+          if (this.indices.length !== 1) { this.stateManager.set('wysiwyg.pending', null); return; }
+          const trimmed = {};
+          Object.entries(this.current || {}).forEach(([key, value]) => {
+              if (value !== undefined && value !== null && value !== '') trimmed[key] = value;
+          });
+          if (Object.keys(trimmed).length) this.stateManager.set('wysiwyg.pending', { index: this.indices[0], changes: trimmed });
+          else this.stateManager.set('wysiwyg.pending', null);
+      }
   }
 
   /**
@@ -8259,6 +9014,11 @@ ${TOKENS_CSS}
         if (dockRoot) {
           try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
           dockRoot.updateSendState();
+        }
+
+        // Sync modal if open
+        if (editModal && typeof editModal.refresh === 'function') {
+          editModal.refresh();
         }
       });
 

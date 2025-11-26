@@ -85,12 +85,14 @@ export default class StateManager {
    */
   set(path, value, silent = false) {
     const oldValue = this.get(path);
-    
+
     // Only update if value actually changed
-    if (oldValue === value) return;
-    
-    this._setNestedValue(this.state, path, value);
-    
+    const sameRef = oldValue === value;
+    if (!sameRef) {
+      this._setNestedValue(this.state, path, value);
+    }
+
+    // Even when references match (objects/arrays mutated in place), still notify subscribers
     if (!silent) {
       this._notify(path, value, oldValue);
     }
@@ -102,10 +104,10 @@ export default class StateManager {
    */
   batch(updates) {
     Object.entries(updates).forEach(([path, value]) => {
-      this.set(path, value, true); // Silent updates
+      this.set(path, value, false);
     });
-    
-    // Single notification for all changes
+
+    // Single notification for all changes (aggregated payload)
     this.eventBus.emit('state:batch-update', updates);
   }
 

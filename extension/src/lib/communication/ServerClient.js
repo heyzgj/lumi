@@ -17,14 +17,14 @@ export default class ServerClient {
 
   async execute(engine, intent, elements, screenshot, pageInfo, screenshots = [], edits = []) {
     const context = this.buildContext(intent, elements, screenshot, pageInfo, screenshots, edits);
-    
+
     try {
       const result = await this.chromeBridge.executeOnServer(
         engine,
         context,
         screenshot?.dataUrl
       );
-      
+
       return result;
     } catch (error) {
       console.error('[ServerClient] Execution failed:', error);
