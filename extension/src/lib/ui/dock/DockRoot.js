@@ -79,8 +79,8 @@ export default class DockRoot {
             </button>
             <button class="header-btn header-settings" id="gear" title="Open Settings" aria-label="Open Settings">
               <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3.5"></circle>
-                <path d="M4.8 9.5l-1.5 2.6a1 1 0 0 0 .4 1.4l1.6.9a8 8 0 0 0 0 1.2l-1.6.9a1 1 0 0 0-.4 1.4l1.5 2.6a1 1 0 0 0 1.3.4l1.6-.9c.4.3.8.6 1.2.8l.1 1.8a1 1 0 0 0 1 .9h3a1 1 0 0 0 1-.9l.1-1.8c.4-.2.8-.5 1.2-.8l1.6.9a1 1 0 0 0 1.3-.4l1.5-2.6a1 1 0 0 0-.4-1.4l-1.6-.9c.1-.4.1-.8 0-1.2l1.6-.9a1 1 0 0 0 .4-1.4l-1.5-2.6a1 1 0 0 0-1.3-.4l-1.6.9c-.4-.3-.8-.6-1.2-.8L13 4.1a1 1 0 0 0-1-.9h-3a1 1 0 0 0-1 .9l-.1 1.8c-.4.2-.8.5-1.2.8l-1.6-.9a1 1 0 0 0-1.3.4z"></path>
+                <path d="M12 2l9 4.5v9L12 20l-9-4.5v-9L12 2z"></path>
+                <circle cx="12" cy="11" r="3"></circle>
               </svg>
             </button>
             <button class="header-btn header-close" id="dock-close" title="Close Dock" aria-label="Close Dock">
@@ -153,7 +153,9 @@ export default class DockRoot {
 
     const settingsBtn = this.shadow.getElementById('gear');
     this.toggleBtn = null;
-    settingsBtn.addEventListener('click', () => this.eventBus.emit('settings:open'));
+    settingsBtn.addEventListener('click', () => {
+      try { chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' }); } catch (_) { }
+    });
     // collapse/expand removed
 
     const themeBtn = this.shadow.getElementById('theme-toggle');

@@ -29,7 +29,7 @@ let serverHealthy = false;
 let BG_DEBUG = false;
 
 function bgLog(...args) {
-  try { if (BG_DEBUG) console.info('[LUMI BG]', ...args); } catch (_) {}
+  try { if (BG_DEBUG) console.info('[LUMI BG]', ...args); } catch (_) { }
 }
 
 function sanitizeUrl(url) {
@@ -462,13 +462,13 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
     const { engine, context, streamId } = message.payload || {};
     const tabId = sender?.tab?.id;
     bgLog('EXECUTE_STREAM', { engine, intent: context?.intent?.slice?.(0, 60), streamId });
-    
+
     if (!tabId) {
       console.warn('[LUMI] EXECUTE_STREAM missing tabId');
       sendResponse({ success: false, error: 'Missing tab ID for stream request' });
       return true;
     }
-    
+
     forwardStreamToServer(engine, context, tabId, streamId).catch((error) => {
       console.error('[LUMI] EXECUTE_STREAM failed:', error);
       try {
@@ -477,7 +477,7 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
           streamId,
           error: error?.message || 'Stream execution failed'
         });
-      } catch (_) {}
+      } catch (_) { }
     });
     sendResponse({ success: true });
     return true;
@@ -490,6 +490,14 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
         console.error('[LUMI] APPLY_SETTINGS failed:', error);
         sendResponse({ success: false, error: error?.message });
       });
+    return true;
+  }
+
+  if (type === 'OPEN_OPTIONS') {
+    chrome.runtime.openOptionsPage().catch((error) => {
+      console.warn('[LUMI] Failed to open options page:', error?.message);
+    });
+    sendResponse({ success: true });
     return true;
   }
 
@@ -562,40 +570,40 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     injectedTabs.delete(tabId);
     return;
   }
-  
+
   // Only inject when page has fully loaded
   if (changeInfo.status !== 'complete') return;
-  
+
   // Avoid duplicate injection within same page lifecycle
   if (injectedTabs.has(tabId)) return;
-  
+
   // Check if auto-inject is enabled
   const { autoInject = true } = await chrome.storage.local.get('autoInject');
   if (autoInject === false) return;
-  
+
   // Check if host is mapped to a project
   const settings = await refreshSettings();
   const projects = settings.projects || [];
-  
+
   try {
     const url = new URL(tab.url);
     const host = url.host;
-    
-    const mapped = projects.some(p => 
+
+    const mapped = projects.some(p =>
       p.enabled && (p.hosts || []).some(pattern => hostMatches(pattern, host))
     );
-    
+
     if (!mapped) return;
-    
+
     // Inject content script
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['content.js']
     });
-    
+
     injectedTabs.add(tabId);
     console.log('[LUMI] Auto-injected content script for', host);
-    
+
     // Don't auto-open Dock on refresh - let user click icon to open
   } catch (err) {
     console.error('[LUMI] Auto-inject failed:', err);

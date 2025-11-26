@@ -559,7 +559,7 @@ export default class DockEditModal {
 
             row.appendChild(this.renderColorDropdown('Text', 'color', base.color));
             if (schema.type !== 'image') {
-                row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor));
+                row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor, 'right'));
             }
             group.appendChild(row);
         }
@@ -597,7 +597,7 @@ export default class DockEditModal {
 
     // --- New Token-Aware Controls ---
 
-    renderColorDropdown(label, key, value) {
+    renderColorDropdown(label, key, value, align = 'left') {
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'position:relative;display:flex;flex-direction:column;gap:6px;';
         wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
@@ -620,7 +620,7 @@ export default class DockEditModal {
 
         const popover = document.createElement('div');
         popover.style.cssText = `
-            position:absolute;top:100%;left:0;width:240px;z-index:100;
+            position:absolute;top:100%;${align === 'right' ? 'right:0;left:auto;' : 'left:0;'}width:240px;z-index:100;
             background:var(--dock-bg);border:1px solid var(--dock-stroke);
             border-radius:12px;box-shadow:var(--shadow);padding:12px;
             display:none;flex-direction:column;gap:12px;margin-top:4px;
