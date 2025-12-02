@@ -495,7 +495,8 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
 
   if (type === 'OPEN_OPTIONS') {
     chrome.runtime.openOptionsPage().catch((error) => {
-      console.warn('[LUMI] Failed to open options page:', error?.message);
+      console.error('[LUMI] Failed to open options page:', error);
+      sendResponse({ success: false, error: error?.message });
     });
     sendResponse({ success: true });
     return true;

@@ -8,14 +8,23 @@
   <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="700" />
 </p>
 
-## Overview
+## What is LUMI
 
-**Lumi lets your AI see.**  
-For the first time, you don’t have to describe what’s on your screen — you can *show* it.  
-Click what you see, type what you want, and Lumi turns your coding agent into a true visual collaborator.
+**LUMI gives your AI coding agent vision.**
 
-Lumi is a Chrome extension that connects directly to your coding agent (like **Codex** or **Claude Code**) to enable visual, in-browser editing for any web app.  
-No more guessing selectors or typing long prompts — just click, comment, and watch your app update instantly.
+Instead of describing what's on your screen, you **show** it. Click any element, add a comment, and let your AI see exactly what you mean.
+
+LUMI is a Chrome extension that connects directly to AI coding agents like **Codex** and **Claude Code**, enabling true visual collaboration. Your AI can now see your UI, understand context from screenshots, and make precise changes without guessing selectors or navigation paths.
+
+## Features
+
+✨ **Visual Selection** - Click any element on your page to select it instantly  
+📸 **Screenshot Annotations** - Capture and annotate your screen, AI sees what you see  
+🎯 **Direct Editing** - Edit colors, text, spacing, and styles with live preview  
+🤖 **AI-Powered Changes** - Natural language instructions transformed into code  
+🔄 **Live Sync** - Changes apply instantly, no page refresh needed  
+⚡ **Works Everywhere** - Any web app, any framework, any stack
+
 
 
 

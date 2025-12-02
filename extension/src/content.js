@@ -746,6 +746,7 @@ function bootstrap() {
       } catch (err) {
         console.warn('[LUMI] Failed to setup iframe selection:', err);
       }
+      try { annotateManager && annotateManager.setIframeHost(iframe); } catch (_) { }
     });
     eventBus.on('viewport:iframe-fallback', () => {
       if (pendingElementMode) {
@@ -754,6 +755,7 @@ function bootstrap() {
       }
       // Rebind highlights to top document after fallback
       try { rebindHighlightsToActive(); } catch (_) { }
+      try { annotateManager && annotateManager.setInlineHost(); } catch (_) { }
     });
 
     // Dock events (legacy bubble hooks mapped to dock)
@@ -1045,7 +1047,112 @@ function bootstrap() {
       if (editModal) editModal.close();
     });
 
-    // Submit event
+    // Open Settings
+    eventBus.on('settings:open', () => {
+      try {
+        chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+      } catch (err) {
+        console.error('[LUMI] Failed to open settings:', err);
+      }
+    });
+
+    // Copy Prompt
+    eventBus.on('prompt:copy', async () => {
+      let intent = dockRoot ? dockRoot.getInputValue() : '';
+      const elements = stateManager.get('selection.elements') || [];
+      const screenshots = stateManager.get('selection.screenshots') || [];
+      const edits = stateManager.get('wysiwyg.edits') || [];
+
+      // Helper to clean intent text
+      const cleanIntent = (() => {
+        try {
+          const str = String(intent || '');
+          return str.replace(/\[@(element|screenshot)(\d+)\]/g, (m, type, num) => {
+            const idx = Math.max(0, Number(num) - 1);
+            if (type === 'element' && elements[idx] && elements[idx].element) {
+              return '@' + readableElementName(elements[idx].element);
+            }
+            if (type === 'screenshot' && screenshots[idx]) {
+              return `@shot ${idx + 1}`;
+            }
+            return m;
+          });
+        } catch (_) { return String(intent || ''); }
+      })();
+
+      const parts = [];
+
+      // 1. User Intent
+      if (cleanIntent.trim()) {
+        parts.push(`# User Intent\n${cleanIntent.trim()}`);
+      }
+
+      // 2. Context (Selected Elements)
+      if (elements.length > 0) {
+        parts.push('\n# Context');
+        elements.forEach((el, i) => {
+          if (el && el.element) {
+            const name = readableElementName(el.element);
+            const tagName = el.element.tagName.toLowerCase();
+            const id = el.element.id ? `#${el.element.id}` : '';
+            const classes = Array.from(el.element.classList).map(c => `.${c}`).join('');
+            const simpleSelector = `${tagName}${id}${classes}`;
+            parts.push(`Target ${i + 1}: ${name}\n   Selector: ${simpleSelector}`);
+          }
+        });
+      }
+
+      // 3. Visual Edits
+      if (edits.length > 0) {
+        parts.push('\n# Visual Edits\nI have applied the following visual changes. Please update the code to match:');
+
+        edits.forEach((edit, i) => {
+          const el = elements[edit.index];
+          const name = el ? readableElementName(el.element) : 'Unknown Element';
+          parts.push(`\n## Edit ${i + 1}: ${name}`);
+          parts.push(`Selector: ${edit.selector}`);
+          parts.push('Changes:');
+
+          if (edit.changes) {
+            Object.entries(edit.changes).forEach(([prop, val]) => {
+              // Format property names (camelCase -> kebab-case for CSS)
+              const cssProp = prop === 'text' ? 'text-content' : prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+              parts.push(`- ${cssProp}: "${val}"`);
+            });
+          }
+        });
+      }
+
+      // 4. Screenshots Note
+      if (screenshots.length > 0) {
+        parts.push(`\n# Screenshots\n${screenshots.length} screenshot(s) captured. Please refer to the attached image(s) for visual context.`);
+      }
+
+      const finalText = parts.join('\n');
+
+      try {
+        await navigator.clipboard.writeText(finalText);
+
+        // Auto-download screenshots if present
+        if (screenshots.length > 0) {
+          screenshots.forEach((shot, i) => {
+            const a = document.createElement('a');
+            a.href = shot.dataUrl;
+            a.download = `lumi-screenshot-${i + 1}-${shot.timestamp}.png`;
+            a.click();
+          });
+          topBanner.update('Prompt copied & images downloaded! 📋');
+        } else {
+          topBanner.update('Prompt copied to clipboard! 📋');
+        }
+
+        setTimeout(() => topBanner.hide(), 3000);
+      } catch (err) {
+        console.error('[LUMI] Failed to copy prompt:', err);
+        topBanner.update('Failed to copy to clipboard');
+        setTimeout(() => topBanner.hide(), 2000);
+      }
+    });
     eventBus.on('submit:requested', async () => {
       let intent = dockRoot ? dockRoot.getInputValue() : '';
       const elements = stateManager.get('selection.elements');

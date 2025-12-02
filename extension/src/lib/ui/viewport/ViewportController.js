@@ -443,8 +443,11 @@ export default class ViewportController {
       const logical = this.stateManager.get('ui.viewport.logical') || { width: 1280, height: 800 };
       const fit = this.stateManager.get('ui.viewport.fit') || 'width';
       const scale = this.computeScale(availW, availH, logical, fit);
-      this.stateManager.set('ui.viewport.scale', scale);
-      console.log(`[LUMI] fit=${fit} auto=true available=${availW}x${availH} logical=${logical.width}x${logical.height} scale=${scale.toFixed(3)}`);
+      const current = this.stateManager.get('ui.viewport.scale') || 1;
+      if (Math.abs(scale - current) > 0.0005) {
+        this.stateManager.set('ui.viewport.scale', scale);
+        console.log(`[LUMI] fit=${fit} auto=true available=${availW}x${availH} logical=${logical.width}x${logical.height} scale=${scale.toFixed(3)}`);
+      }
     } catch (error) {
       console.warn('[LUMI] recomputeScale failed', error);
     }

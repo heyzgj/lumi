@@ -17,6 +17,17 @@ export default class AnnotateManager {
         this.isDrawing = false;
         this.startPoint = null;
         this.activeObject = null;
+        this.lastBoundsLog = null;
+        this.lastPointerLog = 0;
+        this.hostContext = {
+            type: 'inline',
+            doc: document,
+            win: window,
+            containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+        };
+        this.keydownTargets = [];
+        this.resizeTargets = [];
+        this.hostType = 'inline';
 
         // Bind methods
         this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -25,26 +36,78 @@ export default class AnnotateManager {
         this.handleResize = this.handleResize.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.updateToolbarPosition = this.updateToolbarPosition.bind(this);
+        this.updateCanvasBounds = this.updateCanvasBounds.bind(this);
+        this.handleViewportScroll = this.handleViewportScroll.bind(this);
+        this.setInlineHost = this.setInlineHost.bind(this);
+        this.setIframeHost = this.setIframeHost.bind(this);
 
         this.unsubscribers = [];
+    }
+
+    setInlineHost() {
+        if (this.hostType === 'inline') return;
+        this.hostContext = {
+            type: 'inline',
+            doc: document,
+            win: window,
+            containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+        };
+        this.hostType = 'inline';
+        if (this.isActive) {
+            this.deactivate();
+            this.activate();
+        }
+    }
+
+    setIframeHost(iframe) {
+        const doc = iframe?.contentDocument;
+        const win = iframe?.contentWindow;
+        if (!doc || !win) return;
+        this.hostContext = {
+            type: 'iframe',
+            doc,
+            win,
+            containerResolver: () => doc.body || doc.documentElement
+        };
+        this.hostType = 'iframe';
+        if (this.isActive) {
+            this.deactivate();
+            this.activate();
+        }
+    }
+
+    getHostContext() {
+        const ctx = this.hostContext || {};
+        const doc = ctx.doc || document;
+        const win = ctx.win || window;
+        let container = null;
+        try {
+            container = (typeof ctx.containerResolver === 'function' && ctx.containerResolver()) || ctx.container;
+        } catch (_) { }
+        if (!container) container = doc.body || doc.documentElement || document.body;
+        return { doc, win, container };
     }
 
     activate() {
         if (this.isActive) return;
         this.isActive = true;
 
+        const { doc, container } = this.getHostContext();
         // Create canvas overlay
-        this.canvas = document.createElement('canvas');
+        this.canvas = doc.createElement('canvas');
         this.canvas.id = 'lumi-annotate-canvas';
-        this.canvas.style.cssText = 'position: fixed; top: 0; left: 0; z-index: 2147483646; cursor: crosshair;';
-        document.body.appendChild(this.canvas);
+        // z-index 2147483645 is one less than Dock (...46) so UI overlays it
+        this.canvas.style.cssText = 'position: absolute; inset: 0; z-index: 2147483645; cursor: crosshair;';
+        container.appendChild(this.canvas);
 
         // Initialize Fabric
         this.fabricCanvas = new fabric.Canvas(this.canvas, {
-            width: window.innerWidth,
-            height: window.innerHeight,
-            selection: false // Manual selection handling
+            width: 0,
+            height: 0,
+            selection: false, // Manual selection handling
+            enableRetinaScaling: false // Keep 1:1 with CSS pixels to avoid pointer drift
         });
+        this.updateCanvasBounds();
 
         // Initialize Toolbar
         this.toolbar = new AnnotateToolbar(this.eventBus);
@@ -99,6 +162,13 @@ export default class AnnotateManager {
         // Window events
         window.addEventListener('resize', this.handleResize);
         window.addEventListener('keydown', this.handleKeyDown);
+        const { win } = this.getHostContext();
+        if (win && win !== window) {
+            win.addEventListener('resize', this.handleResize);
+            win.addEventListener('keydown', this.handleKeyDown);
+            this.resizeTargets.push(win);
+            this.keydownTargets.push(win);
+        }
 
         // Bus events
         this.unsubscribers.push(this.eventBus.on('annotate:tool', (tool) => this.setTool(tool)));
@@ -107,15 +177,29 @@ export default class AnnotateManager {
         this.unsubscribers.push(this.eventBus.on('annotate:reset', () => this.reset()));
         this.unsubscribers.push(this.eventBus.on('annotate:cancel', () => this.deactivate()));
         this.unsubscribers.push(this.eventBus.on('annotate:submit', () => this.captureAndSubmit()));
+        this.unsubscribers.push(this.eventBus.on('annotate:copy', () => this.captureAndCopy()));
+        this.unsubscribers.push(this.eventBus.on('annotate:download', () => this.captureAndDownload()));
+        this.unsubscribers.push(this.eventBus.on('viewport:scrolled', this.handleViewportScroll));
 
         // Dock state changes (for toolbar positioning)
         this.unsubscribers.push(this.stateManager.subscribe('ui.dockOpen', this.updateToolbarPosition));
         this.unsubscribers.push(this.stateManager.subscribe('ui.dockState', this.updateToolbarPosition));
+        this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.scale', this.updateCanvasBounds));
+        this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.logical', this.updateCanvasBounds));
+        this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.useIframeStage', this.updateCanvasBounds));
     }
 
     unbindEvents() {
         window.removeEventListener('resize', this.handleResize);
         window.removeEventListener('keydown', this.handleKeyDown);
+        this.keydownTargets.forEach(target => {
+            try { target.removeEventListener('keydown', this.handleKeyDown); } catch (_) { }
+        });
+        this.keydownTargets = [];
+        this.resizeTargets.forEach(target => {
+            try { target.removeEventListener('resize', this.handleResize); } catch (_) { }
+        });
+        this.resizeTargets = [];
 
         // Unsubscribe from all bus/state events
         this.unsubscribers.forEach(unsubscribe => unsubscribe());
@@ -123,11 +207,8 @@ export default class AnnotateManager {
     }
 
     handleResize() {
-        if (this.fabricCanvas) {
-            this.fabricCanvas.setDimensions({
-                width: window.innerWidth,
-                height: window.innerHeight
-            });
+        if (this.fabricCanvas && this.canvas) {
+            this.updateCanvasBounds();
             this.updateToolbarPosition();
         }
     }
@@ -136,22 +217,14 @@ export default class AnnotateManager {
         if (!this.toolbar || !this.toolbar.host) return;
 
         const dockOpen = this.stateManager.get('ui.dockOpen') !== false;
-        const dockWidth = 420; // Assumed width
+        const rect = this.getStageRect();
 
-        // If dock is open, center in the remaining space
-        // Center X = (WindowWidth - DockWidth) / 2
-        // But toolbar is fixed, so we set left: calc(50% - 210px) roughly?
-        // Better: left: (WindowWidth - DockWidth) / 2
-
-        if (dockOpen) {
-            const availableWidth = window.innerWidth - dockWidth;
-            const center = availableWidth / 2;
-            this.toolbar.host.style.left = `${center}px`;
-            this.toolbar.host.style.transform = 'translateX(-50%)';
-        } else {
-            this.toolbar.host.style.left = '50%';
-            this.toolbar.host.style.transform = 'translateX(-50%)';
-        }
+        // Center within the stage rect (it already reflects dock/topbar offsets)
+        const center = rect.left + (rect.width / 2);
+        this.toolbar.host.style.left = `${center}px`;
+        this.toolbar.host.style.transform = 'translateX(-50%)';
+        // Keep toolbar pinned near bottom of viewport stage
+        this.toolbar.host.style.bottom = dockOpen ? '32px' : '32px';
     }
 
     handleKeyDown(e) {
@@ -211,11 +284,70 @@ export default class AnnotateManager {
         }
     }
 
+    getStageRect() {
+        try {
+            const { container } = this.getHostContext();
+            if (container?.getBoundingClientRect) {
+                const rect = container.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) return rect;
+            }
+            const stage = document.getElementById('lumi-viewport-stage');
+            if (stage) {
+                const rect = stage.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) return rect;
+            }
+        } catch (_) { }
+        return {
+            left: 0,
+            top: 0,
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+    }
+
+    updateCanvasBounds() {
+        if (!this.canvas || !this.fabricCanvas) return;
+        const { container } = this.getHostContext();
+        const rect = container?.getBoundingClientRect ? container.getBoundingClientRect() : null;
+        const width = Math.max(1, Math.round(container?.clientWidth || rect?.width || window.innerWidth));
+        const height = Math.max(1, Math.round(container?.clientHeight || rect?.height || window.innerHeight));
+
+        // Keep Fabric dimensions in CSS pixels; Fabric will handle retina scaling internally.
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.fabricCanvas.setDimensions({ width, height });
+        this.fabricCanvas.calcOffset();
+
+        // Align drawing coordinates to the visible viewport size (no additional zooming).
+        this.fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+
+        const stamp = `${width},${height}`;
+        if (this.lastBoundsLog !== stamp) {
+            this.lastBoundsLog = stamp;
+            this.debugLog('canvas:bounds', {
+                stage: this.getStageRect(),
+                canvas: { width: this.canvas.width, height: this.canvas.height, styleLeft: this.canvas.style.left, styleTop: this.canvas.style.top },
+                scale: this.stateManager.get('ui.viewport.scale')
+            });
+        }
+    }
+
+    handleViewportScroll() {
+        this.updateCanvasBounds();
+        this.updateToolbarPosition();
+    }
+
     handleMouseDown(o) {
         if (this.currentTool === 'select' || this.currentTool === 'pen') return;
 
         this.isDrawing = true;
         const pointer = this.fabricCanvas.getPointer(o.e);
+        this.debugLog('mouse:down', {
+            client: { x: o.e.clientX, y: o.e.clientY },
+            pointer,
+            stage: this.getStageRect(),
+            canvas: { width: this.canvas?.width, height: this.canvas?.height, left: this.canvas?.style.left, top: this.canvas?.style.top }
+        });
         this.startPoint = pointer;
 
         if (this.currentTool === 'rect') {
@@ -267,6 +399,16 @@ export default class AnnotateManager {
     handleMouseMove(o) {
         if (!this.isDrawing) return;
         const pointer = this.fabricCanvas.getPointer(o.e);
+        const now = Date.now();
+        if (now - this.lastPointerLog > 350) {
+            this.lastPointerLog = now;
+            this.debugLog('mouse:move', {
+                client: { x: o.e.clientX, y: o.e.clientY },
+                pointer,
+                stage: this.getStageRect(),
+                canvas: { width: this.canvas?.width, height: this.canvas?.height, left: this.canvas?.style.left, top: this.canvas?.style.top }
+            });
+        }
 
         if (this.currentTool === 'rect') {
             const w = Math.abs(pointer.x - this.startPoint.x);
@@ -346,8 +488,13 @@ export default class AnnotateManager {
     }
 
     reset() {
+        if (!this.fabricCanvas) return;
         this.fabricCanvas.clear();
-        this.fabricCanvas.setBackgroundColor('rgba(0,0,0,0)', this.fabricCanvas.renderAll.bind(this.fabricCanvas));
+        if (typeof this.fabricCanvas.setBackgroundColor === 'function') {
+            this.fabricCanvas.setBackgroundColor('rgba(0,0,0,0)', this.fabricCanvas.renderAll.bind(this.fabricCanvas));
+        } else {
+            this.fabricCanvas.requestRenderAll();
+        }
     }
 
     async captureAndSubmit() {
@@ -358,6 +505,7 @@ export default class AnnotateManager {
         if (this.toolbar && this.toolbar.host) {
             this.toolbar.host.style.display = 'none';
         }
+        const restoreUI = this.temporarilyHideUI();
 
         // Deselect everything to remove selection handles
         this.fabricCanvas.discardActiveObject();
@@ -369,17 +517,28 @@ export default class AnnotateManager {
         try {
             // Capture visible tab (includes our canvas overlay)
             const dataUrl = await this.chromeBridge.captureScreenshot();
+            let finalDataUrl = dataUrl;
+            let bbox = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+
+            // Crop to the active viewport stage (iframe or inline)
+            const rect = this.getStageRect();
+            if (rect.width > 0 && rect.height > 0 && (rect.width !== window.innerWidth || rect.height !== window.innerHeight || rect.left !== 0 || rect.top !== 0)) {
+                finalDataUrl = await this.cropImage(dataUrl, rect);
+                bbox = {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                };
+            }
 
             // Add to selection
             const screenshots = this.stateManager.get('selection.screenshots') || [];
             const newShot = {
                 id: 'shot-' + Date.now(),
-                dataUrl: dataUrl,
+                dataUrl: finalDataUrl,
                 timestamp: Date.now(),
-                bbox: { // Full viewport
-                    left: 0, top: 0,
-                    width: window.innerWidth, height: window.innerHeight
-                }
+                bbox: bbox
             };
 
             this.stateManager.set('selection.screenshots', [...screenshots, newShot]);
@@ -394,8 +553,114 @@ export default class AnnotateManager {
             if (this.toolbar && this.toolbar.host) {
                 this.toolbar.host.style.display = 'block';
             }
+            restoreUI();
         } finally {
+            restoreUI();
             this.isCapturing = false;
         }
+    }
+
+    async captureAndCopy() {
+        const dataUrl = await this.captureInternal();
+        if (!dataUrl) return;
+        try {
+            const blob = await (await fetch(dataUrl)).blob();
+            await navigator.clipboard.write([
+                new ClipboardItem({ [blob.type]: blob })
+            ]);
+            // Show toast via event bus (content script will handle if needed, or just console)
+            console.log('[LUMI] Screenshot copied to clipboard');
+            // Flash effect?
+        } catch (err) {
+            console.error('Copy failed:', err);
+        }
+    }
+
+    async captureAndDownload() {
+        const dataUrl = await this.captureInternal();
+        if (!dataUrl) return;
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `lumi-screenshot-${Date.now()}.png`;
+        a.click();
+    }
+
+    async captureInternal() {
+        if (this.isCapturing) return null;
+        this.isCapturing = true;
+
+        if (this.toolbar && this.toolbar.host) this.toolbar.host.style.display = 'none';
+        const restoreUI = this.temporarilyHideUI();
+        this.fabricCanvas.discardActiveObject();
+        this.fabricCanvas.requestRenderAll();
+        await new Promise(r => requestAnimationFrame(r));
+
+        try {
+            const dataUrl = await this.chromeBridge.captureScreenshot();
+            let finalDataUrl = dataUrl;
+
+            const rect = this.getStageRect();
+            if (rect.width > 0 && rect.height > 0 && (rect.width !== window.innerWidth || rect.height !== window.innerHeight || rect.left !== 0 || rect.top !== 0)) {
+                finalDataUrl = await this.cropImage(dataUrl, rect);
+            }
+            return finalDataUrl;
+        } catch (err) {
+            console.error('Capture failed:', err);
+            return null;
+        } finally {
+            if (this.toolbar && this.toolbar.host) this.toolbar.host.style.display = 'block';
+            restoreUI();
+            this.isCapturing = false;
+        }
+    }
+
+    cropImage(dataUrl, rect) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                // Calculate ratio between captured image and window dimensions
+                // (Handles Retina/High-DPI displays where capture is larger than window innerWidth)
+                const ratio = img.width / window.innerWidth;
+
+                canvas.width = rect.width * ratio;
+                canvas.height = rect.height * ratio;
+                const ctx = canvas.getContext('2d');
+
+                ctx.drawImage(img,
+                    rect.left * ratio, rect.top * ratio, rect.width * ratio, rect.height * ratio,
+                    0, 0, canvas.width, canvas.height
+                );
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+    }
+
+    temporarilyHideUI() {
+        const nodes = [
+            document.getElementById('lumi-dock-root'),
+            document.getElementById('lumi-viewport-bar-root'),
+            document.getElementById('lumi-dock-launcher')
+        ].filter(Boolean);
+        const prev = nodes.map((el) => {
+            const visibility = el.style.visibility;
+            el.style.visibility = 'hidden';
+            return { el, visibility };
+        });
+        return () => {
+            prev.forEach(({ el, visibility }) => {
+                el.style.visibility = visibility;
+            });
+        };
+    }
+
+    debugLog(label, payload) {
+        try {
+            const enabled = window.__LUMI_DEBUG === true || localStorage.getItem('LUMI_ANNOTATE_DEBUG') === '1';
+            if (!enabled) return;
+            console.debug(`[Annotate] ${label}`, payload);
+        } catch (_) { }
     }
 }

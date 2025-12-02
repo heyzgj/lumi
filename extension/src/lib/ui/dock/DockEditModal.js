@@ -559,7 +559,7 @@ export default class DockEditModal {
 
             row.appendChild(this.renderColorDropdown('Text', 'color', base.color));
             if (schema.type !== 'image') {
-                row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor, 'right'));
+                row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor));
             }
             group.appendChild(row);
         }
@@ -597,7 +597,7 @@ export default class DockEditModal {
 
     // --- New Token-Aware Controls ---
 
-    renderColorDropdown(label, key, value, align = 'left') {
+    renderColorDropdown(label, key, value) {
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'position:relative;display:flex;flex-direction:column;gap:6px;';
         wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
@@ -620,7 +620,7 @@ export default class DockEditModal {
 
         const popover = document.createElement('div');
         popover.style.cssText = `
-            position:absolute;top:100%;${align === 'right' ? 'right:0;left:auto;' : 'left:0;'}width:240px;z-index:100;
+            position:absolute;top:100%;left:0;width:240px;z-index:100;
             background:var(--dock-bg);border:1px solid var(--dock-stroke);
             border-radius:12px;box-shadow:var(--shadow);padding:12px;
             display:none;flex-direction:column;gap:12px;margin-top:4px;
@@ -830,6 +830,7 @@ export default class DockEditModal {
     }
 
     renderPaddingGroup(base) {
+        console.log('[DockEditModal] renderPaddingGroup - base:', base);
         const wrapper = document.createElement('div');
         const grid = document.createElement('div');
         grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
@@ -842,10 +843,19 @@ export default class DockEditModal {
             input.type = 'number';
             input.min = '0';
             input.value = this.parseNumeric(val, 'px');
+            console.log(`[DockEditModal] ${key} input initial value:`, input.value, 'from', val);
             input.style.cssText = 'flex:1;border:none;background:transparent;color:var(--dock-fg);font-size:12px;width:0;';
             input.addEventListener('input', () => {
-                this.current[key] = input.value + 'px';
-                this.intents[key] = `Set ${key} to ${input.value}px`;
+                const value = input.value.trim();
+                if (!value || value === '-' || isNaN(parseFloat(value))) {
+                    delete this.current[key];
+                    delete this.intents[key];
+                    console.log(`[DockEditModal] ${key} cleared`);
+                } else {
+                    this.current[key] = value + 'px';
+                    this.intents[key] = `Set ${key} to ${value}px`;
+                    console.log(`[DockEditModal] ${key} changed to:`, this.current[key], 'current:', this.current);
+                }
                 this.preview();
                 this.updateApplyAvailability();
             });
@@ -864,6 +874,7 @@ export default class DockEditModal {
     }
 
     renderMarginGroup(base) {
+        console.log('[DockEditModal] renderMarginGroup - base:', base);
         const wrapper = document.createElement('div');
         const grid = document.createElement('div');
         grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
@@ -875,10 +886,19 @@ export default class DockEditModal {
             const input = document.createElement('input');
             input.type = 'number';
             input.value = this.parseNumeric(val, 'px');
+            console.log(`[DockEditModal] ${key} input initial value:`, input.value, 'from', val);
             input.style.cssText = 'flex:1;border:none;background:transparent;color:var(--dock-fg);font-size:12px;width:0;';
             input.addEventListener('input', () => {
-                this.current[key] = input.value + 'px';
-                this.intents[key] = `Set ${key} to ${input.value}px`;
+                const value = input.value.trim();
+                if (!value || value === '-' || isNaN(parseFloat(value))) {
+                    delete this.current[key];
+                    delete this.intents[key];
+                    console.log(`[DockEditModal] ${key} cleared`);
+                } else {
+                    this.current[key] = value + 'px';
+                    this.intents[key] = `Set ${key} to ${value}px`;
+                    console.log(`[DockEditModal] ${key} changed to:`, this.current[key], 'current:', this.current);
+                }
                 this.preview();
                 this.updateApplyAvailability();
             });
@@ -949,7 +969,10 @@ export default class DockEditModal {
                 if (k !== 'text' && k !== 'src') {
                     // Use !important for margin/padding to ensure they apply
                     if (k.startsWith('margin') || k.startsWith('padding')) {
-                        element.style.setProperty(k, v, 'important');
+                        // Convert camelCase to kebab-case for CSS property names
+                        const cssProperty = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+                        console.log(`[DockEditModal] preview() applying ${cssProperty}: ${v} !important to`, element);
+                        element.style.setProperty(cssProperty, v, 'important');
                     } else {
                         element.style[k] = v;
                     }

@@ -79,6 +79,13 @@ const CONTROL_DEFS = {
     group: 'spacing',
     property: 'padding'
   },
+  margin: {
+    id: 'margin',
+    label: 'Margin',
+    type: 'margin',
+    group: 'spacing',
+    property: 'margin'
+  },
   boxShadow: {
     id: 'boxShadow',
     label: 'Shadow',
@@ -163,7 +170,7 @@ export function getElementSchema(element) {
   }
 
   if (supportsPadding(type)) {
-    controls.set('spacing', [CONTROL_DEFS.padding]);
+    controls.set('spacing', [CONTROL_DEFS.padding, CONTROL_DEFS.margin]);
   }
 
   controls.set('appearance', [CONTROL_DEFS.borderRadius]);

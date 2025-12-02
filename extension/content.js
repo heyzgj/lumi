@@ -1374,6 +1374,22 @@ ${TOKENS_CSS}
           </button>
         </div>
 
+        <div class="group">
+          <button class="btn" id="copy-btn" title="Copy to Clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="btn" id="download-btn" title="Download Image">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
+        </div>
+
         <div class="divider"></div>
 
         <div class="group">
@@ -1418,6 +1434,8 @@ ${TOKENS_CSS}
       // Actions
       root.getElementById('undo-btn').addEventListener('click', () => this.eventBus.emit('annotate:undo'));
       root.getElementById('reset-btn').addEventListener('click', () => this.eventBus.emit('annotate:reset'));
+      root.getElementById('copy-btn').addEventListener('click', () => this.eventBus.emit('annotate:copy'));
+      root.getElementById('download-btn').addEventListener('click', () => this.eventBus.emit('annotate:download'));
       root.getElementById('cancel-btn').addEventListener('click', () => this.eventBus.emit('annotate:cancel'));
       root.getElementById('done-btn').addEventListener('click', () => this.eventBus.emit('annotate:submit'));
     }
@@ -1453,6 +1471,17 @@ ${TOKENS_CSS}
           this.isDrawing = false;
           this.startPoint = null;
           this.activeObject = null;
+          this.lastBoundsLog = null;
+          this.lastPointerLog = 0;
+          this.hostContext = {
+              type: 'inline',
+              doc: document,
+              win: window,
+              containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+          };
+          this.keydownTargets = [];
+          this.resizeTargets = [];
+          this.hostType = 'inline';
 
           // Bind methods
           this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -1461,26 +1490,78 @@ ${TOKENS_CSS}
           this.handleResize = this.handleResize.bind(this);
           this.handleKeyDown = this.handleKeyDown.bind(this);
           this.updateToolbarPosition = this.updateToolbarPosition.bind(this);
+          this.updateCanvasBounds = this.updateCanvasBounds.bind(this);
+          this.handleViewportScroll = this.handleViewportScroll.bind(this);
+          this.setInlineHost = this.setInlineHost.bind(this);
+          this.setIframeHost = this.setIframeHost.bind(this);
 
           this.unsubscribers = [];
+      }
+
+      setInlineHost() {
+          if (this.hostType === 'inline') return;
+          this.hostContext = {
+              type: 'inline',
+              doc: document,
+              win: window,
+              containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+          };
+          this.hostType = 'inline';
+          if (this.isActive) {
+              this.deactivate();
+              this.activate();
+          }
+      }
+
+      setIframeHost(iframe) {
+          const doc = iframe?.contentDocument;
+          const win = iframe?.contentWindow;
+          if (!doc || !win) return;
+          this.hostContext = {
+              type: 'iframe',
+              doc,
+              win,
+              containerResolver: () => doc.body || doc.documentElement
+          };
+          this.hostType = 'iframe';
+          if (this.isActive) {
+              this.deactivate();
+              this.activate();
+          }
+      }
+
+      getHostContext() {
+          const ctx = this.hostContext || {};
+          const doc = ctx.doc || document;
+          const win = ctx.win || window;
+          let container = null;
+          try {
+              container = (typeof ctx.containerResolver === 'function' && ctx.containerResolver()) || ctx.container;
+          } catch (_) { }
+          if (!container) container = doc.body || doc.documentElement || document.body;
+          return { doc, win, container };
       }
 
       activate() {
           if (this.isActive) return;
           this.isActive = true;
 
+          const { doc, container } = this.getHostContext();
           // Create canvas overlay
-          this.canvas = document.createElement('canvas');
+          this.canvas = doc.createElement('canvas');
           this.canvas.id = 'lumi-annotate-canvas';
-          this.canvas.style.cssText = 'position: fixed; top: 0; left: 0; z-index: 2147483646; cursor: crosshair;';
-          document.body.appendChild(this.canvas);
+          // z-index 2147483645 is one less than Dock (...46) so UI overlays it
+          this.canvas.style.cssText = 'position: absolute; inset: 0; z-index: 2147483645; cursor: crosshair;';
+          container.appendChild(this.canvas);
 
           // Initialize Fabric
           this.fabricCanvas = new Xn(this.canvas, {
-              width: window.innerWidth,
-              height: window.innerHeight,
-              selection: false // Manual selection handling
+              width: 0,
+              height: 0,
+              selection: false, // Manual selection handling
+              enableRetinaScaling: false // Keep 1:1 with CSS pixels to avoid pointer drift
           });
+          this.updateCanvasBounds();
 
           // Initialize Toolbar
           this.toolbar = new AnnotateToolbar(this.eventBus);
@@ -1535,6 +1616,13 @@ ${TOKENS_CSS}
           // Window events
           window.addEventListener('resize', this.handleResize);
           window.addEventListener('keydown', this.handleKeyDown);
+          const { win } = this.getHostContext();
+          if (win && win !== window) {
+              win.addEventListener('resize', this.handleResize);
+              win.addEventListener('keydown', this.handleKeyDown);
+              this.resizeTargets.push(win);
+              this.keydownTargets.push(win);
+          }
 
           // Bus events
           this.unsubscribers.push(this.eventBus.on('annotate:tool', (tool) => this.setTool(tool)));
@@ -1543,15 +1631,29 @@ ${TOKENS_CSS}
           this.unsubscribers.push(this.eventBus.on('annotate:reset', () => this.reset()));
           this.unsubscribers.push(this.eventBus.on('annotate:cancel', () => this.deactivate()));
           this.unsubscribers.push(this.eventBus.on('annotate:submit', () => this.captureAndSubmit()));
+          this.unsubscribers.push(this.eventBus.on('annotate:copy', () => this.captureAndCopy()));
+          this.unsubscribers.push(this.eventBus.on('annotate:download', () => this.captureAndDownload()));
+          this.unsubscribers.push(this.eventBus.on('viewport:scrolled', this.handleViewportScroll));
 
           // Dock state changes (for toolbar positioning)
           this.unsubscribers.push(this.stateManager.subscribe('ui.dockOpen', this.updateToolbarPosition));
           this.unsubscribers.push(this.stateManager.subscribe('ui.dockState', this.updateToolbarPosition));
+          this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.scale', this.updateCanvasBounds));
+          this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.logical', this.updateCanvasBounds));
+          this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.useIframeStage', this.updateCanvasBounds));
       }
 
       unbindEvents() {
           window.removeEventListener('resize', this.handleResize);
           window.removeEventListener('keydown', this.handleKeyDown);
+          this.keydownTargets.forEach(target => {
+              try { target.removeEventListener('keydown', this.handleKeyDown); } catch (_) { }
+          });
+          this.keydownTargets = [];
+          this.resizeTargets.forEach(target => {
+              try { target.removeEventListener('resize', this.handleResize); } catch (_) { }
+          });
+          this.resizeTargets = [];
 
           // Unsubscribe from all bus/state events
           this.unsubscribers.forEach(unsubscribe => unsubscribe());
@@ -1559,11 +1661,8 @@ ${TOKENS_CSS}
       }
 
       handleResize() {
-          if (this.fabricCanvas) {
-              this.fabricCanvas.setDimensions({
-                  width: window.innerWidth,
-                  height: window.innerHeight
-              });
+          if (this.fabricCanvas && this.canvas) {
+              this.updateCanvasBounds();
               this.updateToolbarPosition();
           }
       }
@@ -1572,22 +1671,14 @@ ${TOKENS_CSS}
           if (!this.toolbar || !this.toolbar.host) return;
 
           const dockOpen = this.stateManager.get('ui.dockOpen') !== false;
-          const dockWidth = 420; // Assumed width
+          const rect = this.getStageRect();
 
-          // If dock is open, center in the remaining space
-          // Center X = (WindowWidth - DockWidth) / 2
-          // But toolbar is fixed, so we set left: calc(50% - 210px) roughly?
-          // Better: left: (WindowWidth - DockWidth) / 2
-
-          if (dockOpen) {
-              const availableWidth = window.innerWidth - dockWidth;
-              const center = availableWidth / 2;
-              this.toolbar.host.style.left = `${center}px`;
-              this.toolbar.host.style.transform = 'translateX(-50%)';
-          } else {
-              this.toolbar.host.style.left = '50%';
-              this.toolbar.host.style.transform = 'translateX(-50%)';
-          }
+          // Center within the stage rect (it already reflects dock/topbar offsets)
+          const center = rect.left + (rect.width / 2);
+          this.toolbar.host.style.left = `${center}px`;
+          this.toolbar.host.style.transform = 'translateX(-50%)';
+          // Keep toolbar pinned near bottom of viewport stage
+          this.toolbar.host.style.bottom = dockOpen ? '32px' : '32px';
       }
 
       handleKeyDown(e) {
@@ -1647,11 +1738,70 @@ ${TOKENS_CSS}
           }
       }
 
+      getStageRect() {
+          try {
+              const { container } = this.getHostContext();
+              if (container?.getBoundingClientRect) {
+                  const rect = container.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) return rect;
+              }
+              const stage = document.getElementById('lumi-viewport-stage');
+              if (stage) {
+                  const rect = stage.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) return rect;
+              }
+          } catch (_) { }
+          return {
+              left: 0,
+              top: 0,
+              width: window.innerWidth,
+              height: window.innerHeight
+          };
+      }
+
+      updateCanvasBounds() {
+          if (!this.canvas || !this.fabricCanvas) return;
+          const { container } = this.getHostContext();
+          const rect = container?.getBoundingClientRect ? container.getBoundingClientRect() : null;
+          const width = Math.max(1, Math.round(container?.clientWidth || rect?.width || window.innerWidth));
+          const height = Math.max(1, Math.round(container?.clientHeight || rect?.height || window.innerHeight));
+
+          // Keep Fabric dimensions in CSS pixels; Fabric will handle retina scaling internally.
+          this.canvas.width = width;
+          this.canvas.height = height;
+          this.fabricCanvas.setDimensions({ width, height });
+          this.fabricCanvas.calcOffset();
+
+          // Align drawing coordinates to the visible viewport size (no additional zooming).
+          this.fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+
+          const stamp = `${width},${height}`;
+          if (this.lastBoundsLog !== stamp) {
+              this.lastBoundsLog = stamp;
+              this.debugLog('canvas:bounds', {
+                  stage: this.getStageRect(),
+                  canvas: { width: this.canvas.width, height: this.canvas.height, styleLeft: this.canvas.style.left, styleTop: this.canvas.style.top },
+                  scale: this.stateManager.get('ui.viewport.scale')
+              });
+          }
+      }
+
+      handleViewportScroll() {
+          this.updateCanvasBounds();
+          this.updateToolbarPosition();
+      }
+
       handleMouseDown(o) {
           if (this.currentTool === 'select' || this.currentTool === 'pen') return;
 
           this.isDrawing = true;
           const pointer = this.fabricCanvas.getPointer(o.e);
+          this.debugLog('mouse:down', {
+              client: { x: o.e.clientX, y: o.e.clientY },
+              pointer,
+              stage: this.getStageRect(),
+              canvas: { width: this.canvas?.width, height: this.canvas?.height, left: this.canvas?.style.left, top: this.canvas?.style.top }
+          });
           this.startPoint = pointer;
 
           if (this.currentTool === 'rect') {
@@ -1703,6 +1853,16 @@ ${TOKENS_CSS}
       handleMouseMove(o) {
           if (!this.isDrawing) return;
           const pointer = this.fabricCanvas.getPointer(o.e);
+          const now = Date.now();
+          if (now - this.lastPointerLog > 350) {
+              this.lastPointerLog = now;
+              this.debugLog('mouse:move', {
+                  client: { x: o.e.clientX, y: o.e.clientY },
+                  pointer,
+                  stage: this.getStageRect(),
+                  canvas: { width: this.canvas?.width, height: this.canvas?.height, left: this.canvas?.style.left, top: this.canvas?.style.top }
+              });
+          }
 
           if (this.currentTool === 'rect') {
               const w = Math.abs(pointer.x - this.startPoint.x);
@@ -1782,8 +1942,13 @@ ${TOKENS_CSS}
       }
 
       reset() {
+          if (!this.fabricCanvas) return;
           this.fabricCanvas.clear();
-          this.fabricCanvas.setBackgroundColor('rgba(0,0,0,0)', this.fabricCanvas.renderAll.bind(this.fabricCanvas));
+          if (typeof this.fabricCanvas.setBackgroundColor === 'function') {
+              this.fabricCanvas.setBackgroundColor('rgba(0,0,0,0)', this.fabricCanvas.renderAll.bind(this.fabricCanvas));
+          } else {
+              this.fabricCanvas.requestRenderAll();
+          }
       }
 
       async captureAndSubmit() {
@@ -1794,6 +1959,7 @@ ${TOKENS_CSS}
           if (this.toolbar && this.toolbar.host) {
               this.toolbar.host.style.display = 'none';
           }
+          const restoreUI = this.temporarilyHideUI();
 
           // Deselect everything to remove selection handles
           this.fabricCanvas.discardActiveObject();
@@ -1805,17 +1971,28 @@ ${TOKENS_CSS}
           try {
               // Capture visible tab (includes our canvas overlay)
               const dataUrl = await this.chromeBridge.captureScreenshot();
+              let finalDataUrl = dataUrl;
+              let bbox = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+
+              // Crop to the active viewport stage (iframe or inline)
+              const rect = this.getStageRect();
+              if (rect.width > 0 && rect.height > 0 && (rect.width !== window.innerWidth || rect.height !== window.innerHeight || rect.left !== 0 || rect.top !== 0)) {
+                  finalDataUrl = await this.cropImage(dataUrl, rect);
+                  bbox = {
+                      left: rect.left,
+                      top: rect.top,
+                      width: rect.width,
+                      height: rect.height
+                  };
+              }
 
               // Add to selection
               const screenshots = this.stateManager.get('selection.screenshots') || [];
               const newShot = {
                   id: 'shot-' + Date.now(),
-                  dataUrl: dataUrl,
+                  dataUrl: finalDataUrl,
                   timestamp: Date.now(),
-                  bbox: { // Full viewport
-                      left: 0, top: 0,
-                      width: window.innerWidth, height: window.innerHeight
-                  }
+                  bbox: bbox
               };
 
               this.stateManager.set('selection.screenshots', [...screenshots, newShot]);
@@ -1830,9 +2007,115 @@ ${TOKENS_CSS}
               if (this.toolbar && this.toolbar.host) {
                   this.toolbar.host.style.display = 'block';
               }
+              restoreUI();
           } finally {
+              restoreUI();
               this.isCapturing = false;
           }
+      }
+
+      async captureAndCopy() {
+          const dataUrl = await this.captureInternal();
+          if (!dataUrl) return;
+          try {
+              const blob = await (await fetch(dataUrl)).blob();
+              await navigator.clipboard.write([
+                  new ClipboardItem({ [blob.type]: blob })
+              ]);
+              // Show toast via event bus (content script will handle if needed, or just console)
+              console.log('[LUMI] Screenshot copied to clipboard');
+              // Flash effect?
+          } catch (err) {
+              console.error('Copy failed:', err);
+          }
+      }
+
+      async captureAndDownload() {
+          const dataUrl = await this.captureInternal();
+          if (!dataUrl) return;
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = `lumi-screenshot-${Date.now()}.png`;
+          a.click();
+      }
+
+      async captureInternal() {
+          if (this.isCapturing) return null;
+          this.isCapturing = true;
+
+          if (this.toolbar && this.toolbar.host) this.toolbar.host.style.display = 'none';
+          const restoreUI = this.temporarilyHideUI();
+          this.fabricCanvas.discardActiveObject();
+          this.fabricCanvas.requestRenderAll();
+          await new Promise(r => requestAnimationFrame(r));
+
+          try {
+              const dataUrl = await this.chromeBridge.captureScreenshot();
+              let finalDataUrl = dataUrl;
+
+              const rect = this.getStageRect();
+              if (rect.width > 0 && rect.height > 0 && (rect.width !== window.innerWidth || rect.height !== window.innerHeight || rect.left !== 0 || rect.top !== 0)) {
+                  finalDataUrl = await this.cropImage(dataUrl, rect);
+              }
+              return finalDataUrl;
+          } catch (err) {
+              console.error('Capture failed:', err);
+              return null;
+          } finally {
+              if (this.toolbar && this.toolbar.host) this.toolbar.host.style.display = 'block';
+              restoreUI();
+              this.isCapturing = false;
+          }
+      }
+
+      cropImage(dataUrl, rect) {
+          return new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  // Calculate ratio between captured image and window dimensions
+                  // (Handles Retina/High-DPI displays where capture is larger than window innerWidth)
+                  const ratio = img.width / window.innerWidth;
+
+                  canvas.width = rect.width * ratio;
+                  canvas.height = rect.height * ratio;
+                  const ctx = canvas.getContext('2d');
+
+                  ctx.drawImage(img,
+                      rect.left * ratio, rect.top * ratio, rect.width * ratio, rect.height * ratio,
+                      0, 0, canvas.width, canvas.height
+                  );
+                  resolve(canvas.toDataURL('image/png'));
+              };
+              img.onerror = reject;
+              img.src = dataUrl;
+          });
+      }
+
+      temporarilyHideUI() {
+          const nodes = [
+              document.getElementById('lumi-dock-root'),
+              document.getElementById('lumi-viewport-bar-root'),
+              document.getElementById('lumi-dock-launcher')
+          ].filter(Boolean);
+          const prev = nodes.map((el) => {
+              const visibility = el.style.visibility;
+              el.style.visibility = 'hidden';
+              return { el, visibility };
+          });
+          return () => {
+              prev.forEach(({ el, visibility }) => {
+                  el.style.visibility = visibility;
+              });
+          };
+      }
+
+      debugLog(label, payload) {
+          try {
+              const enabled = window.__LUMI_DEBUG === true || localStorage.getItem('LUMI_ANNOTATE_DEBUG') === '1';
+              if (!enabled) return;
+              console.debug(`[Annotate] ${label}`, payload);
+          } catch (_) { }
       }
   }
 
@@ -3853,8 +4136,8 @@ ${TOKENS_CSS}
             </button>
             <button class="header-btn header-settings" id="gear" title="Open Settings" aria-label="Open Settings">
               <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2l9 4.5v9L12 20l-9-4.5v-9L12 2z"></path>
-                <circle cx="12" cy="11" r="3"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
             </button>
             <button class="header-btn header-close" id="dock-close" title="Close Dock" aria-label="Close Dock">
@@ -3897,7 +4180,12 @@ ${TOKENS_CSS}
                   <circle cx="9" cy="9" r="1.5"></circle>
                 </svg>
               </button>
-              <button class="icon" id="new-session-btn" title="New Session" aria-label="New Session">＋</button>
+              <button class="icon" id="copy-prompt-btn" title="Copy Prompt" aria-label="Copy Prompt">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
               <button class="send" id="send-btn" title="Send" aria-label="Send" disabled>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M22 2L11 13"></path>
@@ -3927,9 +4215,7 @@ ${TOKENS_CSS}
 
       const settingsBtn = this.shadow.getElementById('gear');
       this.toggleBtn = null;
-      settingsBtn.addEventListener('click', () => {
-        try { chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' }); } catch (_) { }
-      });
+      settingsBtn.addEventListener('click', () => this.eventBus.emit('settings:open'));
       // collapse/expand removed
 
       const themeBtn = this.shadow.getElementById('theme-toggle');
@@ -3977,7 +4263,7 @@ ${TOKENS_CSS}
 
       this.shadow.getElementById('select-btn').addEventListener('click', () => this.eventBus.emit('mode:toggle-element'));
       this.shadow.getElementById('shot-btn').addEventListener('click', () => this.eventBus.emit('mode:toggle-screenshot'));
-      this.shadow.getElementById('new-session-btn').addEventListener('click', () => this.eventBus.emit('session:create'));
+      this.shadow.getElementById('copy-prompt-btn').addEventListener('click', () => this.eventBus.emit('prompt:copy'));
 
       // Ensure immediate UI switch to Chat when creating/resuming sessions
       try {
@@ -5739,6 +6025,13 @@ ${TOKENS_CSS}
       group: 'spacing',
       property: 'padding'
     },
+    margin: {
+      id: 'margin',
+      label: 'Margin',
+      type: 'margin',
+      group: 'spacing',
+      property: 'margin'
+    },
     boxShadow: {
       id: 'boxShadow',
       label: 'Shadow',
@@ -5823,7 +6116,7 @@ ${TOKENS_CSS}
     }
 
     if (supportsPadding(type)) {
-      controls.set('spacing', [CONTROL_DEFS.padding]);
+      controls.set('spacing', [CONTROL_DEFS.padding, CONTROL_DEFS.margin]);
     }
 
     controls.set('appearance', [CONTROL_DEFS.borderRadius]);
@@ -6535,7 +6828,7 @@ ${TOKENS_CSS}
 
               row.appendChild(this.renderColorDropdown('Text', 'color', base.color));
               if (schema.type !== 'image') {
-                  row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor, 'right'));
+                  row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor));
               }
               group.appendChild(row);
           }
@@ -6573,7 +6866,7 @@ ${TOKENS_CSS}
 
       // --- New Token-Aware Controls ---
 
-      renderColorDropdown(label, key, value, align = 'left') {
+      renderColorDropdown(label, key, value) {
           const wrapper = document.createElement('div');
           wrapper.style.cssText = 'position:relative;display:flex;flex-direction:column;gap:6px;';
           wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
@@ -6596,7 +6889,7 @@ ${TOKENS_CSS}
 
           const popover = document.createElement('div');
           popover.style.cssText = `
-            position:absolute;top:100%;${align === 'right' ? 'right:0;left:auto;' : 'left:0;'}width:240px;z-index:100;
+            position:absolute;top:100%;left:0;width:240px;z-index:100;
             background:var(--dock-bg);border:1px solid var(--dock-stroke);
             border-radius:12px;box-shadow:var(--shadow);padding:12px;
             display:none;flex-direction:column;gap:12px;margin-top:4px;
@@ -6806,6 +7099,7 @@ ${TOKENS_CSS}
       }
 
       renderPaddingGroup(base) {
+          console.log('[DockEditModal] renderPaddingGroup - base:', base);
           const wrapper = document.createElement('div');
           const grid = document.createElement('div');
           grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
@@ -6818,10 +7112,19 @@ ${TOKENS_CSS}
               input.type = 'number';
               input.min = '0';
               input.value = this.parseNumeric(val, 'px');
+              console.log(`[DockEditModal] ${key} input initial value:`, input.value, 'from', val);
               input.style.cssText = 'flex:1;border:none;background:transparent;color:var(--dock-fg);font-size:12px;width:0;';
               input.addEventListener('input', () => {
-                  this.current[key] = input.value + 'px';
-                  this.intents[key] = `Set ${key} to ${input.value}px`;
+                  const value = input.value.trim();
+                  if (!value || value === '-' || isNaN(parseFloat(value))) {
+                      delete this.current[key];
+                      delete this.intents[key];
+                      console.log(`[DockEditModal] ${key} cleared`);
+                  } else {
+                      this.current[key] = value + 'px';
+                      this.intents[key] = `Set ${key} to ${value}px`;
+                      console.log(`[DockEditModal] ${key} changed to:`, this.current[key], 'current:', this.current);
+                  }
                   this.preview();
                   this.updateApplyAvailability();
               });
@@ -6840,6 +7143,7 @@ ${TOKENS_CSS}
       }
 
       renderMarginGroup(base) {
+          console.log('[DockEditModal] renderMarginGroup - base:', base);
           const wrapper = document.createElement('div');
           const grid = document.createElement('div');
           grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
@@ -6851,10 +7155,19 @@ ${TOKENS_CSS}
               const input = document.createElement('input');
               input.type = 'number';
               input.value = this.parseNumeric(val, 'px');
+              console.log(`[DockEditModal] ${key} input initial value:`, input.value, 'from', val);
               input.style.cssText = 'flex:1;border:none;background:transparent;color:var(--dock-fg);font-size:12px;width:0;';
               input.addEventListener('input', () => {
-                  this.current[key] = input.value + 'px';
-                  this.intents[key] = `Set ${key} to ${input.value}px`;
+                  const value = input.value.trim();
+                  if (!value || value === '-' || isNaN(parseFloat(value))) {
+                      delete this.current[key];
+                      delete this.intents[key];
+                      console.log(`[DockEditModal] ${key} cleared`);
+                  } else {
+                      this.current[key] = value + 'px';
+                      this.intents[key] = `Set ${key} to ${value}px`;
+                      console.log(`[DockEditModal] ${key} changed to:`, this.current[key], 'current:', this.current);
+                  }
                   this.preview();
                   this.updateApplyAvailability();
               });
@@ -6925,7 +7238,10 @@ ${TOKENS_CSS}
                   if (k !== 'text' && k !== 'src') {
                       // Use !important for margin/padding to ensure they apply
                       if (k.startsWith('margin') || k.startsWith('padding')) {
-                          element.style.setProperty(k, v, 'important');
+                          // Convert camelCase to kebab-case for CSS property names
+                          const cssProperty = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+                          console.log(`[DockEditModal] preview() applying ${cssProperty}: ${v} !important to`, element);
+                          element.style.setProperty(cssProperty, v, 'important');
                       } else {
                           element.style[k] = v;
                       }
@@ -7863,8 +8179,11 @@ ${TOKENS_CSS}
         const logical = this.stateManager.get('ui.viewport.logical') || { width: 1280, height: 800 };
         const fit = this.stateManager.get('ui.viewport.fit') || 'width';
         const scale = this.computeScale(availW, availH, logical, fit);
-        this.stateManager.set('ui.viewport.scale', scale);
-        console.log(`[LUMI] fit=${fit} auto=true available=${availW}x${availH} logical=${logical.width}x${logical.height} scale=${scale.toFixed(3)}`);
+        const current = this.stateManager.get('ui.viewport.scale') || 1;
+        if (Math.abs(scale - current) > 0.0005) {
+          this.stateManager.set('ui.viewport.scale', scale);
+          console.log(`[LUMI] fit=${fit} auto=true available=${availW}x${availH} logical=${logical.width}x${logical.height} scale=${scale.toFixed(3)}`);
+        }
       } catch (error) {
         console.warn('[LUMI] recomputeScale failed', error);
       }
@@ -8756,6 +9075,7 @@ ${TOKENS_CSS}
         } catch (err) {
           console.warn('[LUMI] Failed to setup iframe selection:', err);
         }
+        try { annotateManager && annotateManager.setIframeHost(iframe); } catch (_) { }
       });
       eventBus.on('viewport:iframe-fallback', () => {
         if (pendingElementMode) {
@@ -8764,6 +9084,7 @@ ${TOKENS_CSS}
         }
         // Rebind highlights to top document after fallback
         try { rebindHighlightsToActive(); } catch (_) { }
+        try { annotateManager && annotateManager.setInlineHost(); } catch (_) { }
       });
 
       // Dock events (legacy bubble hooks mapped to dock)
@@ -9055,7 +9376,112 @@ ${TOKENS_CSS}
         if (editModal) editModal.close();
       });
 
-      // Submit event
+      // Open Settings
+      eventBus.on('settings:open', () => {
+        try {
+          chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+        } catch (err) {
+          console.error('[LUMI] Failed to open settings:', err);
+        }
+      });
+
+      // Copy Prompt
+      eventBus.on('prompt:copy', async () => {
+        let intent = dockRoot ? dockRoot.getInputValue() : '';
+        const elements = stateManager.get('selection.elements') || [];
+        const screenshots = stateManager.get('selection.screenshots') || [];
+        const edits = stateManager.get('wysiwyg.edits') || [];
+
+        // Helper to clean intent text
+        const cleanIntent = (() => {
+          try {
+            const str = String(intent || '');
+            return str.replace(/\[@(element|screenshot)(\d+)\]/g, (m, type, num) => {
+              const idx = Math.max(0, Number(num) - 1);
+              if (type === 'element' && elements[idx] && elements[idx].element) {
+                return '@' + readableElementName(elements[idx].element);
+              }
+              if (type === 'screenshot' && screenshots[idx]) {
+                return `@shot ${idx + 1}`;
+              }
+              return m;
+            });
+          } catch (_) { return String(intent || ''); }
+        })();
+
+        const parts = [];
+
+        // 1. User Intent
+        if (cleanIntent.trim()) {
+          parts.push(`# User Intent\n${cleanIntent.trim()}`);
+        }
+
+        // 2. Context (Selected Elements)
+        if (elements.length > 0) {
+          parts.push('\n# Context');
+          elements.forEach((el, i) => {
+            if (el && el.element) {
+              const name = readableElementName(el.element);
+              const tagName = el.element.tagName.toLowerCase();
+              const id = el.element.id ? `#${el.element.id}` : '';
+              const classes = Array.from(el.element.classList).map(c => `.${c}`).join('');
+              const simpleSelector = `${tagName}${id}${classes}`;
+              parts.push(`Target ${i + 1}: ${name}\n   Selector: ${simpleSelector}`);
+            }
+          });
+        }
+
+        // 3. Visual Edits
+        if (edits.length > 0) {
+          parts.push('\n# Visual Edits\nI have applied the following visual changes. Please update the code to match:');
+
+          edits.forEach((edit, i) => {
+            const el = elements[edit.index];
+            const name = el ? readableElementName(el.element) : 'Unknown Element';
+            parts.push(`\n## Edit ${i + 1}: ${name}`);
+            parts.push(`Selector: ${edit.selector}`);
+            parts.push('Changes:');
+
+            if (edit.changes) {
+              Object.entries(edit.changes).forEach(([prop, val]) => {
+                // Format property names (camelCase -> kebab-case for CSS)
+                const cssProp = prop === 'text' ? 'text-content' : prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                parts.push(`- ${cssProp}: "${val}"`);
+              });
+            }
+          });
+        }
+
+        // 4. Screenshots Note
+        if (screenshots.length > 0) {
+          parts.push(`\n# Screenshots\n${screenshots.length} screenshot(s) captured. Please refer to the attached image(s) for visual context.`);
+        }
+
+        const finalText = parts.join('\n');
+
+        try {
+          await navigator.clipboard.writeText(finalText);
+
+          // Auto-download screenshots if present
+          if (screenshots.length > 0) {
+            screenshots.forEach((shot, i) => {
+              const a = document.createElement('a');
+              a.href = shot.dataUrl;
+              a.download = `lumi-screenshot-${i + 1}-${shot.timestamp}.png`;
+              a.click();
+            });
+            topBanner.update('Prompt copied & images downloaded! 📋');
+          } else {
+            topBanner.update('Prompt copied to clipboard! 📋');
+          }
+
+          setTimeout(() => topBanner.hide(), 3000);
+        } catch (err) {
+          console.error('[LUMI] Failed to copy prompt:', err);
+          topBanner.update('Failed to copy to clipboard');
+          setTimeout(() => topBanner.hide(), 2000);
+        }
+      });
       eventBus.on('submit:requested', async () => {
         let intent = dockRoot ? dockRoot.getInputValue() : '';
         const elements = stateManager.get('selection.elements');
