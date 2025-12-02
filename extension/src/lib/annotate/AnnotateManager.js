@@ -112,6 +112,7 @@ export default class AnnotateManager {
         // Initialize Toolbar
         this.toolbar = new AnnotateToolbar(this.eventBus);
         this.toolbar.mount();
+        this.toolbar.setTheme(this.stateManager.get('ui.theme') || 'light');
         this.updateToolbarPosition();
 
         // Bind Events
@@ -187,6 +188,11 @@ export default class AnnotateManager {
         this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.scale', this.updateCanvasBounds));
         this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.logical', this.updateCanvasBounds));
         this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.useIframeStage', this.updateCanvasBounds));
+
+        // Sync theme
+        this.unsubscribers.push(this.stateManager.subscribe('ui.theme', (mode) => {
+            if (this.toolbar) this.toolbar.setTheme(mode);
+        }));
     }
 
     unbindEvents() {

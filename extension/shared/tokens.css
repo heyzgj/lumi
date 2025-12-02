@@ -8,11 +8,16 @@
   --error: #EF4444;
   --on-accent: #ffffff;
   --on-strong: #ffffff;
-  --shadow: 0 4px 12px rgba(0,0,0,0.05);
+  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);
+  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);
+  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);
   --radius-panel: 18px;
   --radius-chip: 8px;
+  --header-height: 32px;
 }
-:root.dark-dock {
+:root.dark-dock, .dark-dock, .dark {
   --dock-bg: #161618;
   --dock-stroke: rgba(255,255,255,0.12);
   --dock-fg: #F5F5F7;
@@ -22,7 +27,12 @@
   --error: #F87171;
   --on-accent: #ffffff;
   --on-strong: #ffffff;
-  --shadow: 0 6px 16px rgba(0,0,0,0.35);
+  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);
+  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);
+  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);
   --radius-panel: 18px;
   --radius-chip: 8px;
+  --header-height: 56px;
 }

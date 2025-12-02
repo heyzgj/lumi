@@ -19,19 +19,68 @@ export default class TopViewportBar {
     this.shadow.innerHTML = `
       <style>
         /* Uses design tokens from :root (see extension/shared/tokens.css) */
-        .bar { position: relative; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
-          background: var(--dock-bg);
+        .bar { 
+          position: relative; 
+          height: var(--header-height); 
+          display: flex; 
+          align-items: center; 
+          gap: 12px; 
+          padding: 0 20px;
+          /* Glassmorphism */
+          background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border-bottom: 1px solid var(--dock-stroke);
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg);
+          box-shadow: 0 4px 24px -4px rgba(0,0,0,0.08);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+          font-size: 13px; 
+          color: var(--dock-fg);
+          transition: background 0.3s ease;
         }
-        select, input { font-size: 12px; border: 1px solid var(--dock-stroke); border-radius: 8px; background: var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent)); color: var(--dock-fg); padding: 4px 8px; }
-        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--dock-fg); opacity: 0.7; cursor: pointer; }
-        .btn:hover { opacity: 1; border-color: var(--dock-stroke); }
-        .btn:active { transform: scale(0.98); }
+        select, input { 
+          font-size: 12px; 
+          border: 1px solid var(--dock-stroke); 
+          border-radius: 8px; 
+          background: color-mix(in srgb, var(--dock-bg) 60%, transparent); 
+          color: var(--dock-fg); 
+          padding: 6px 10px; 
+          outline: none;
+          transition: all 0.2s ease;
+        }
+        select:hover, input:hover {
+          background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
+          border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent);
+        }
+        select:focus, input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+        }
+        .btn { 
+          height: 32px; 
+          padding: 0 12px; 
+          display: inline-flex; 
+          align-items: center; 
+          justify-content: center; 
+          border: 1px solid transparent; 
+          border-radius: 10px; 
+          background: transparent; 
+          color: var(--dock-fg-2); 
+          font-weight: 500;
+          cursor: pointer; 
+          transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .btn:hover { 
+          color: var(--dock-fg); 
+          background: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+          transform: translateY(-1px);
+        }
+        .btn:active { 
+          transform: scale(0.96); 
+        }
         .spacer { flex: 1; }
-        .field { display: inline-flex; align-items: center; gap: 6px; }
+        .field { display: inline-flex; align-items: center; gap: 8px; }
         .dim { width: 72px; }
-        .label { color: var(--dock-fg); opacity: 0.65; }
+        .label { color: var(--dock-fg-2); font-weight: 500; font-size: 12px; }
       </style>
       <div class="bar" id="bar">
         <label class="field"><span class="label">Device</span>
@@ -62,8 +111,8 @@ export default class TopViewportBar {
     document.body.appendChild(this.host);
     this.bind();
     // Keep right inset in sync with dock width
-    try { this.stateManager.subscribe('ui.dockWidth', (w) => { if (this.host) this.host.style.right = (w || 420) + 'px'; }); } catch (_) {}
-    try { this.host.style.right = (this.stateManager.get('ui.dockWidth') || 420) + 'px'; } catch (_) {}
+    try { this.stateManager.subscribe('ui.dockWidth', (w) => { if (this.host) this.host.style.right = (w || 420) + 'px'; }); } catch (_) { }
+    try { this.host.style.right = (this.stateManager.get('ui.dockWidth') || 420) + 'px'; } catch (_) { }
   }
 
   setVisible(visible) {
@@ -101,14 +150,14 @@ export default class TopViewportBar {
     reflectZoom();
 
     // Reflect external state changes (e.g., fit/preset/resize)
-    try { this.stateManager.subscribe('ui.viewport.scale', reflectZoom); } catch (_) {}
-    try { this.stateManager.subscribe('ui.viewport.auto', reflectZoom); } catch (_) {}
+    try { this.stateManager.subscribe('ui.viewport.scale', reflectZoom); } catch (_) { }
+    try { this.stateManager.subscribe('ui.viewport.auto', reflectZoom); } catch (_) { }
     // No explicit reflow toggle; iframe stage is default
     const syncDims = () => {
       const logical = this.stateManager.get('ui.viewport.logical') || { width: 1440 };
       if (w) w.value = String(logical.width);
     };
-    try { this.stateManager.subscribe('ui.viewport.logical', syncDims); } catch (_) {}
+    try { this.stateManager.subscribe('ui.viewport.logical', syncDims); } catch (_) { }
     syncDims();
 
     // Only Responsive allows editing width
@@ -117,7 +166,7 @@ export default class TopViewportBar {
       if (w) w.disabled = p !== 'responsive';
       if (preset) preset.value = p;
     };
-    try { this.stateManager.subscribe('ui.viewport.preset', syncPreset); } catch (_) {}
+    try { this.stateManager.subscribe('ui.viewport.preset', syncPreset); } catch (_) { }
     syncPreset();
   }
 }

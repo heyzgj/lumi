@@ -6,75 +6,78 @@ ${TOKENS_CSS}
 :host {
   position: fixed;
   z-index: 2147483647;
-  bottom: 32px;
+  bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
-  font-family: var(--font-sans);
-  pointer-events: none; /* Let clicks pass through container */
-  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  pointer-events: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease-out;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px;
-  background: rgba(22, 22, 24, 0.9); /* Dark glass */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
+  padding: 8px 12px;
+  /* Glassmorphism */
+  background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--dock-stroke);
   border-radius: 999px;
+  /* Floating shadow */
   box-shadow: 
-    0 4px 20px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(0, 0, 0, 0.4);
-  pointer-events: auto; /* Re-enable clicks on toolbar */
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    0 8px 32px -4px rgba(0, 0, 0, 0.12),
+    0 0 0 1px var(--dock-stroke);
+  color: var(--dock-fg);
+  pointer-events: auto;
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(40px) scale(0.95); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .group {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.group:last-child {
-  border-right: none;
+  gap: 4px;
 }
 
 .btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.6);
-  border-radius: 50%;
+  color: var(--dock-fg-2);
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--dock-stroke);
+  color: var(--dock-fg);
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: scale(0.92);
 }
 
 .btn.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 4px 12px -2px var(--accent);
 }
 
 .btn svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 /* Color picker dots */
@@ -85,48 +88,50 @@ ${TOKENS_CSS}
   border: 2px solid transparent;
   cursor: pointer;
   padding: 0;
-  margin: 0 2px;
-  transition: transform 0.15s;
+  margin: 0 4px;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .color-btn:hover {
-  transform: scale(1.1);
+  transform: scale(1.2);
 }
 
 .color-btn.active {
-  border-color: #fff;
-  transform: scale(1.1);
-}
-
-.divider {
-  width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.15);
-  margin: 0 4px;
+  border-color: var(--dock-fg);
+  transform: scale(1.2);
+  box-shadow: 0 0 0 2px var(--dock-bg), 0 0 0 4px var(--dock-fg);
 }
 
 .action-btn {
-  padding: 0 12px;
-  height: 32px;
-  border-radius: 16px;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 0 16px;
+  height: 36px;
+  border-radius: 99px;
+  font-size: 14px;
+  font-weight: 600;
   width: auto;
-  gap: 6px;
+  gap: 8px;
 }
 
 .action-btn.primary {
-  background: #fff;
-  color: #000;
+  background: var(--dock-fg);
+  color: var(--dock-bg);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 .action-btn.primary:hover {
-  background: #f0f0f0;
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+.action-btn.danger {
+  color: var(--error);
 }
 
 .action-btn.danger:hover {
-  background: rgba(255, 59, 48, 0.2);
-  color: #ff3b30;
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  transform: translateY(-2px);
 }
 `;
 
@@ -189,8 +194,6 @@ export default class AnnotateToolbar {
           `).join('')}
         </div>
         
-        <div class="divider"></div>
-        
         <div class="group">
           ${this.colors.map(c => `
             <button class="color-btn ${c === this.activeColor ? 'active' : ''}" 
@@ -199,8 +202,6 @@ export default class AnnotateToolbar {
             </button>
           `).join('')}
         </div>
-
-        <div class="divider"></div>
 
         <div class="group">
           <button class="btn" id="undo-btn" title="Undo">
@@ -231,9 +232,7 @@ export default class AnnotateToolbar {
           </button>
         </div>
 
-        <div class="divider"></div>
-
-        <div class="group">
+        <div class="group" style="margin-left: 8px;">
           <button class="btn action-btn danger" id="cancel-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -293,5 +292,15 @@ export default class AnnotateToolbar {
     this.shadow.querySelectorAll('[data-color]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.color === color);
     });
+  }
+
+  setTheme(mode) {
+    if (this.host) {
+      if (mode === 'dark') {
+        this.host.classList.add('dark-dock');
+      } else {
+        this.host.classList.remove('dark-dock');
+      }
+    }
   }
 }

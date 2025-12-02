@@ -14,7 +14,7 @@ function build() {
   const tokenPath = path.join(rootDir, 'design', 'tokens.json');
   const tokens = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
 
-  const css = `:root {\n${toCSS(tokens.light)}\n}\n:root.dark-dock {\n${toCSS(tokens.dark)}\n}\n`;
+  const css = `:root {\n${toCSS(tokens.light)}\n}\n:root.dark-dock, .dark-dock, .dark {\n${toCSS(tokens.dark)}\n}\n`;
   const outDir = path.join(rootDir, 'extension', 'shared');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'tokens.css'), css, 'utf8');

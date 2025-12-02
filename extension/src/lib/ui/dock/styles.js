@@ -1,55 +1,8 @@
 export const DOCK_STYLES = `
   * { box-sizing: border-box; }
-  /* Design tokens (light) mapped to legacy variables for minimal churn */
-  .dock {
-    /* New tokens */
-    --dock-bg: #ffffff;
-    --dock-stroke: rgba(0,0,0,0.08);
-    --dock-fg: #111111;
-    --dock-fg-2: #5F6368;
-    --icon-opacity: 0.9;
-    --success: #10B981;
-    --shadow: 0 4px 12px rgba(0,0,0,0.05);
-    --radius-panel: 18px;
-    --radius-chip: 8px;
-    --header-height: 56px;
-
-    /* Bridge to existing variable names used below */
-    --glass-bg: var(--dock-bg);
-    --glass-border: var(--dock-stroke);
-    /* Solid surfaces derived from base to avoid background bleed */
-    --surface: #f7f7f8;
-    --surface-hover: #f0f0f3;
-    --text: var(--dock-fg);
-    --text-secondary: var(--dock-fg-2);
-    --text-tertiary: var(--dock-fg-2);
-    --border: var(--dock-stroke);
-    --shadow: var(--shadow);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
-  }
 
   .dock.dark {
-    --dock-bg: #161618;
-    --dock-stroke: rgba(255,255,255,0.12);
-    --dock-fg: #F5F5F7;
-    --dock-fg-2: #B0B3B8;
-    --icon-opacity: 1;
-    --success: #34D399;
-    --shadow: 0 6px 16px rgba(0,0,0,0.35);
-    --radius-panel: 18px;
-    --radius-chip: 8px;
-
-    /* Bridge overrides */
-    --glass-bg: var(--dock-bg);
-    --glass-border: var(--dock-stroke);
-    --surface: #1e1f22;
-    --surface-hover: #232528;
-    --text: var(--dock-fg);
-    --text-secondary: var(--dock-fg-2);
-    --text-tertiary: var(--dock-fg-2);
-    --border: var(--dock-stroke);
-    --shadow: var(--shadow);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+    /* Dark mode handled by tokens.css via .dark selector */
   }
 
   .dock {
@@ -59,15 +12,17 @@ export const DOCK_STYLES = `
     height: 100vh;
     width: 420px;
     background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     text-align: left;
-    border-left: 1px solid var(--glass-border);
+    border-left: 1px solid var(--dock-stroke);
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: var(--text);
+    color: var(--dock-fg);
     z-index: 2147483646;
-    transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1), backdrop-filter 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), backdrop-filter 0.3s ease;
   }
   .dock.compact { width: 56px; }
   .dock.compact .project { display: none; }
@@ -86,12 +41,12 @@ export const DOCK_STYLES = `
     justify-content: space-between;
     height: var(--header-height);
     padding: 0 18px;
-    border-bottom: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--dock-stroke);
   }
   .project {
     font-weight: 600;
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
     max-width: 260px;
     white-space: nowrap;
     overflow: hidden;
@@ -102,7 +57,7 @@ export const DOCK_STYLES = `
     align-items: center;
     gap: 10px;
   }
-  .header-btn { width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+  .header-btn { width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--dock-fg-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .header-btn svg {
     width: 18px;
     height: 18px;
@@ -113,16 +68,16 @@ export const DOCK_STYLES = `
   .header-btn.header-toggle svg.collapsed {
     transform: scaleX(-1);
   }
-  .header-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
-  .header-btn:active { transform: scale(0.98); }
-  .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--text-secondary); font-size:18px; }
-  .header-btn.header-close:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .header-btn:hover { color: var(--dock-fg); border-color: color-mix(in srgb, var(--dock-fg) 10%, transparent); background: color-mix(in srgb, var(--dock-fg) 5%, transparent); transform: translateY(-1px); }
+  .header-btn:active { transform: scale(0.94); }
+  .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--dock-fg-2); font-size:18px; }
+  .header-btn.header-close:hover { color: var(--dock-fg); border-color: color-mix(in srgb, var(--dock-fg) 10%, transparent); background: color-mix(in srgb, var(--dock-fg) 5%, transparent); transform: translateY(-1px); }
 
-  .tabs { display:flex; gap:18px; padding:0 16px; height: 44px; align-items:center; border-bottom:1px solid var(--border); background: var(--glass-bg); }
-  .tab { flex:0 0 auto; text-align:center; padding:0 2px; min-width:auto; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-radius:0; cursor:pointer; transition: color 0.15s ease; position:relative; }
-  .tab:hover { color:var(--text); }
+  .tabs { display:flex; gap:18px; padding:0 16px; height: 44px; align-items:center; border-bottom:1px solid var(--dock-stroke); background: transparent; }
+  .tab { flex:0 0 auto; text-align:center; padding:0 2px; min-width:auto; font-size:12px; font-weight:500; color:var(--dock-fg-2); background:transparent; border:none; border-radius:0; cursor:pointer; transition: all 0.2s ease; position:relative; }
+  .tab:hover { color:var(--dock-fg); transform: translateY(-1px); }
   .tab::after { content:''; position:absolute; left:20%; right:20%; bottom:-2px; height:2px; background: transparent; border-radius:1px; transition: background 0.2s ease; }
-  .tab.active { color:var(--text); font-weight:600; }
+  .tab.active { color:var(--dock-fg); font-weight:600; transform: none; }
   .tab.active::after { background: color-mix(in srgb, var(--dock-fg) 28%, transparent); }
   .tab:focus-visible { outline:none; }
 
@@ -171,7 +126,7 @@ export const DOCK_STYLES = `
     gap: 8px;
     font-weight: 500;
     font-size: 14px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .msg .summary .icon {
     font-size: 16px;
@@ -186,7 +141,7 @@ export const DOCK_STYLES = `
   }
   .msg details summary {
     padding: 6px 0;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-size: 13px;
     user-select: none;
     list-style: none;
@@ -203,13 +158,13 @@ export const DOCK_STYLES = `
     transform: rotate(180deg);
   }
   .msg details summary:hover {
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .msg .details-content {
     padding-top: 8px;
     font-size: 13px;
     line-height: 1.6;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .assistant-result {
     display: flex;
@@ -224,11 +179,11 @@ export const DOCK_STYLES = `
   .assistant-result .summary .meta {
     margin-left: auto;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .assistant-result .result-body {
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
     line-height: 1.6;
   }
   .assistant-result .result-files {
@@ -239,15 +194,15 @@ export const DOCK_STYLES = `
   .assistant-result .result-files-label {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .assistant-result .result-file-row {
     font-size: 12px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .assistant-result .result-file-meta {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-left: 4px;
   }
   .assistant-timeline {
@@ -266,28 +221,28 @@ export const DOCK_STYLES = `
     margin: 0;
     padding-left: 0;
     list-style-type: none;
-    color: var(--text);
+    color: var(--dock-fg);
     font-size: 13px;
   }
   .timeline-feed .timeline-item {
     margin: 8px 0;
     padding-left: 12px;
     border-left: 1px solid transparent;
-    color: var(--text);
+    color: var(--dock-fg);
     transition: border-color 0.2s ease;
   }
   .timeline-feed .timeline-item:hover {
-    border-left-color: var(--border);
+    border-left-color: var(--dock-stroke);
   }
   .timeline-placeholder {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-style: italic;
   }
   .feed-header {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-bottom: 0;
     display: flex;
     align-items: center;
@@ -308,11 +263,11 @@ export const DOCK_STYLES = `
   .assistant-summary {
     margin-top: 0px;
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .assistant-summary .summary-meta {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-bottom: 6px;
     opacity: 0.7;
   }
@@ -322,7 +277,7 @@ export const DOCK_STYLES = `
     font-size: 13px;
   }
   .assistant-summary .summary-body {
-    color: var(--text);
+    color: var(--dock-fg);
     font-weight: 400;
     font-size: 13px;
     line-height: 1.6;
@@ -330,7 +285,7 @@ export const DOCK_STYLES = `
   .timeline-toggle {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
     font-size: 12px;
     opacity: 0;
@@ -347,15 +302,15 @@ export const DOCK_STYLES = `
   .assistant-result .result-skeleton-line {
     height: 10px;
     border-radius: 4px;
-    background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+    background: color-mix(in srgb, var(--dock-fg-2) 18%, transparent);
     animation: dock-skeleton 1.4s ease infinite;
   }
   .assistant-result .spinner {
     width: 14px;
     height: 14px;
     border-radius: 7px;
-    border: 2px solid color-mix(in srgb, var(--text-secondary) 35%, transparent);
-    border-top-color: var(--text-secondary);
+    border: 2px solid color-mix(in srgb, var(--dock-fg-2) 35%, transparent);
+    border-top-color: var(--dock-fg-2);
     display: inline-block;
     animation: dock-spin 0.9s linear infinite;
   }
@@ -367,7 +322,7 @@ export const DOCK_STYLES = `
   }
   .timeline-placeholder {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-style: italic;
   }
   .raw-logs {
@@ -376,12 +331,12 @@ export const DOCK_STYLES = `
   }
   .raw-logs summary {
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .raw-logs-body {
     margin-top: 6px;
     padding: 10px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 8px;
     background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
     max-height: 160px;
@@ -408,12 +363,12 @@ export const DOCK_STYLES = `
   }
   .diff-details summary {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
   }
   .diff-body {
     margin-top: 6px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 8px;
     background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -426,26 +381,26 @@ export const DOCK_STYLES = `
   }
   .diff-line.add {
     background: color-mix(in srgb, var(--success) 12%, transparent);
-    color: color-mix(in srgb, var(--success) 60%, var(--text));
+    color: color-mix(in srgb, var(--success) 60%, var(--dock-fg));
   }
   .diff-line.del {
     background: color-mix(in srgb, var(--error) 12%, transparent);
-    color: color-mix(in srgb, var(--error) 60%, var(--text));
+    color: color-mix(in srgb, var(--error) 60%, var(--dock-fg));
   }
   .diff-line.ctx {
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   
   /* Thinking section */
   .msg .thinking-summary {
-    color: var(--text-tertiary);
+    color: var(--dock-fg-2);
     font-style: italic;
   }
   .msg .thinking-content {
     padding-top: 8px;
     font-size: 12px;
     line-height: 1.5;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     white-space: pre-wrap;
   }
@@ -458,7 +413,7 @@ export const DOCK_STYLES = `
     padding-top: 8px;
   }
   .msg .file-item {
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 6px;
     padding: 8px 12px;
     background: var(--glass-bg);
@@ -475,11 +430,11 @@ export const DOCK_STYLES = `
   .msg .file-name {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .msg .file-meta {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-top: 4px;
   }
 
@@ -487,20 +442,20 @@ export const DOCK_STYLES = `
   .md-p { margin: 6px 0; }
   .md-h { margin: 10px 0 6px; font-weight: 600; }
   .md-list { padding-left: 18px; margin: 6px 0; }
-  .md-code { background: #0f172a0d; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow:auto; }
-  .md-code-inline { background: #0f172a1a; border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-  .md a { color: var(--text); text-decoration: underline; }
+  .md-code { background: #0f172a0d; border: 1px solid var(--dock-stroke); border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow:auto; }
+  .md-code-inline { background: #0f172a1a; border: 1px solid var(--dock-stroke); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .md a { color: var(--dock-fg); text-decoration: underline; }
 
   /* Change list (collapsed by default, preview-only) */
   .change-list { display: flex; flex-direction: column; gap: 8px; }
-  .change-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
-  .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
-  .change-meta { font-size: 12px; color: var(--text-secondary); }
+  .change-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px dashed var(--dock-stroke); border-radius: 10px; }
+  .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--dock-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+  .change-meta { font-size: 12px; color: var(--dock-fg-2); }
 
   .msg.user .bubble {
     font-size: 13px;
     line-height: 1.6;
-    color: var(--text);
+    color: var(--dock-fg);
   }
 
   /* History */
@@ -514,11 +469,11 @@ export const DOCK_STYLES = `
     border: none;
     background: transparent;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
     margin-bottom: 6px;
   }
-  .history-new:hover { color: var(--text); }
+  .history-new:hover { color: var(--dock-fg); }
 
   .history-row {
     display: flex;
@@ -526,7 +481,7 @@ export const DOCK_STYLES = `
     justify-content: space-between;
     gap: 16px;
     padding: 16px 20px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: var(--radius-panel);
     background: var(--surface);
     box-shadow: var(--shadow);
@@ -536,29 +491,29 @@ export const DOCK_STYLES = `
   .history-row:hover .history-actions { opacity: 1; }
 
   .history-main { min-width: 0; }
-  .history-title { font-size: 13px; font-weight: 500; color: var(--text); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-title { font-size: 13px; font-weight: 500; color: var(--dock-fg); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); }
 
   .history-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s ease; }
   .history-actions button {
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     background: var(--surface);
     padding: 5px 10px;
     border-radius: 999px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
   }
-  .history-actions button:hover { color: var(--text); }
+  .history-actions button:hover { color: var(--dock-fg); }
   .history-row.renaming .history-actions { opacity: 1; }
   .history-rename {
     width: 100%;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 12px;
     background: var(--surface);
     padding: 6px 10px;
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
     outline: none;
   }
   .history-rename:focus { border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); }
@@ -567,7 +522,7 @@ export const DOCK_STYLES = `
   }
 
   /* Composer */
-  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 24px; }
+  .footer { border-top: 1px solid var(--dock-stroke); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 24px; }
 
   .composer-top {
     display: flex;
@@ -575,7 +530,7 @@ export const DOCK_STYLES = `
     gap: 8px;
     align-items: center;
     border-radius: 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     background: var(--surface);
     padding: 10px 14px;
     margin-bottom: 12px; /* adds space before the engine/actions row */
@@ -594,7 +549,7 @@ export const DOCK_STYLES = `
   }
   .composer-top .editor:empty:before {
     content: attr(data-placeholder);
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     pointer-events: none;
   }
   .chip {
@@ -602,11 +557,11 @@ export const DOCK_STYLES = `
     align-items: center;
     gap: 6px;
     background: transparent;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: var(--radius-chip);
     padding: 2px 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .chip.edited::after {
     content: '';
@@ -630,10 +585,10 @@ export const DOCK_STYLES = `
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     padding: 4px 12px;
     border-radius: 999px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     background: var(--surface);
   }
   .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
@@ -641,10 +596,10 @@ export const DOCK_STYLES = `
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }
-  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: var(--surface); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
-  .icon:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
-  .icon:active { transform: scale(0.98); }
-  .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--text); }
+  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--dock-stroke); background: var(--surface); color: var(--dock-fg-2); display:grid; place-items:center; cursor:pointer; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .icon:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .icon:active { transform: scale(0.94); }
+  .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--dock-fg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--dock-fg) 10%, transparent); }
   .send {
     width: 32px;
     height: 32px;
@@ -655,12 +610,13 @@ export const DOCK_STYLES = `
     display: grid;
     place-items: center;
     cursor: pointer;
-    transition: transform 0.15s ease, opacity 0.2s ease, background 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     position: relative;
     padding: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   }
-  .send:hover { transform: scale(1.05); }
-  .send:active { transform: scale(0.95); }
+  .send:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+  .send:active { transform: scale(0.92); }
   .send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; background: var(--dock-fg-2); }
   
   .send svg {
@@ -714,11 +670,11 @@ export const DOCK_STYLES = `
     height: 24px;
     border-radius: 50%;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-size: 12px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     transition: all 0.2s ease;
@@ -749,12 +705,12 @@ export const DOCK_STYLES = `
   .timeline-title {
     font-size: 13px;
     font-weight: 400;
-    color: var(--text);
+    color: var(--dock-fg);
     flex: 1; /* Push chevron to right */
   }
 
   .timeline-chevron {
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     display: flex;
     align-items: center;
     transition: transform 0.2s ease;
@@ -776,7 +732,7 @@ export const DOCK_STYLES = `
     margin-top: 4px;
     border-radius: 6px;
     background: var(--dock-bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     overflow: hidden;
   }
   
@@ -792,7 +748,7 @@ export const DOCK_STYLES = `
     white-space: pre-wrap;
     overflow-x: auto;
     max-height: 500px;
-    color: var(--text);
+    color: var(--dock-fg);
     background: transparent; /* Background handled by container */
     border: none; /* Border handled by container */
   }
@@ -801,7 +757,7 @@ export const DOCK_STYLES = `
   .summary-body {
     font-size: 13px;
     line-height: 1.5;
-    color: var(--text);
+    color: var(--dock-fg);
     margin-top: 8px;
     white-space: pre-wrap; /* Ensure wrapping */
     overflow-wrap: break-word; /* Prevent overflow */
@@ -811,7 +767,7 @@ export const DOCK_STYLES = `
   /* Specific Entry Types */
   .timeline-entry.thinking .timeline-title {
     font-style: italic;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   
   .timeline-file-list {
@@ -826,14 +782,14 @@ export const DOCK_STYLES = `
     gap: 6px;
     font-size: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .timeline-file-stat {
     font-size: 10px;
     padding: 1px 4px;
     border-radius: 4px;
     background: var(--surface);
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .timeline-file-stat.added { color: var(--success, #10b981); background: color-mix(in srgb, var(--success, #10b981) 10%, transparent); }
   .timeline-file-stat.removed { color: var(--error, #ef4444); background: color-mix(in srgb, var(--error, #ef4444) 10%, transparent); }

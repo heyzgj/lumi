@@ -387,7 +387,7 @@
   }
 `;
 
-  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 4px 12px rgba(0,0,0,0.05);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n}\n:root.dark-dock {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --shadow: 0 6px 16px rgba(0,0,0,0.35);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n}\n";
+  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);\n  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n:root.dark-dock, .dark-dock, .dark {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);\n  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 56px;\n}\n";
 
   /**
    * DOM Utilities
@@ -1165,75 +1165,78 @@ ${TOKENS_CSS}
 :host {
   position: fixed;
   z-index: 2147483647;
-  bottom: 32px;
+  bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
-  font-family: var(--font-sans);
-  pointer-events: none; /* Let clicks pass through container */
-  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  pointer-events: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease-out;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px;
-  background: rgba(22, 22, 24, 0.9); /* Dark glass */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
+  padding: 8px 12px;
+  /* Glassmorphism */
+  background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--dock-stroke);
   border-radius: 999px;
+  /* Floating shadow */
   box-shadow: 
-    0 4px 20px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(0, 0, 0, 0.4);
-  pointer-events: auto; /* Re-enable clicks on toolbar */
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    0 8px 32px -4px rgba(0, 0, 0, 0.12),
+    0 0 0 1px var(--dock-stroke);
+  color: var(--dock-fg);
+  pointer-events: auto;
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(40px) scale(0.95); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .group {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.group:last-child {
-  border-right: none;
+  gap: 4px;
 }
 
 .btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.6);
-  border-radius: 50%;
+  color: var(--dock-fg-2);
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--dock-stroke);
+  color: var(--dock-fg);
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: scale(0.92);
 }
 
 .btn.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 4px 12px -2px var(--accent);
 }
 
 .btn svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 /* Color picker dots */
@@ -1244,48 +1247,50 @@ ${TOKENS_CSS}
   border: 2px solid transparent;
   cursor: pointer;
   padding: 0;
-  margin: 0 2px;
-  transition: transform 0.15s;
+  margin: 0 4px;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .color-btn:hover {
-  transform: scale(1.1);
+  transform: scale(1.2);
 }
 
 .color-btn.active {
-  border-color: #fff;
-  transform: scale(1.1);
-}
-
-.divider {
-  width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.15);
-  margin: 0 4px;
+  border-color: var(--dock-fg);
+  transform: scale(1.2);
+  box-shadow: 0 0 0 2px var(--dock-bg), 0 0 0 4px var(--dock-fg);
 }
 
 .action-btn {
-  padding: 0 12px;
-  height: 32px;
-  border-radius: 16px;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 0 16px;
+  height: 36px;
+  border-radius: 99px;
+  font-size: 14px;
+  font-weight: 600;
   width: auto;
-  gap: 6px;
+  gap: 8px;
 }
 
 .action-btn.primary {
-  background: #fff;
-  color: #000;
+  background: var(--dock-fg);
+  color: var(--dock-bg);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 .action-btn.primary:hover {
-  background: #f0f0f0;
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+.action-btn.danger {
+  color: var(--error);
 }
 
 .action-btn.danger:hover {
-  background: rgba(255, 59, 48, 0.2);
-  color: #ff3b30;
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  transform: translateY(-2px);
 }
 `;
 
@@ -1348,8 +1353,6 @@ ${TOKENS_CSS}
           `).join('')}
         </div>
         
-        <div class="divider"></div>
-        
         <div class="group">
           ${this.colors.map(c => `
             <button class="color-btn ${c === this.activeColor ? 'active' : ''}" 
@@ -1358,8 +1361,6 @@ ${TOKENS_CSS}
             </button>
           `).join('')}
         </div>
-
-        <div class="divider"></div>
 
         <div class="group">
           <button class="btn" id="undo-btn" title="Undo">
@@ -1390,9 +1391,7 @@ ${TOKENS_CSS}
           </button>
         </div>
 
-        <div class="divider"></div>
-
-        <div class="group">
+        <div class="group" style="margin-left: 8px;">
           <button class="btn action-btn danger" id="cancel-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -1452,6 +1451,16 @@ ${TOKENS_CSS}
       this.shadow.querySelectorAll('[data-color]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.color === color);
       });
+    }
+
+    setTheme(mode) {
+      if (this.host) {
+        if (mode === 'dark') {
+          this.host.classList.add('dark-dock');
+        } else {
+          this.host.classList.remove('dark-dock');
+        }
+      }
     }
   }
 
@@ -1566,6 +1575,7 @@ ${TOKENS_CSS}
           // Initialize Toolbar
           this.toolbar = new AnnotateToolbar(this.eventBus);
           this.toolbar.mount();
+          this.toolbar.setTheme(this.stateManager.get('ui.theme') || 'light');
           this.updateToolbarPosition();
 
           // Bind Events
@@ -1641,6 +1651,11 @@ ${TOKENS_CSS}
           this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.scale', this.updateCanvasBounds));
           this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.logical', this.updateCanvasBounds));
           this.unsubscribers.push(this.stateManager.subscribe('ui.viewport.useIframeStage', this.updateCanvasBounds));
+
+          // Sync theme
+          this.unsubscribers.push(this.stateManager.subscribe('ui.theme', (mode) => {
+              if (this.toolbar) this.toolbar.setTheme(mode);
+          }));
       }
 
       unbindEvents() {
@@ -2796,56 +2811,9 @@ ${TOKENS_CSS}
 
   const DOCK_STYLES = `
   * { box-sizing: border-box; }
-  /* Design tokens (light) mapped to legacy variables for minimal churn */
-  .dock {
-    /* New tokens */
-    --dock-bg: #ffffff;
-    --dock-stroke: rgba(0,0,0,0.08);
-    --dock-fg: #111111;
-    --dock-fg-2: #5F6368;
-    --icon-opacity: 0.9;
-    --success: #10B981;
-    --shadow: 0 4px 12px rgba(0,0,0,0.05);
-    --radius-panel: 18px;
-    --radius-chip: 8px;
-    --header-height: 56px;
-
-    /* Bridge to existing variable names used below */
-    --glass-bg: var(--dock-bg);
-    --glass-border: var(--dock-stroke);
-    /* Solid surfaces derived from base to avoid background bleed */
-    --surface: #f7f7f8;
-    --surface-hover: #f0f0f3;
-    --text: var(--dock-fg);
-    --text-secondary: var(--dock-fg-2);
-    --text-tertiary: var(--dock-fg-2);
-    --border: var(--dock-stroke);
-    --shadow: var(--shadow);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
-  }
 
   .dock.dark {
-    --dock-bg: #161618;
-    --dock-stroke: rgba(255,255,255,0.12);
-    --dock-fg: #F5F5F7;
-    --dock-fg-2: #B0B3B8;
-    --icon-opacity: 1;
-    --success: #34D399;
-    --shadow: 0 6px 16px rgba(0,0,0,0.35);
-    --radius-panel: 18px;
-    --radius-chip: 8px;
-
-    /* Bridge overrides */
-    --glass-bg: var(--dock-bg);
-    --glass-border: var(--dock-stroke);
-    --surface: #1e1f22;
-    --surface-hover: #232528;
-    --text: var(--dock-fg);
-    --text-secondary: var(--dock-fg-2);
-    --text-tertiary: var(--dock-fg-2);
-    --border: var(--dock-stroke);
-    --shadow: var(--shadow);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+    /* Dark mode handled by tokens.css via .dark selector */
   }
 
   .dock {
@@ -2855,15 +2823,17 @@ ${TOKENS_CSS}
     height: 100vh;
     width: 420px;
     background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     text-align: left;
-    border-left: 1px solid var(--glass-border);
+    border-left: 1px solid var(--dock-stroke);
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: var(--text);
+    color: var(--dock-fg);
     z-index: 2147483646;
-    transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1), backdrop-filter 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), backdrop-filter 0.3s ease;
   }
   .dock.compact { width: 56px; }
   .dock.compact .project { display: none; }
@@ -2882,12 +2852,12 @@ ${TOKENS_CSS}
     justify-content: space-between;
     height: var(--header-height);
     padding: 0 18px;
-    border-bottom: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--dock-stroke);
   }
   .project {
     font-weight: 600;
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
     max-width: 260px;
     white-space: nowrap;
     overflow: hidden;
@@ -2898,7 +2868,7 @@ ${TOKENS_CSS}
     align-items: center;
     gap: 10px;
   }
-  .header-btn { width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+  .header-btn { width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--dock-fg-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .header-btn svg {
     width: 18px;
     height: 18px;
@@ -2909,16 +2879,16 @@ ${TOKENS_CSS}
   .header-btn.header-toggle svg.collapsed {
     transform: scaleX(-1);
   }
-  .header-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
-  .header-btn:active { transform: scale(0.98); }
-  .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--text-secondary); font-size:18px; }
-  .header-btn.header-close:hover { color: var(--text); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
+  .header-btn:hover { color: var(--dock-fg); border-color: color-mix(in srgb, var(--dock-fg) 10%, transparent); background: color-mix(in srgb, var(--dock-fg) 5%, transparent); transform: translateY(-1px); }
+  .header-btn:active { transform: scale(0.94); }
+  .header-btn.header-close { border:1px solid transparent; background: transparent; color: var(--dock-fg-2); font-size:18px; }
+  .header-btn.header-close:hover { color: var(--dock-fg); border-color: color-mix(in srgb, var(--dock-fg) 10%, transparent); background: color-mix(in srgb, var(--dock-fg) 5%, transparent); transform: translateY(-1px); }
 
-  .tabs { display:flex; gap:18px; padding:0 16px; height: 44px; align-items:center; border-bottom:1px solid var(--border); background: var(--glass-bg); }
-  .tab { flex:0 0 auto; text-align:center; padding:0 2px; min-width:auto; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-radius:0; cursor:pointer; transition: color 0.15s ease; position:relative; }
-  .tab:hover { color:var(--text); }
+  .tabs { display:flex; gap:18px; padding:0 16px; height: 44px; align-items:center; border-bottom:1px solid var(--dock-stroke); background: transparent; }
+  .tab { flex:0 0 auto; text-align:center; padding:0 2px; min-width:auto; font-size:12px; font-weight:500; color:var(--dock-fg-2); background:transparent; border:none; border-radius:0; cursor:pointer; transition: all 0.2s ease; position:relative; }
+  .tab:hover { color:var(--dock-fg); transform: translateY(-1px); }
   .tab::after { content:''; position:absolute; left:20%; right:20%; bottom:-2px; height:2px; background: transparent; border-radius:1px; transition: background 0.2s ease; }
-  .tab.active { color:var(--text); font-weight:600; }
+  .tab.active { color:var(--dock-fg); font-weight:600; transform: none; }
   .tab.active::after { background: color-mix(in srgb, var(--dock-fg) 28%, transparent); }
   .tab:focus-visible { outline:none; }
 
@@ -2967,7 +2937,7 @@ ${TOKENS_CSS}
     gap: 8px;
     font-weight: 500;
     font-size: 14px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .msg .summary .icon {
     font-size: 16px;
@@ -2982,7 +2952,7 @@ ${TOKENS_CSS}
   }
   .msg details summary {
     padding: 6px 0;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-size: 13px;
     user-select: none;
     list-style: none;
@@ -2999,13 +2969,13 @@ ${TOKENS_CSS}
     transform: rotate(180deg);
   }
   .msg details summary:hover {
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .msg .details-content {
     padding-top: 8px;
     font-size: 13px;
     line-height: 1.6;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .assistant-result {
     display: flex;
@@ -3020,11 +2990,11 @@ ${TOKENS_CSS}
   .assistant-result .summary .meta {
     margin-left: auto;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .assistant-result .result-body {
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
     line-height: 1.6;
   }
   .assistant-result .result-files {
@@ -3035,15 +3005,15 @@ ${TOKENS_CSS}
   .assistant-result .result-files-label {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .assistant-result .result-file-row {
     font-size: 12px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .assistant-result .result-file-meta {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-left: 4px;
   }
   .assistant-timeline {
@@ -3062,28 +3032,28 @@ ${TOKENS_CSS}
     margin: 0;
     padding-left: 0;
     list-style-type: none;
-    color: var(--text);
+    color: var(--dock-fg);
     font-size: 13px;
   }
   .timeline-feed .timeline-item {
     margin: 8px 0;
     padding-left: 12px;
     border-left: 1px solid transparent;
-    color: var(--text);
+    color: var(--dock-fg);
     transition: border-color 0.2s ease;
   }
   .timeline-feed .timeline-item:hover {
-    border-left-color: var(--border);
+    border-left-color: var(--dock-stroke);
   }
   .timeline-placeholder {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-style: italic;
   }
   .feed-header {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-bottom: 0;
     display: flex;
     align-items: center;
@@ -3104,11 +3074,11 @@ ${TOKENS_CSS}
   .assistant-summary {
     margin-top: 0px;
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .assistant-summary .summary-meta {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-bottom: 6px;
     opacity: 0.7;
   }
@@ -3118,7 +3088,7 @@ ${TOKENS_CSS}
     font-size: 13px;
   }
   .assistant-summary .summary-body {
-    color: var(--text);
+    color: var(--dock-fg);
     font-weight: 400;
     font-size: 13px;
     line-height: 1.6;
@@ -3126,7 +3096,7 @@ ${TOKENS_CSS}
   .timeline-toggle {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
     font-size: 12px;
     opacity: 0;
@@ -3143,15 +3113,15 @@ ${TOKENS_CSS}
   .assistant-result .result-skeleton-line {
     height: 10px;
     border-radius: 4px;
-    background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+    background: color-mix(in srgb, var(--dock-fg-2) 18%, transparent);
     animation: dock-skeleton 1.4s ease infinite;
   }
   .assistant-result .spinner {
     width: 14px;
     height: 14px;
     border-radius: 7px;
-    border: 2px solid color-mix(in srgb, var(--text-secondary) 35%, transparent);
-    border-top-color: var(--text-secondary);
+    border: 2px solid color-mix(in srgb, var(--dock-fg-2) 35%, transparent);
+    border-top-color: var(--dock-fg-2);
     display: inline-block;
     animation: dock-spin 0.9s linear infinite;
   }
@@ -3163,7 +3133,7 @@ ${TOKENS_CSS}
   }
   .timeline-placeholder {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-style: italic;
   }
   .raw-logs {
@@ -3172,12 +3142,12 @@ ${TOKENS_CSS}
   }
   .raw-logs summary {
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .raw-logs-body {
     margin-top: 6px;
     padding: 10px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 8px;
     background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
     max-height: 160px;
@@ -3204,12 +3174,12 @@ ${TOKENS_CSS}
   }
   .diff-details summary {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
   }
   .diff-body {
     margin-top: 6px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 8px;
     background: color-mix(in srgb, var(--dock-bg) 94%, transparent);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -3222,26 +3192,26 @@ ${TOKENS_CSS}
   }
   .diff-line.add {
     background: color-mix(in srgb, var(--success) 12%, transparent);
-    color: color-mix(in srgb, var(--success) 60%, var(--text));
+    color: color-mix(in srgb, var(--success) 60%, var(--dock-fg));
   }
   .diff-line.del {
     background: color-mix(in srgb, var(--error) 12%, transparent);
-    color: color-mix(in srgb, var(--error) 60%, var(--text));
+    color: color-mix(in srgb, var(--error) 60%, var(--dock-fg));
   }
   .diff-line.ctx {
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   
   /* Thinking section */
   .msg .thinking-summary {
-    color: var(--text-tertiary);
+    color: var(--dock-fg-2);
     font-style: italic;
   }
   .msg .thinking-content {
     padding-top: 8px;
     font-size: 12px;
     line-height: 1.5;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     white-space: pre-wrap;
   }
@@ -3254,7 +3224,7 @@ ${TOKENS_CSS}
     padding-top: 8px;
   }
   .msg .file-item {
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 6px;
     padding: 8px 12px;
     background: var(--glass-bg);
@@ -3271,11 +3241,11 @@ ${TOKENS_CSS}
   .msg .file-name {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .msg .file-meta {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     margin-top: 4px;
   }
 
@@ -3283,20 +3253,20 @@ ${TOKENS_CSS}
   .md-p { margin: 6px 0; }
   .md-h { margin: 10px 0 6px; font-weight: 600; }
   .md-list { padding-left: 18px; margin: 6px 0; }
-  .md-code { background: #0f172a0d; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow:auto; }
-  .md-code-inline { background: #0f172a1a; border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-  .md a { color: var(--text); text-decoration: underline; }
+  .md-code { background: #0f172a0d; border: 1px solid var(--dock-stroke); border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow:auto; }
+  .md-code-inline { background: #0f172a1a; border: 1px solid var(--dock-stroke); border-radius: 4px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .md a { color: var(--dock-fg); text-decoration: underline; }
 
   /* Change list (collapsed by default, preview-only) */
   .change-list { display: flex; flex-direction: column; gap: 8px; }
-  .change-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
-  .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
-  .change-meta { font-size: 12px; color: var(--text-secondary); }
+  .change-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px dashed var(--dock-stroke); border-radius: 10px; }
+  .change-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--dock-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+  .change-meta { font-size: 12px; color: var(--dock-fg-2); }
 
   .msg.user .bubble {
     font-size: 13px;
     line-height: 1.6;
-    color: var(--text);
+    color: var(--dock-fg);
   }
 
   /* History */
@@ -3310,11 +3280,11 @@ ${TOKENS_CSS}
     border: none;
     background: transparent;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
     margin-bottom: 6px;
   }
-  .history-new:hover { color: var(--text); }
+  .history-new:hover { color: var(--dock-fg); }
 
   .history-row {
     display: flex;
@@ -3322,7 +3292,7 @@ ${TOKENS_CSS}
     justify-content: space-between;
     gap: 16px;
     padding: 16px 20px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: var(--radius-panel);
     background: var(--surface);
     box-shadow: var(--shadow);
@@ -3332,29 +3302,29 @@ ${TOKENS_CSS}
   .history-row:hover .history-actions { opacity: 1; }
 
   .history-main { min-width: 0; }
-  .history-title { font-size: 13px; font-weight: 500; color: var(--text); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-title { font-size: 13px; font-weight: 500; color: var(--dock-fg); max-width: 48ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .history-meta { margin-top: 4px; font-size: 12px; color: var(--hint); }
 
   .history-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s ease; }
   .history-actions button {
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     background: var(--surface);
     padding: 5px 10px;
     border-radius: 999px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     cursor: pointer;
   }
-  .history-actions button:hover { color: var(--text); }
+  .history-actions button:hover { color: var(--dock-fg); }
   .history-row.renaming .history-actions { opacity: 1; }
   .history-rename {
     width: 100%;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: 12px;
     background: var(--surface);
     padding: 6px 10px;
     font-size: 13px;
-    color: var(--text);
+    color: var(--dock-fg);
     outline: none;
   }
   .history-rename:focus { border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); }
@@ -3363,7 +3333,7 @@ ${TOKENS_CSS}
   }
 
   /* Composer */
-  .footer { border-top: 1px solid var(--glass-border); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 24px; }
+  .footer { border-top: 1px solid var(--dock-stroke); padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 24px; }
 
   .composer-top {
     display: flex;
@@ -3371,7 +3341,7 @@ ${TOKENS_CSS}
     gap: 8px;
     align-items: center;
     border-radius: 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     background: var(--surface);
     padding: 10px 14px;
     margin-bottom: 12px; /* adds space before the engine/actions row */
@@ -3390,7 +3360,7 @@ ${TOKENS_CSS}
   }
   .composer-top .editor:empty:before {
     content: attr(data-placeholder);
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     pointer-events: none;
   }
   .chip {
@@ -3398,11 +3368,11 @@ ${TOKENS_CSS}
     align-items: center;
     gap: 6px;
     background: transparent;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     border-radius: var(--radius-chip);
     padding: 2px 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .chip.edited::after {
     content: '';
@@ -3426,10 +3396,10 @@ ${TOKENS_CSS}
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     padding: 4px 12px;
     border-radius: 999px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     background: var(--surface);
   }
   .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
@@ -3437,10 +3407,10 @@ ${TOKENS_CSS}
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }
-  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--border); background: var(--surface); color: var(--text-secondary); display:grid; place-items:center; cursor:pointer; transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease; }
-  .icon:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); }
-  .icon:active { transform: scale(0.98); }
-  .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--text); }
+  .icon { width:32px; height:32px; border-radius:16px; border:1px solid var(--dock-stroke); background: var(--surface); color: var(--dock-fg-2); display:grid; place-items:center; cursor:pointer; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .icon:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .icon:active { transform: scale(0.94); }
+  .icon.active { background: var(--surface-hover); border-color: color-mix(in srgb, var(--dock-fg) 25%, transparent); color: var(--dock-fg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--dock-fg) 10%, transparent); }
   .send {
     width: 32px;
     height: 32px;
@@ -3451,12 +3421,13 @@ ${TOKENS_CSS}
     display: grid;
     place-items: center;
     cursor: pointer;
-    transition: transform 0.15s ease, opacity 0.2s ease, background 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     position: relative;
     padding: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   }
-  .send:hover { transform: scale(1.05); }
-  .send:active { transform: scale(0.95); }
+  .send:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+  .send:active { transform: scale(0.92); }
   .send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; background: var(--dock-fg-2); }
   
   .send svg {
@@ -3510,11 +3481,11 @@ ${TOKENS_CSS}
     height: 24px;
     border-radius: 50%;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     font-size: 12px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     transition: all 0.2s ease;
@@ -3545,12 +3516,12 @@ ${TOKENS_CSS}
   .timeline-title {
     font-size: 13px;
     font-weight: 400;
-    color: var(--text);
+    color: var(--dock-fg);
     flex: 1; /* Push chevron to right */
   }
 
   .timeline-chevron {
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
     display: flex;
     align-items: center;
     transition: transform 0.2s ease;
@@ -3572,7 +3543,7 @@ ${TOKENS_CSS}
     margin-top: 4px;
     border-radius: 6px;
     background: var(--dock-bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--dock-stroke);
     overflow: hidden;
   }
   
@@ -3588,7 +3559,7 @@ ${TOKENS_CSS}
     white-space: pre-wrap;
     overflow-x: auto;
     max-height: 500px;
-    color: var(--text);
+    color: var(--dock-fg);
     background: transparent; /* Background handled by container */
     border: none; /* Border handled by container */
   }
@@ -3597,7 +3568,7 @@ ${TOKENS_CSS}
   .summary-body {
     font-size: 13px;
     line-height: 1.5;
-    color: var(--text);
+    color: var(--dock-fg);
     margin-top: 8px;
     white-space: pre-wrap; /* Ensure wrapping */
     overflow-wrap: break-word; /* Prevent overflow */
@@ -3607,7 +3578,7 @@ ${TOKENS_CSS}
   /* Specific Entry Types */
   .timeline-entry.thinking .timeline-title {
     font-style: italic;
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   
   .timeline-file-list {
@@ -3622,14 +3593,14 @@ ${TOKENS_CSS}
     gap: 6px;
     font-size: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: var(--text);
+    color: var(--dock-fg);
   }
   .timeline-file-stat {
     font-size: 10px;
     padding: 1px 4px;
     border-radius: 4px;
     background: var(--surface);
-    color: var(--text-secondary);
+    color: var(--dock-fg-2);
   }
   .timeline-file-stat.added { color: var(--success, #10b981); background: color-mix(in srgb, var(--success, #10b981) 10%, transparent); }
   .timeline-file-stat.removed { color: var(--error, #ef4444); background: color-mix(in srgb, var(--error, #ef4444) 10%, transparent); }
@@ -6319,26 +6290,35 @@ ${TOKENS_CSS}
           this.container.id = 'dock-edit-modal';
           this.container.style.cssText = `
       position: fixed; right: 24px; top: 72px; width: 360px;
-      background: var(--dock-bg); backdrop-filter: blur(24px);
-      border-radius: var(--radius-panel, 18px); border: 1px solid var(--dock-stroke);
-      box-shadow: var(--shadow); padding: 20px 22px; display: none;
+      /* Glassmorphism */
+      background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: var(--radius-panel, 18px); 
+      border: 1px solid var(--dock-stroke);
+      /* Floating Depth */
+      box-shadow: 
+        0 16px 48px -12px rgba(0,0,0,0.2),
+        0 0 0 1px var(--dock-stroke);
+      padding: 20px 22px; display: none;
       z-index: 2147483647; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
       color: var(--dock-fg); max-height: calc(100vh - 144px);
       overflow: hidden; flex-direction: column;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
     `;
 
           this.container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0;">
         <div id="dock-edit-title" style="font-weight:600;font-size:14px;">Edit</div>
-        <button id="dock-edit-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--dock-fg-2);">×</button>
+        <button id="dock-edit-close" style="border:none;background:transparent;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;color:var(--dock-fg-2);transition:all 0.2s ease;">×</button>
       </div>
       <div id="dock-edit-scroll" style="flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding-right:4px;min-height:0;">
         <form id="dock-edit-form" class="dock-edit-form" style="display:flex;flex-direction:column;gap:18px;"></form>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-shrink:0;">
-        <button type="button" id="dock-edit-reset" style="border:1px solid var(--dock-stroke);background:transparent;border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);cursor:pointer;margin-right:auto;">Reset</button>
-        <button type="button" id="dock-edit-undo" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);cursor:pointer;">Undo</button>
-        <button type="button" id="dock-edit-apply" style="border:1px solid var(--dock-stroke);background:var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent));border-radius:12px;padding:6px 12px;color:var(--dock-fg);cursor:pointer;">Apply</button>
+        <button type="button" id="dock-edit-reset" style="border:1px solid var(--dock-stroke);background:transparent;border-radius:12px;padding:6px 14px;color:var(--dock-fg-2);cursor:pointer;margin-right:auto;font-size:13px;font-weight:500;transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">Reset</button>
+        <button type="button" id="dock-edit-undo" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 60%, transparent);border-radius:12px;padding:6px 14px;color:var(--dock-fg);cursor:pointer;font-size:13px;font-weight:500;transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">Undo</button>
+        <button type="button" id="dock-edit-apply" style="border:none;background:var(--dock-fg);border-radius:12px;padding:6px 16px;color:var(--dock-bg);cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.1);transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">Apply</button>
       </div>
     `;
 
@@ -6346,11 +6326,30 @@ ${TOKENS_CSS}
           this.scrollContainer = this.container.querySelector('#dock-edit-scroll');
           this.container.setAttribute('tabindex', '-1');
           this.container.querySelector('#dock-edit-close').addEventListener('click', () => this.close(true));
-          this.container.querySelector('#dock-edit-reset').addEventListener('click', () => this.resetChanges());
+          const closeBtn = this.container.querySelector('#dock-edit-close');
+          closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'var(--dock-stroke)'; closeBtn.style.color = 'var(--dock-fg)'; });
+          closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'transparent'; closeBtn.style.color = 'var(--dock-fg-2)'; });
+
+          const resetBtn = this.container.querySelector('#dock-edit-reset');
+          resetBtn.addEventListener('click', () => this.resetChanges());
+          resetBtn.addEventListener('mouseenter', () => { resetBtn.style.color = 'var(--dock-fg)'; resetBtn.style.borderColor = 'var(--dock-fg-2)'; resetBtn.style.transform = 'translateY(-1px)'; });
+          resetBtn.addEventListener('mouseleave', () => { resetBtn.style.color = 'var(--dock-fg-2)'; resetBtn.style.borderColor = 'var(--dock-stroke)'; resetBtn.style.transform = 'none'; });
+
           this.undoBtn = this.container.querySelector('#dock-edit-undo');
-          if (this.undoBtn) this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) { } });
+          if (this.undoBtn) {
+              this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) { } });
+              this.undoBtn.addEventListener('mouseenter', () => { this.undoBtn.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; this.undoBtn.style.transform = 'translateY(-1px)'; });
+              this.undoBtn.addEventListener('mouseleave', () => { this.undoBtn.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; this.undoBtn.style.transform = 'none'; });
+          }
+
           this.applyBtn = this.container.querySelector('#dock-edit-apply');
-          if (this.applyBtn) this.applyBtn.addEventListener('click', () => this.applyChanges());
+          if (this.applyBtn) {
+              this.applyBtn.addEventListener('click', () => this.applyChanges());
+              this.applyBtn.addEventListener('mouseenter', () => { this.applyBtn.style.opacity = '0.9'; this.applyBtn.style.transform = 'translateY(-1px)'; this.applyBtn.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)'; });
+              this.applyBtn.addEventListener('mouseleave', () => { this.applyBtn.style.opacity = '1'; this.applyBtn.style.transform = 'none'; this.applyBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; });
+              this.applyBtn.addEventListener('mousedown', () => { this.applyBtn.style.transform = 'scale(0.96)'; });
+              this.applyBtn.addEventListener('mouseup', () => { this.applyBtn.style.transform = 'translateY(-1px)'; });
+          }
 
           // Prevent scroll events from bubbling
           this.container.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
@@ -7029,11 +7028,20 @@ ${TOKENS_CSS}
       renderTextField(label, key, value) {
           const wrapper = document.createElement('label');
           wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);font-weight:500;">${label}</span>`;
           const textarea = document.createElement('textarea');
-          textarea.style.cssText = 'font-size:13px;padding:8px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);resize:vertical;';
+          textarea.style.cssText = `
+            font-size:13px;padding:8px 10px;border:1px solid var(--dock-stroke);border-radius:8px;
+            background:color-mix(in srgb, var(--dock-bg) 60%, transparent);
+            color:var(--dock-fg);resize:vertical;outline:none;transition:all 0.2s ease;
+            font-family:inherit;line-height:1.5;
+        `;
           textarea.value = value === 'mixed' ? '' : (value || '');
           textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
+
+          textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--accent)'; textarea.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+          textarea.addEventListener('blur', () => { textarea.style.borderColor = 'var(--dock-stroke)'; textarea.style.boxShadow = 'none'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
+
           textarea.addEventListener('input', () => {
               this.current[key] = textarea.value;
               this.intents[key] = `Update text content`;
@@ -7046,10 +7054,18 @@ ${TOKENS_CSS}
       renderNumberField(label, key, value, opts = {}) {
           const wrapper = document.createElement('div');
           wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+          wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);font-weight:500;">${label}</span>`;
           const input = document.createElement('input');
           input.type = 'number';
-          input.style.cssText = 'padding:6px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);';
+          input.style.cssText = `
+            padding:6px 10px;border:1px solid var(--dock-stroke);border-radius:8px;
+            background:color-mix(in srgb, var(--dock-bg) 60%, transparent);
+            color:var(--dock-fg);outline:none;transition:all 0.2s ease;
+            font-family:inherit;font-size:13px;
+        `;
+
+          input.addEventListener('focus', () => { input.style.borderColor = 'var(--accent)'; input.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+          input.addEventListener('blur', () => { input.style.borderColor = 'var(--dock-stroke)'; input.style.boxShadow = 'none'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
           input.step = opts.step || '1';
           if (opts.min !== undefined) input.min = opts.min;
           if (opts.max !== undefined) input.max = opts.max;
@@ -8267,19 +8283,68 @@ ${TOKENS_CSS}
       this.shadow.innerHTML = `
       <style>
         /* Uses design tokens from :root (see extension/shared/tokens.css) */
-        .bar { position: relative; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
-          background: var(--dock-bg);
+        .bar { 
+          position: relative; 
+          height: var(--header-height); 
+          display: flex; 
+          align-items: center; 
+          gap: 12px; 
+          padding: 0 20px;
+          /* Glassmorphism */
+          background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
           border-bottom: 1px solid var(--dock-stroke);
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: var(--dock-fg);
+          box-shadow: 0 4px 24px -4px rgba(0,0,0,0.08);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+          font-size: 13px; 
+          color: var(--dock-fg);
+          transition: background 0.3s ease;
         }
-        select, input { font-size: 12px; border: 1px solid var(--dock-stroke); border-radius: 8px; background: var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent)); color: var(--dock-fg); padding: 4px 8px; }
-        .btn { height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--dock-fg); opacity: 0.7; cursor: pointer; }
-        .btn:hover { opacity: 1; border-color: var(--dock-stroke); }
-        .btn:active { transform: scale(0.98); }
+        select, input { 
+          font-size: 12px; 
+          border: 1px solid var(--dock-stroke); 
+          border-radius: 8px; 
+          background: color-mix(in srgb, var(--dock-bg) 60%, transparent); 
+          color: var(--dock-fg); 
+          padding: 6px 10px; 
+          outline: none;
+          transition: all 0.2s ease;
+        }
+        select:hover, input:hover {
+          background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
+          border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent);
+        }
+        select:focus, input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+        }
+        .btn { 
+          height: 32px; 
+          padding: 0 12px; 
+          display: inline-flex; 
+          align-items: center; 
+          justify-content: center; 
+          border: 1px solid transparent; 
+          border-radius: 10px; 
+          background: transparent; 
+          color: var(--dock-fg-2); 
+          font-weight: 500;
+          cursor: pointer; 
+          transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .btn:hover { 
+          color: var(--dock-fg); 
+          background: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+          transform: translateY(-1px);
+        }
+        .btn:active { 
+          transform: scale(0.96); 
+        }
         .spacer { flex: 1; }
-        .field { display: inline-flex; align-items: center; gap: 6px; }
+        .field { display: inline-flex; align-items: center; gap: 8px; }
         .dim { width: 72px; }
-        .label { color: var(--dock-fg); opacity: 0.65; }
+        .label { color: var(--dock-fg-2); font-weight: 500; font-size: 12px; }
       </style>
       <div class="bar" id="bar">
         <label class="field"><span class="label">Device</span>
@@ -8310,8 +8375,8 @@ ${TOKENS_CSS}
       document.body.appendChild(this.host);
       this.bind();
       // Keep right inset in sync with dock width
-      try { this.stateManager.subscribe('ui.dockWidth', (w) => { if (this.host) this.host.style.right = (w || 420) + 'px'; }); } catch (_) {}
-      try { this.host.style.right = (this.stateManager.get('ui.dockWidth') || 420) + 'px'; } catch (_) {}
+      try { this.stateManager.subscribe('ui.dockWidth', (w) => { if (this.host) this.host.style.right = (w || 420) + 'px'; }); } catch (_) { }
+      try { this.host.style.right = (this.stateManager.get('ui.dockWidth') || 420) + 'px'; } catch (_) { }
     }
 
     setVisible(visible) {
@@ -8349,14 +8414,14 @@ ${TOKENS_CSS}
       reflectZoom();
 
       // Reflect external state changes (e.g., fit/preset/resize)
-      try { this.stateManager.subscribe('ui.viewport.scale', reflectZoom); } catch (_) {}
-      try { this.stateManager.subscribe('ui.viewport.auto', reflectZoom); } catch (_) {}
+      try { this.stateManager.subscribe('ui.viewport.scale', reflectZoom); } catch (_) { }
+      try { this.stateManager.subscribe('ui.viewport.auto', reflectZoom); } catch (_) { }
       // No explicit reflow toggle; iframe stage is default
       const syncDims = () => {
         const logical = this.stateManager.get('ui.viewport.logical') || { width: 1440 };
         if (w) w.value = String(logical.width);
       };
-      try { this.stateManager.subscribe('ui.viewport.logical', syncDims); } catch (_) {}
+      try { this.stateManager.subscribe('ui.viewport.logical', syncDims); } catch (_) { }
       syncDims();
 
       // Only Responsive allows editing width
@@ -8365,7 +8430,7 @@ ${TOKENS_CSS}
         if (w) w.disabled = p !== 'responsive';
         if (preset) preset.value = p;
       };
-      try { this.stateManager.subscribe('ui.viewport.preset', syncPreset); } catch (_) {}
+      try { this.stateManager.subscribe('ui.viewport.preset', syncPreset); } catch (_) { }
       syncPreset();
     }
   }

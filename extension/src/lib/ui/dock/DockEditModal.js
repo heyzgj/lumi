@@ -50,26 +50,35 @@ export default class DockEditModal {
         this.container.id = 'dock-edit-modal';
         this.container.style.cssText = `
       position: fixed; right: 24px; top: 72px; width: 360px;
-      background: var(--dock-bg); backdrop-filter: blur(24px);
-      border-radius: var(--radius-panel, 18px); border: 1px solid var(--dock-stroke);
-      box-shadow: var(--shadow); padding: 20px 22px; display: none;
+      /* Glassmorphism */
+      background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: var(--radius-panel, 18px); 
+      border: 1px solid var(--dock-stroke);
+      /* Floating Depth */
+      box-shadow: 
+        0 16px 48px -12px rgba(0,0,0,0.2),
+        0 0 0 1px var(--dock-stroke);
+      padding: 20px 22px; display: none;
       z-index: 2147483647; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
       color: var(--dock-fg); max-height: calc(100vh - 144px);
       overflow: hidden; flex-direction: column;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
     `;
 
         this.container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0;">
         <div id="dock-edit-title" style="font-weight:600;font-size:14px;">Edit</div>
-        <button id="dock-edit-close" style="border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--dock-fg-2);">×</button>
+        <button id="dock-edit-close" style="border:none;background:transparent;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;color:var(--dock-fg-2);transition:all 0.2s ease;">×</button>
       </div>
       <div id="dock-edit-scroll" style="flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding-right:4px;min-height:0;">
         <form id="dock-edit-form" class="dock-edit-form" style="display:flex;flex-direction:column;gap:18px;"></form>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-shrink:0;">
-        <button type="button" id="dock-edit-reset" style="border:1px solid var(--dock-stroke);background:transparent;border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);cursor:pointer;margin-right:auto;">Reset</button>
-        <button type="button" id="dock-edit-undo" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 94%, transparent);border-radius:12px;padding:6px 12px;color:var(--dock-fg-2);cursor:pointer;">Undo</button>
-        <button type="button" id="dock-edit-apply" style="border:1px solid var(--dock-stroke);background:var(--surface, color-mix(in srgb, var(--dock-bg) 96%, transparent));border-radius:12px;padding:6px 12px;color:var(--dock-fg);cursor:pointer;">Apply</button>
+        <button type="button" id="dock-edit-reset" style="border:1px solid var(--dock-stroke);background:transparent;border-radius:12px;padding:6px 14px;color:var(--dock-fg-2);cursor:pointer;margin-right:auto;font-size:13px;font-weight:500;transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">Reset</button>
+        <button type="button" id="dock-edit-undo" style="border:1px solid var(--dock-stroke);background:color-mix(in srgb, var(--dock-bg) 60%, transparent);border-radius:12px;padding:6px 14px;color:var(--dock-fg);cursor:pointer;font-size:13px;font-weight:500;transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">Undo</button>
+        <button type="button" id="dock-edit-apply" style="border:none;background:var(--dock-fg);border-radius:12px;padding:6px 16px;color:var(--dock-bg);cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.1);transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">Apply</button>
       </div>
     `;
 
@@ -77,11 +86,30 @@ export default class DockEditModal {
         this.scrollContainer = this.container.querySelector('#dock-edit-scroll');
         this.container.setAttribute('tabindex', '-1');
         this.container.querySelector('#dock-edit-close').addEventListener('click', () => this.close(true));
-        this.container.querySelector('#dock-edit-reset').addEventListener('click', () => this.resetChanges());
+        const closeBtn = this.container.querySelector('#dock-edit-close');
+        closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'var(--dock-stroke)'; closeBtn.style.color = 'var(--dock-fg)'; });
+        closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'transparent'; closeBtn.style.color = 'var(--dock-fg-2)'; });
+
+        const resetBtn = this.container.querySelector('#dock-edit-reset');
+        resetBtn.addEventListener('click', () => this.resetChanges());
+        resetBtn.addEventListener('mouseenter', () => { resetBtn.style.color = 'var(--dock-fg)'; resetBtn.style.borderColor = 'var(--dock-fg-2)'; resetBtn.style.transform = 'translateY(-1px)'; });
+        resetBtn.addEventListener('mouseleave', () => { resetBtn.style.color = 'var(--dock-fg-2)'; resetBtn.style.borderColor = 'var(--dock-stroke)'; resetBtn.style.transform = 'none'; });
+
         this.undoBtn = this.container.querySelector('#dock-edit-undo');
-        if (this.undoBtn) this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) { } });
+        if (this.undoBtn) {
+            this.undoBtn.addEventListener('click', () => { try { this.eventBus.emit('wysiwyg:undo'); } catch (_) { } });
+            this.undoBtn.addEventListener('mouseenter', () => { this.undoBtn.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; this.undoBtn.style.transform = 'translateY(-1px)'; });
+            this.undoBtn.addEventListener('mouseleave', () => { this.undoBtn.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; this.undoBtn.style.transform = 'none'; });
+        }
+
         this.applyBtn = this.container.querySelector('#dock-edit-apply');
-        if (this.applyBtn) this.applyBtn.addEventListener('click', () => this.applyChanges());
+        if (this.applyBtn) {
+            this.applyBtn.addEventListener('click', () => this.applyChanges());
+            this.applyBtn.addEventListener('mouseenter', () => { this.applyBtn.style.opacity = '0.9'; this.applyBtn.style.transform = 'translateY(-1px)'; this.applyBtn.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)'; });
+            this.applyBtn.addEventListener('mouseleave', () => { this.applyBtn.style.opacity = '1'; this.applyBtn.style.transform = 'none'; this.applyBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; });
+            this.applyBtn.addEventListener('mousedown', () => { this.applyBtn.style.transform = 'scale(0.96)'; });
+            this.applyBtn.addEventListener('mouseup', () => { this.applyBtn.style.transform = 'translateY(-1px)'; });
+        }
 
         // Prevent scroll events from bubbling
         this.container.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
@@ -760,11 +788,20 @@ export default class DockEditModal {
     renderTextField(label, key, value) {
         const wrapper = document.createElement('label');
         wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-        wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+        wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);font-weight:500;">${label}</span>`;
         const textarea = document.createElement('textarea');
-        textarea.style.cssText = 'font-size:13px;padding:8px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);resize:vertical;';
+        textarea.style.cssText = `
+            font-size:13px;padding:8px 10px;border:1px solid var(--dock-stroke);border-radius:8px;
+            background:color-mix(in srgb, var(--dock-bg) 60%, transparent);
+            color:var(--dock-fg);resize:vertical;outline:none;transition:all 0.2s ease;
+            font-family:inherit;line-height:1.5;
+        `;
         textarea.value = value === 'mixed' ? '' : (value || '');
         textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
+
+        textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--accent)'; textarea.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+        textarea.addEventListener('blur', () => { textarea.style.borderColor = 'var(--dock-stroke)'; textarea.style.boxShadow = 'none'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
+
         textarea.addEventListener('input', () => {
             this.current[key] = textarea.value;
             this.intents[key] = `Update text content`;
@@ -777,10 +814,18 @@ export default class DockEditModal {
     renderNumberField(label, key, value, opts = {}) {
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-        wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);">${label}</span>`;
+        wrapper.innerHTML = `<span style="font-size:12px;color:var(--dock-fg-2);font-weight:500;">${label}</span>`;
         const input = document.createElement('input');
         input.type = 'number';
-        input.style.cssText = 'padding:6px;border:1px solid var(--dock-stroke);border-radius:8px;background:color-mix(in srgb, var(--dock-bg) 96%, transparent);color:var(--dock-fg);';
+        input.style.cssText = `
+            padding:6px 10px;border:1px solid var(--dock-stroke);border-radius:8px;
+            background:color-mix(in srgb, var(--dock-bg) 60%, transparent);
+            color:var(--dock-fg);outline:none;transition:all 0.2s ease;
+            font-family:inherit;font-size:13px;
+        `;
+
+        input.addEventListener('focus', () => { input.style.borderColor = 'var(--accent)'; input.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+        input.addEventListener('blur', () => { input.style.borderColor = 'var(--dock-stroke)'; input.style.boxShadow = 'none'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
         input.step = opts.step || '1';
         if (opts.min !== undefined) input.min = opts.min;
         if (opts.max !== undefined) input.max = opts.max;
