@@ -55,7 +55,7 @@ export default class ViewportController {
         if (!this.enabled) return;
         this.applyStageMode(true);
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   getStageInfo() {
@@ -257,7 +257,7 @@ export default class ViewportController {
   unregisterListeners() {
     if (!this._listeners) return;
     this._listeners.forEach((dispose) => {
-      try { dispose(); } catch (_) {}
+      try { dispose(); } catch (_) { }
     });
     this._listeners = [];
     this._dragging = false;
@@ -301,6 +301,10 @@ export default class ViewportController {
     this.iframe = iframe;
     this.stageMode = 'iframe';
     this.stageFallback = 'pending';
+
+    // Track emulation state to prevent infinite reload loop
+    let emulationApplied = false;
+
     console.log('[LUMI] mounting iframe stage...');
 
     // Show a lightweight loader overlay for smoothness
@@ -326,11 +330,62 @@ export default class ViewportController {
         this._iframeFallbackTimer = null;
       }
       this.stageFallback = 'none';
+
+      // Debug: Verify iframe viewport behavior
+      const win = iframe.contentWindow;
+      const doc = iframe.contentDocument;
+      console.group('[LUMI DEBUG] Iframe Viewport Analysis');
+      console.log('📐 Iframe element dimensions:');
+      console.log('  iframe.offsetWidth:', iframe.offsetWidth);
+      console.log('  iframe.offsetHeight:', iframe.offsetHeight);
+      console.log('  iframe.clientWidth:', iframe.clientWidth);
+      console.log('  iframe.clientHeight:', iframe.clientHeight);
+      console.log('');
+      console.log('🪟 Window inside iframe:');
+      console.log('  window.innerWidth:', win.innerWidth);
+      console.log('  window.innerHeight:', win.innerHeight);
+      console.log('  window.outerWidth:', win.outerWidth);
+      console.log('  window.outerHeight:', win.outerHeight);
+      console.log('');
+      console.log('📄 Document inside iframe:');
+      console.log('  document.documentElement.clientWidth:', doc.documentElement.clientWidth);
+      console.log('  document.documentElement.clientHeight:', doc.documentElement.clientHeight);
+      console.log('  document.body.clientWidth:', doc.body?.clientWidth);
+      console.log('  document.body.clientHeight:', doc.body?.clientHeight);
+      console.log('');
+      console.log('📱 Viewport Meta Tag:');
+      const vpMeta = doc.querySelector('meta[name="viewport"]');
+      console.log('  exists:', !!vpMeta);
+      console.log('  content:', vpMeta?.content || 'N/A');
+      console.log('');
+      console.log('🎯 Media Query Tests:');
+      const mq428 = win.matchMedia('(max-width: 428px)');
+      const mq768 = win.matchMedia('(max-width: 768px)');
+      const mq1024 = win.matchMedia('(max-width: 1024px)');
+      console.log('  (max-width: 428px):', mq428.matches);
+      console.log('  (max-width: 768px):', mq768.matches);
+      console.log('  (max-width: 1024px):', mq1024.matches);
+      console.log('');
+      console.log('🖥️ Outer window (for comparison):');
+      console.log('  window.innerWidth:', window.innerWidth);
+      console.log('  window.innerHeight:', window.innerHeight);
+      console.log('  emulationApplied:', emulationApplied);
+      console.groupEnd();
+
       console.log('[LUMI] iframe load ok');
-      try { loader.remove(); } catch (_) {}
-      // Emit ready event to allow outer code to bind selectors/highlights inside the frame
-      try { this.eventBus.emit('viewport:iframe-ready', { iframe }); } catch (_) {}
-    }, { once: true });
+      try { loader.remove(); } catch (_) { }
+
+      // CRITICAL: Only apply responsive emulation on FIRST load
+      if (!emulationApplied) {
+        emulationApplied = true;
+        console.log('[LUMI] Applying responsive emulation (first load only)');
+        this.applyResponsiveEmulation(iframe);
+      } else {
+        console.log('[LUMI] Skipping responsive emulation (already applied)');
+        // Just emit ready event for subsequent loads
+        try { this.eventBus.emit('viewport:iframe-ready', { iframe }); } catch (_) { }
+      }
+    }, { passive: true });  // Remove { once: true } to handle reloads
 
     try {
       iframe.src = this.buildIframeSrc(window.location.href);
@@ -341,6 +396,133 @@ export default class ViewportController {
       }
       this.handleIframeFallback('exception');
     }
+  }
+
+  applyResponsiveEmulation(iframe) {
+    if (!iframe || !iframe.contentWindow || !iframe.contentDocument) return;
+
+    const win = iframe.contentWindow;
+    const doc = iframe.contentDocument;
+    const iframeWidth = iframe.clientWidth;
+    const iframeHeight = iframe.clientHeight;
+
+    console.log('[LUMI] Applying responsive emulation:', iframeWidth, 'x', iframeHeight);
+
+    // CRITICAL FIX: We need to set up overrides BEFORE the page loads
+    // The current approach (modifying after load) won't work because CSS is already applied
+    // Solution: Reload the iframe after setting up the emulation infrastructure
+
+    // Step 1: Inject script that will run BEFORE page scripts
+    const setupScript = doc.createElement('script');
+    setupScript.textContent = `
+      (function() {
+        // Override window dimensions before any other scripts run
+        const iframeEl = window.frameElement;
+        if (iframeEl) {
+          Object.defineProperty(window, 'innerWidth', {
+            get() { return iframeEl.clientWidth; },
+            configurable: true
+          });
+          Object.defineProperty(window, 'innerHeight', {
+            get() { return iframeEl.clientHeight; },
+            configurable: true
+          });
+          Object.defineProperty(window, 'outerWidth', {
+            get() { return iframeEl.clientWidth; },
+            configurable: true
+          });
+          Object.defineProperty(window, 'outerHeight', {
+            get() { return iframeEl.clientHeight; },
+            configurable: true
+          });
+          console.log('[LUMI] Window dimensions overridden in iframe:', window.innerWidth, 'x', window.innerHeight);
+        }
+      })();
+    `;
+
+    // Insert at the very beginning of head
+    const head = doc.head || doc.documentElement;
+    if (head.firstChild) {
+      head.insertBefore(setupScript, head.firstChild);
+    } else {
+      head.appendChild(setupScript);
+    }
+
+    // Step 2: Inject or update viewport meta tag  
+    let vpMeta = doc.querySelector('meta[name="viewport"]');
+    if (!vpMeta) {
+      vpMeta = doc.createElement('meta');
+      vpMeta.name = 'viewport';
+      if (head.firstChild) {
+        head.insertBefore(vpMeta, head.firstChild);
+      } else {
+        head.appendChild(vpMeta);
+      }
+    }
+    // Force mobile-friendly viewport
+    vpMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+
+    // Step 3: Inject CSS to ensure responsive behavior
+    const responsiveCSS = doc.createElement('style');
+    responsiveCSS.id = 'lumi-responsive-fix';
+    responsiveCSS.textContent = `
+      /* LUMI Responsive Emulation Fix */
+      html, body {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+      }
+      :root {
+        --lumi-vw: ${iframeWidth}px;
+        --lumi-vh: ${iframeHeight}px;
+      }
+    `;
+    head.appendChild(responsiveCSS);
+
+    // Step 4: CRITICAL - Reload the iframe to apply changes
+    // We need to reload because CSS has already been evaluated with wrong window dimensions
+    console.log('[LUMI] Reloading iframe to apply responsive emulation...');
+    const currentSrc = iframe.src;
+
+    // Set up one-time load listener for the reload
+    const reloadHandler = () => {
+      console.log('[LUMI] Iframe reloaded with responsive emulation active');
+
+      // Verify dimensions after reload
+      const newWin = iframe.contentWindow;
+      if (newWin) {
+        console.log('[LUMI] Post-reload check:');
+        console.log('  window.innerWidth:', newWin.innerWidth);
+        console.log('  Media Query (max-width: 768px):', newWin.matchMedia('(max-width: 768px)').matches);
+      }
+
+      // Install ResizeObserver for dynamic updates
+      if (typeof ResizeObserver !== 'undefined') {
+        const resizeObserver = new ResizeObserver(() => {
+          const newDoc = iframe.contentDocument;
+          if (!newDoc) return;
+
+          const style = newDoc.getElementById('lumi-responsive-fix');
+          if (style) {
+            const w = iframe.clientWidth;
+            const h = iframe.clientHeight;
+            style.textContent = style.textContent
+              .replace(/--lumi-vw:\s*\d+px/, `--lumi-vw: ${w}px`)
+              .replace(/--lumi-vh:\s*\d+px/, `--lumi-vh: ${h}px`);
+          }
+
+          // Trigger resize event
+          try {
+            iframe.contentWindow?.dispatchEvent(new Event('resize'));
+          } catch (_) { }
+        });
+        resizeObserver.observe(iframe);
+      }
+    };
+
+    iframe.addEventListener('load', reloadHandler, { once: true });
+
+    // Trigger reload
+    iframe.src = currentSrc;
   }
 
   buildIframeSrc(href) {
@@ -359,7 +541,7 @@ export default class ViewportController {
 
   teardownIframe() {
     if (!this.iframe) return;
-    try { this.iframe.remove(); } catch (_) {}
+    try { this.iframe.remove(); } catch (_) { }
     this.iframe = null;
     if (this._iframeFallbackTimer) {
       clearTimeout(this._iframeFallbackTimer);
@@ -374,17 +556,25 @@ export default class ViewportController {
       this._iframeFallbackTimer = null;
     }
     console.warn(`[LUMI] iframe blocked -> fallback to inline (reason: ${reason})`);
-    try { this.eventBus.emit('viewport:iframe-fallback', { reason }); } catch (_) {}
+    try { this.eventBus.emit('viewport:iframe-fallback', { reason }); } catch (_) { }
     this.mountInlineStage(reason);
   }
 
   setPreset(name) {
     const key = PRESETS[name] ? name : 'responsive';
     const logical = PRESETS[key];
+
+    // CRITICAL: Mobile/Pad/Laptop presets MUST use iframe for true responsive emulation
+    // Responsive can use inline mode (default desktop behavior)
+    const needsIframe = (key === 'mobile' || key === 'pad' || key === 'laptop');
+
     this.stateManager.batch({
       'ui.viewport.preset': key,
-      'ui.viewport.logical': logical
+      'ui.viewport.logical': logical,
+      'ui.viewport.useIframeStage': needsIframe
     });
+
+    console.log(`[LUMI] Preset "${key}" (${logical.width}x${logical.height}), iframe=${needsIframe}`);
     this.layout();
   }
 

@@ -11,26 +11,20 @@ export default class EngineManager {
   }
 
   async init() {
-    console.log('[EngineManager] Initializing...');
-    
     // Initialize availability to unknown state (will be updated by HealthChecker)
     this.stateManager.set('engine.available', { codex: false, claude: false });
-    
+
     // Load saved engine preference
     const stored = await this.chromeBridge.storageGet(['engine']);
-    console.log('[EngineManager] Stored engine:', stored.engine);
-    
+
     if (stored.engine && (stored.engine === 'codex' || stored.engine === 'claude')) {
-      console.log('[EngineManager] Restoring saved engine:', stored.engine);
       this.selectEngine(stored.engine, true); // silent = true, no save
       this.stateManager.set('engine.restored', true);
     } else {
-      console.log('[EngineManager] No saved engine, using default: codex');
       this.stateManager.set('engine.restored', true);
     }
-    
+
     const currentEngine = this.stateManager.get('engine.current');
-    console.log('[EngineManager] Initialized with engine:', currentEngine);
     this.eventBus.emit('engine:initialized', currentEngine);
   }
 
@@ -39,16 +33,14 @@ export default class EngineManager {
       console.error('[EngineManager] Invalid engine:', engine);
       return;
     }
-    
-    console.log('[EngineManager] Selecting engine:', engine, 'silent:', silent);
+
     this.stateManager.set('engine.current', engine);
-    
+
     // Persist to storage
     if (!silent) {
-      console.log('[EngineManager] Saving engine to storage:', engine);
       this.chromeBridge.storageSet({ engine });
     }
-    
+
     this.eventBus.emit('engine:selected', engine);
   }
 
@@ -57,10 +49,7 @@ export default class EngineManager {
     // This prevents health check from overwriting user selection during initialization
     const restored = this.stateManager.get('engine.restored');
 
-    console.log('[EngineManager] updateAvailability called:', { codex, claude, restored });
-
     if (!restored) {
-      console.log('[EngineManager] Still initializing, skipping availability update');
       return;
     }
 
@@ -71,14 +60,11 @@ export default class EngineManager {
     };
 
     if (previous.codex === next.codex && previous.claude === next.claude) {
-      console.log('[EngineManager] Availability unchanged, skipping state update');
       return;
     }
 
     // Update as a whole object so subscribers to 'engine.available' fire
     this.stateManager.set('engine.available', next);
-
-    console.log('[EngineManager] Engine availability updated:', next);
     this.eventBus.emit('engine:availability-updated', next);
   }
 

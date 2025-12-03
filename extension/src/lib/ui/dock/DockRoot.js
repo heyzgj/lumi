@@ -1208,22 +1208,6 @@ export default class DockRoot {
   updateProjectName(project) {
     if (!this.projectLabel) return;
 
-    try {
-      const serverWd = this.stateManager.get('server.workingDirectory');
-      const debugProject = project && typeof project === 'object'
-        ? {
-          id: project.id,
-          name: project.name,
-          workingDirectory: project.workingDirectory
-        }
-        : null;
-      // eslint-disable-next-line no-console
-      console.log('[LUMI][Dock] updateProjectName', {
-        project: debugProject,
-        serverWorkingDirectory: serverWd
-      });
-    } catch (_) { /* ignore debug logging errors */ }
-
     const projectAllowed = this.stateManager.get('projects.allowed');
 
     // If there is no mapped project or the host is blocked, treat as unmapped
@@ -1242,16 +1226,7 @@ export default class DockRoot {
         this.projectLabel.textContent = `Lumi — ${base}`;
         return;
       }
-    } catch (_) { /* ignore */ }
-
-    // Fallback: use explicit project name when available
-    if (project && typeof project === 'object') {
-      const name = project.name || project.id || 'Linked Project';
-      this.projectLabel.textContent = `Lumi — ${name}`;
-      return;
-    }
-
-    this.projectLabel.textContent = 'Lumi — Unmapped Page';
+    } catch (_) { }
   }
 
   updateSendState() {

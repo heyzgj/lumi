@@ -19,10 +19,10 @@ LUMI is a Chrome extension that connects directly to AI coding agents like **Cod
 ## Features
 
 ✨ **Visual Selection** - Click any element on your page to select it instantly  
-📸 **Screenshot Annotations** - Capture and annotate your screen, AI sees what you see  
-🎯 **Direct Editing** - Edit colors, text, spacing, and styles with live preview  
+📸 **Screenshot Annotations** - Capture and annotate with a floating glass toolbar  
+🎯 **Direct Editing** - Edit colors, text, spacing, and styles with live preview in a glassmorphic modal  
 🤖 **AI-Powered Changes** - Natural language instructions transformed into code  
-🔄 **Live Sync** - Changes apply instantly, no page refresh needed  
+🔄 **Session Management** - Keep track of multiple conversations and changes  
 ⚡ **Works Everywhere** - Any web app, any framework, any stack
 
 
@@ -31,7 +31,7 @@ LUMI is a Chrome extension that connects directly to AI coding agents like **Cod
 ## Requirements
 - Node.js 20+
 - Chrome 115+
-- At least one CLI: Codex CLI and or Claude Code
+- At least one CLI: Codex CLI and/or Claude Code
 
 ## Quick Start
 1. **Clone the repository**
@@ -96,14 +96,27 @@ Click the "Test" button - should show "Connected" in green.
 
 ## Daily Use
 1. Keep the server running (from the project directory: `npm run dev`).
-2. Visit a mapped host and click the LUMI icon to inject the bubble.
-3. Select DOM nodes or grab a screenshot, type your instruction, choose an engine, and send.
-   - If you capture a screenshot, the server saves it and (for Claude) appends the local path to the prompt so Claude can inspect it.
-4. Watch the bubble for status and review the server log (`~/.lumi/server.log`) if anything fails.
+2. Visit a mapped host and click the LUMI icon in the bottom-right to open the Dock.
+3. **Use the Dock to:**
+   - **Select elements**: Click the cursor icon or press `Cmd/Ctrl+E`, then click any element on the page
+   - **Annotate screenshots**: Click the camera icon or press `Cmd/Ctrl+S` to enter annotation mode
+     - Use the floating glass toolbar to draw rectangles, arrows, text, or freehand
+     - Click the checkmark to add the annotated screenshot to chat
+   - **Edit directly**: Click any selected element's chip to open the edit modal
+   - **Chat with AI**: Type your instruction in the composer, choose an engine, and send
+4. **Session management**: Switch between "Chat" and "History" tabs to manage multiple conversations.
+5. Watch the Chat timeline for status updates and review the server log (`~/.lumi/server.log`) if anything fails.
+
+## UI Features
+- **Premium Glass Design**: The entire UI uses a translucent glassmorphism aesthetic with floating shadows
+- **Dark/Light Theme**: Toggle between modes using the sun/moon icon in the Dock header
+- **Micro-interactions**: Buttons lift on hover and compress on click for satisfying feedback
+- **Copy Prompt**: Click the clipboard icon to copy the current prompt with all context
 
 ## Troubleshooting
 - **Port busy** → `lsof -nP -iTCP:3456` then kill the process, or run with a different `LUMI_PORT` and update the Options Page.
 - **CLI not found** → ensure `codex --version` / `claude --version` work in the same shell; delete `<configDir>/cli-capabilities.json` to refresh detection.
-- **“Not configured for this page”** → add the current host in the Projects panel and save.
+- **"Not configured for this page"** → add the current host in the Projects panel and save.
+- **Dock not appearing** → Reload the page and click the launcher orb in the bottom-right corner.
 
 Happy building ❤️

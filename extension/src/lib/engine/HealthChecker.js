@@ -15,30 +15,30 @@ export default class HealthChecker {
 
   start(interval = 10000) {
     if (this.isRunning) return;
-    
+
     this.isRunning = true;
-    
+
     // Initial check
     this.checkOnce();
-    
+
     // Periodic checks
     this.intervalId = setInterval(() => {
       this.checkOnce();
     }, interval);
-    
+
     this.eventBus.emit('health-checker:started');
   }
 
   stop() {
     if (!this.isRunning) return;
-    
+
     this.isRunning = false;
-    
+
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    
+
     this.eventBus.emit('health-checker:stopped');
   }
 
@@ -65,25 +65,6 @@ export default class HealthChecker {
       const host = window.location?.host || '';
       const projectMatch = resolveProject(projects, window.location?.href);
       const projectAllowed = !!projectMatch?.project;
-
-      try {
-        const debugProject = projectMatch?.project
-          ? {
-              id: projectMatch.project.id,
-              name: projectMatch.project.name,
-              workingDirectory: projectMatch.project.workingDirectory
-            }
-          : null;
-        // eslint-disable-next-line no-console
-        console.log('[LUMI][HealthChecker] /health resolved', {
-          healthy: !!result?.healthy,
-          host,
-          projectsCount: projects.length,
-          workingDirectory,
-          projectAllowed,
-          project: debugProject
-        });
-      } catch (_) { /* ignore debug logging errors */ }
 
       this.stateManager.batch({
         'projects.allowed': projectAllowed,
@@ -127,7 +108,7 @@ export default class HealthChecker {
       console.error('[HealthChecker] Check failed:', error);
       this.stateManager.set('engine.serverHealthy', false);
       this.engineManager.updateAvailability(false, false);
-      
+
       this.eventBus.emit('health-check:error', error);
       this.stateManager.batch({
         'projects.allowed': false,

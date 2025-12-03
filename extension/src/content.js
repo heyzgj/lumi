@@ -813,7 +813,7 @@ function bootstrap() {
     });
 
     eventBus.on('engine:selected', (engine) => {
-      console.log('[Content] Engine selected, updating UI:', engine);
+      // Dock reflects engine via state subscription
     });
 
     eventBus.on('engine:availability-updated', ({ codex, claude }) => {
@@ -842,7 +842,6 @@ function bootstrap() {
 
     // State subscription: Update UI when engine state changes
     stateManager.subscribe('engine.current', (newEngine, oldEngine) => {
-      console.log('[Content] Engine state changed:', oldEngine, '->', newEngine);
       // Dock updates engine label; Bubble hidden
     });
 
@@ -1490,8 +1489,6 @@ function bootstrap() {
 
   // Initialize application
   async function init() {
-    console.log('[LUMI] Initializing...');
-
     injectGlobalStyles();
     // Manual theming only; auto detection disabled
 
@@ -1622,15 +1619,15 @@ function bootstrap() {
         need((auto || (scale >= 0.25 && scale <= 2)), 'Scale out of range or auto mis-set');
         const bar = document.getElementById('lumi-viewport-bar-root');
         need(!!bar, 'TopViewportBar not mounted');
-        const stage = document.getElementById('lumi-viewport-stage');
-        need(!!stage, 'Viewport stage missing');
-        const stageInfo = viewportController?.getStageInfo?.() || { mode: 'unknown', fallback: 'n/a', enabled: stateManager.get('ui.viewport.enabled') };
-        console.info(`[LUMI] preset=${p} ${logical.width}x${logical.height} scale=${scale} mode=${stageInfo.mode} (fallback:${stageInfo.fallback || 'none'}) enabled=${stageInfo.enabled}`);
-        console.info('[LUMI SelfCheck] done');
+
+        // Only check stage existence if viewport is enabled
+        const enabled = get('ui.viewport.enabled');
+        if (enabled) {
+          const stage = document.getElementById('lumi-viewport-stage');
+          need(!!stage, 'Viewport stage missing');
+        }
       })();
     } catch (_) { }
-
-    console.log('[LUMI] Initialized successfully');
   }
 
   // Persist/restore sessions (simplified: host-only key to avoid race conditions)
@@ -1642,13 +1639,10 @@ function bootstrap() {
   async function restoreSessions() {
     try {
       const key = getSessionsKey();
-      console.log('[LUMI] Restoring sessions from key:', key);
       const data = await chromeBridge.storageGet([key]);
       const payload = data && data[key];
-      console.log('[LUMI] Restored payload:', payload);
 
       if (!payload || !Array.isArray(payload.list) || !payload.list.length) {
-        console.log('[LUMI] No sessions to restore');
         return;
       }
 
@@ -1674,7 +1668,6 @@ function bootstrap() {
         'sessions.list': normalizedList,
         'sessions.currentId': payload.currentId || payload.list[0]?.id
       });
-      console.log('[LUMI] Sessions restored:', payload.list.length, 'sessions');
     } catch (err) {
       console.error('[LUMI] Restore sessions failed:', err);
     }

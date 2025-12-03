@@ -2147,26 +2147,20 @@ ${TOKENS_CSS}
     }
 
     async init() {
-      console.log('[EngineManager] Initializing...');
-      
       // Initialize availability to unknown state (will be updated by HealthChecker)
       this.stateManager.set('engine.available', { codex: false, claude: false });
-      
+
       // Load saved engine preference
       const stored = await this.chromeBridge.storageGet(['engine']);
-      console.log('[EngineManager] Stored engine:', stored.engine);
-      
+
       if (stored.engine && (stored.engine === 'codex' || stored.engine === 'claude')) {
-        console.log('[EngineManager] Restoring saved engine:', stored.engine);
         this.selectEngine(stored.engine, true); // silent = true, no save
         this.stateManager.set('engine.restored', true);
       } else {
-        console.log('[EngineManager] No saved engine, using default: codex');
         this.stateManager.set('engine.restored', true);
       }
-      
+
       const currentEngine = this.stateManager.get('engine.current');
-      console.log('[EngineManager] Initialized with engine:', currentEngine);
       this.eventBus.emit('engine:initialized', currentEngine);
     }
 
@@ -2175,16 +2169,14 @@ ${TOKENS_CSS}
         console.error('[EngineManager] Invalid engine:', engine);
         return;
       }
-      
-      console.log('[EngineManager] Selecting engine:', engine, 'silent:', silent);
+
       this.stateManager.set('engine.current', engine);
-      
+
       // Persist to storage
       if (!silent) {
-        console.log('[EngineManager] Saving engine to storage:', engine);
         this.chromeBridge.storageSet({ engine });
       }
-      
+
       this.eventBus.emit('engine:selected', engine);
     }
 
@@ -2193,10 +2185,7 @@ ${TOKENS_CSS}
       // This prevents health check from overwriting user selection during initialization
       const restored = this.stateManager.get('engine.restored');
 
-      console.log('[EngineManager] updateAvailability called:', { codex, claude, restored });
-
       if (!restored) {
-        console.log('[EngineManager] Still initializing, skipping availability update');
         return;
       }
 
@@ -2207,14 +2196,11 @@ ${TOKENS_CSS}
       };
 
       if (previous.codex === next.codex && previous.claude === next.claude) {
-        console.log('[EngineManager] Availability unchanged, skipping state update');
         return;
       }
 
       // Update as a whole object so subscribers to 'engine.available' fire
       this.stateManager.set('engine.available', next);
-
-      console.log('[EngineManager] Engine availability updated:', next);
       this.eventBus.emit('engine:availability-updated', next);
     }
 
@@ -2249,30 +2235,30 @@ ${TOKENS_CSS}
 
     start(interval = 10000) {
       if (this.isRunning) return;
-      
+
       this.isRunning = true;
-      
+
       // Initial check
       this.checkOnce();
-      
+
       // Periodic checks
       this.intervalId = setInterval(() => {
         this.checkOnce();
       }, interval);
-      
+
       this.eventBus.emit('health-checker:started');
     }
 
     stop() {
       if (!this.isRunning) return;
-      
+
       this.isRunning = false;
-      
+
       if (this.intervalId) {
         clearInterval(this.intervalId);
         this.intervalId = null;
       }
-      
+
       this.eventBus.emit('health-checker:stopped');
     }
 
@@ -2299,25 +2285,6 @@ ${TOKENS_CSS}
         const host = window.location?.host || '';
         const projectMatch = resolveProject(projects, window.location?.href);
         const projectAllowed = !!projectMatch?.project;
-
-        try {
-          const debugProject = projectMatch?.project
-            ? {
-                id: projectMatch.project.id,
-                name: projectMatch.project.name,
-                workingDirectory: projectMatch.project.workingDirectory
-              }
-            : null;
-          // eslint-disable-next-line no-console
-          console.log('[LUMI][HealthChecker] /health resolved', {
-            healthy: !!result?.healthy,
-            host,
-            projectsCount: projects.length,
-            workingDirectory,
-            projectAllowed,
-            project: debugProject
-          });
-        } catch (_) { /* ignore debug logging errors */ }
 
         this.stateManager.batch({
           'projects.allowed': projectAllowed,
@@ -2361,7 +2328,7 @@ ${TOKENS_CSS}
         console.error('[HealthChecker] Check failed:', error);
         this.stateManager.set('engine.serverHealthy', false);
         this.engineManager.updateAvailability(false, false);
-        
+
         this.eventBus.emit('health-check:error', error);
         this.stateManager.batch({
           'projects.allowed': false,
@@ -5231,22 +5198,6 @@ ${TOKENS_CSS}
     updateProjectName(project) {
       if (!this.projectLabel) return;
 
-      try {
-        const serverWd = this.stateManager.get('server.workingDirectory');
-        const debugProject = project && typeof project === 'object'
-          ? {
-            id: project.id,
-            name: project.name,
-            workingDirectory: project.workingDirectory
-          }
-          : null;
-        // eslint-disable-next-line no-console
-        console.log('[LUMI][Dock] updateProjectName', {
-          project: debugProject,
-          serverWorkingDirectory: serverWd
-        });
-      } catch (_) { /* ignore debug logging errors */ }
-
       const projectAllowed = this.stateManager.get('projects.allowed');
 
       // If there is no mapped project or the host is blocked, treat as unmapped
@@ -5265,16 +5216,7 @@ ${TOKENS_CSS}
           this.projectLabel.textContent = `Lumi — ${base}`;
           return;
         }
-      } catch (_) { /* ignore */ }
-
-      // Fallback: use explicit project name when available
-      if (project && typeof project === 'object') {
-        const name = project.name || project.id || 'Linked Project';
-        this.projectLabel.textContent = `Lumi — ${name}`;
-        return;
-      }
-
-      this.projectLabel.textContent = 'Lumi — Unmapped Page';
+      } catch (_) { }
     }
 
     updateSendState() {
@@ -7807,7 +7749,7 @@ ${TOKENS_CSS}
           if (!this.enabled) return;
           this.applyStageMode(true);
         });
-      } catch (_) {}
+      } catch (_) { }
     }
 
     getStageInfo() {
@@ -8009,7 +7951,7 @@ ${TOKENS_CSS}
     unregisterListeners() {
       if (!this._listeners) return;
       this._listeners.forEach((dispose) => {
-        try { dispose(); } catch (_) {}
+        try { dispose(); } catch (_) { }
       });
       this._listeners = [];
       this._dragging = false;
@@ -8053,6 +7995,10 @@ ${TOKENS_CSS}
       this.iframe = iframe;
       this.stageMode = 'iframe';
       this.stageFallback = 'pending';
+
+      // Track emulation state to prevent infinite reload loop
+      let emulationApplied = false;
+
       console.log('[LUMI] mounting iframe stage...');
 
       // Show a lightweight loader overlay for smoothness
@@ -8078,11 +8024,62 @@ ${TOKENS_CSS}
           this._iframeFallbackTimer = null;
         }
         this.stageFallback = 'none';
+
+        // Debug: Verify iframe viewport behavior
+        const win = iframe.contentWindow;
+        const doc = iframe.contentDocument;
+        console.group('[LUMI DEBUG] Iframe Viewport Analysis');
+        console.log('📐 Iframe element dimensions:');
+        console.log('  iframe.offsetWidth:', iframe.offsetWidth);
+        console.log('  iframe.offsetHeight:', iframe.offsetHeight);
+        console.log('  iframe.clientWidth:', iframe.clientWidth);
+        console.log('  iframe.clientHeight:', iframe.clientHeight);
+        console.log('');
+        console.log('🪟 Window inside iframe:');
+        console.log('  window.innerWidth:', win.innerWidth);
+        console.log('  window.innerHeight:', win.innerHeight);
+        console.log('  window.outerWidth:', win.outerWidth);
+        console.log('  window.outerHeight:', win.outerHeight);
+        console.log('');
+        console.log('📄 Document inside iframe:');
+        console.log('  document.documentElement.clientWidth:', doc.documentElement.clientWidth);
+        console.log('  document.documentElement.clientHeight:', doc.documentElement.clientHeight);
+        console.log('  document.body.clientWidth:', doc.body?.clientWidth);
+        console.log('  document.body.clientHeight:', doc.body?.clientHeight);
+        console.log('');
+        console.log('📱 Viewport Meta Tag:');
+        const vpMeta = doc.querySelector('meta[name="viewport"]');
+        console.log('  exists:', !!vpMeta);
+        console.log('  content:', vpMeta?.content || 'N/A');
+        console.log('');
+        console.log('🎯 Media Query Tests:');
+        const mq428 = win.matchMedia('(max-width: 428px)');
+        const mq768 = win.matchMedia('(max-width: 768px)');
+        const mq1024 = win.matchMedia('(max-width: 1024px)');
+        console.log('  (max-width: 428px):', mq428.matches);
+        console.log('  (max-width: 768px):', mq768.matches);
+        console.log('  (max-width: 1024px):', mq1024.matches);
+        console.log('');
+        console.log('🖥️ Outer window (for comparison):');
+        console.log('  window.innerWidth:', window.innerWidth);
+        console.log('  window.innerHeight:', window.innerHeight);
+        console.log('  emulationApplied:', emulationApplied);
+        console.groupEnd();
+
         console.log('[LUMI] iframe load ok');
-        try { loader.remove(); } catch (_) {}
-        // Emit ready event to allow outer code to bind selectors/highlights inside the frame
-        try { this.eventBus.emit('viewport:iframe-ready', { iframe }); } catch (_) {}
-      }, { once: true });
+        try { loader.remove(); } catch (_) { }
+
+        // CRITICAL: Only apply responsive emulation on FIRST load
+        if (!emulationApplied) {
+          emulationApplied = true;
+          console.log('[LUMI] Applying responsive emulation (first load only)');
+          this.applyResponsiveEmulation(iframe);
+        } else {
+          console.log('[LUMI] Skipping responsive emulation (already applied)');
+          // Just emit ready event for subsequent loads
+          try { this.eventBus.emit('viewport:iframe-ready', { iframe }); } catch (_) { }
+        }
+      }, { passive: true });  // Remove { once: true } to handle reloads
 
       try {
         iframe.src = this.buildIframeSrc(window.location.href);
@@ -8093,6 +8090,133 @@ ${TOKENS_CSS}
         }
         this.handleIframeFallback('exception');
       }
+    }
+
+    applyResponsiveEmulation(iframe) {
+      if (!iframe || !iframe.contentWindow || !iframe.contentDocument) return;
+
+      iframe.contentWindow;
+      const doc = iframe.contentDocument;
+      const iframeWidth = iframe.clientWidth;
+      const iframeHeight = iframe.clientHeight;
+
+      console.log('[LUMI] Applying responsive emulation:', iframeWidth, 'x', iframeHeight);
+
+      // CRITICAL FIX: We need to set up overrides BEFORE the page loads
+      // The current approach (modifying after load) won't work because CSS is already applied
+      // Solution: Reload the iframe after setting up the emulation infrastructure
+
+      // Step 1: Inject script that will run BEFORE page scripts
+      const setupScript = doc.createElement('script');
+      setupScript.textContent = `
+      (function() {
+        // Override window dimensions before any other scripts run
+        const iframeEl = window.frameElement;
+        if (iframeEl) {
+          Object.defineProperty(window, 'innerWidth', {
+            get() { return iframeEl.clientWidth; },
+            configurable: true
+          });
+          Object.defineProperty(window, 'innerHeight', {
+            get() { return iframeEl.clientHeight; },
+            configurable: true
+          });
+          Object.defineProperty(window, 'outerWidth', {
+            get() { return iframeEl.clientWidth; },
+            configurable: true
+          });
+          Object.defineProperty(window, 'outerHeight', {
+            get() { return iframeEl.clientHeight; },
+            configurable: true
+          });
+          console.log('[LUMI] Window dimensions overridden in iframe:', window.innerWidth, 'x', window.innerHeight);
+        }
+      })();
+    `;
+
+      // Insert at the very beginning of head
+      const head = doc.head || doc.documentElement;
+      if (head.firstChild) {
+        head.insertBefore(setupScript, head.firstChild);
+      } else {
+        head.appendChild(setupScript);
+      }
+
+      // Step 2: Inject or update viewport meta tag  
+      let vpMeta = doc.querySelector('meta[name="viewport"]');
+      if (!vpMeta) {
+        vpMeta = doc.createElement('meta');
+        vpMeta.name = 'viewport';
+        if (head.firstChild) {
+          head.insertBefore(vpMeta, head.firstChild);
+        } else {
+          head.appendChild(vpMeta);
+        }
+      }
+      // Force mobile-friendly viewport
+      vpMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+
+      // Step 3: Inject CSS to ensure responsive behavior
+      const responsiveCSS = doc.createElement('style');
+      responsiveCSS.id = 'lumi-responsive-fix';
+      responsiveCSS.textContent = `
+      /* LUMI Responsive Emulation Fix */
+      html, body {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+      }
+      :root {
+        --lumi-vw: ${iframeWidth}px;
+        --lumi-vh: ${iframeHeight}px;
+      }
+    `;
+      head.appendChild(responsiveCSS);
+
+      // Step 4: CRITICAL - Reload the iframe to apply changes
+      // We need to reload because CSS has already been evaluated with wrong window dimensions
+      console.log('[LUMI] Reloading iframe to apply responsive emulation...');
+      const currentSrc = iframe.src;
+
+      // Set up one-time load listener for the reload
+      const reloadHandler = () => {
+        console.log('[LUMI] Iframe reloaded with responsive emulation active');
+
+        // Verify dimensions after reload
+        const newWin = iframe.contentWindow;
+        if (newWin) {
+          console.log('[LUMI] Post-reload check:');
+          console.log('  window.innerWidth:', newWin.innerWidth);
+          console.log('  Media Query (max-width: 768px):', newWin.matchMedia('(max-width: 768px)').matches);
+        }
+
+        // Install ResizeObserver for dynamic updates
+        if (typeof ResizeObserver !== 'undefined') {
+          const resizeObserver = new ResizeObserver(() => {
+            const newDoc = iframe.contentDocument;
+            if (!newDoc) return;
+
+            const style = newDoc.getElementById('lumi-responsive-fix');
+            if (style) {
+              const w = iframe.clientWidth;
+              const h = iframe.clientHeight;
+              style.textContent = style.textContent
+                .replace(/--lumi-vw:\s*\d+px/, `--lumi-vw: ${w}px`)
+                .replace(/--lumi-vh:\s*\d+px/, `--lumi-vh: ${h}px`);
+            }
+
+            // Trigger resize event
+            try {
+              iframe.contentWindow?.dispatchEvent(new Event('resize'));
+            } catch (_) { }
+          });
+          resizeObserver.observe(iframe);
+        }
+      };
+
+      iframe.addEventListener('load', reloadHandler, { once: true });
+
+      // Trigger reload
+      iframe.src = currentSrc;
     }
 
     buildIframeSrc(href) {
@@ -8111,7 +8235,7 @@ ${TOKENS_CSS}
 
     teardownIframe() {
       if (!this.iframe) return;
-      try { this.iframe.remove(); } catch (_) {}
+      try { this.iframe.remove(); } catch (_) { }
       this.iframe = null;
       if (this._iframeFallbackTimer) {
         clearTimeout(this._iframeFallbackTimer);
@@ -8126,17 +8250,25 @@ ${TOKENS_CSS}
         this._iframeFallbackTimer = null;
       }
       console.warn(`[LUMI] iframe blocked -> fallback to inline (reason: ${reason})`);
-      try { this.eventBus.emit('viewport:iframe-fallback', { reason }); } catch (_) {}
+      try { this.eventBus.emit('viewport:iframe-fallback', { reason }); } catch (_) { }
       this.mountInlineStage(reason);
     }
 
     setPreset(name) {
       const key = PRESETS[name] ? name : 'responsive';
       const logical = PRESETS[key];
+
+      // CRITICAL: Mobile/Pad/Laptop presets MUST use iframe for true responsive emulation
+      // Responsive can use inline mode (default desktop behavior)
+      const needsIframe = (key === 'mobile' || key === 'pad' || key === 'laptop');
+
       this.stateManager.batch({
         'ui.viewport.preset': key,
-        'ui.viewport.logical': logical
+        'ui.viewport.logical': logical,
+        'ui.viewport.useIframeStage': needsIframe
       });
+
+      console.log(`[LUMI] Preset "${key}" (${logical.width}x${logical.height}), iframe=${needsIframe}`);
       this.layout();
     }
 
@@ -9207,7 +9339,7 @@ ${TOKENS_CSS}
       });
 
       eventBus.on('engine:selected', (engine) => {
-        console.log('[Content] Engine selected, updating UI:', engine);
+        // Dock reflects engine via state subscription
       });
 
       eventBus.on('engine:availability-updated', ({ codex, claude }) => {
@@ -9236,7 +9368,6 @@ ${TOKENS_CSS}
 
       // State subscription: Update UI when engine state changes
       stateManager.subscribe('engine.current', (newEngine, oldEngine) => {
-        console.log('[Content] Engine state changed:', oldEngine, '->', newEngine);
         // Dock updates engine label; Bubble hidden
       });
 
@@ -9884,8 +10015,6 @@ ${TOKENS_CSS}
 
     // Initialize application
     async function init() {
-      console.log('[LUMI] Initializing...');
-
       injectGlobalStyles();
       // Manual theming only; auto detection disabled
 
@@ -10016,15 +10145,15 @@ ${TOKENS_CSS}
           need((auto || (scale >= 0.25 && scale <= 2)), 'Scale out of range or auto mis-set');
           const bar = document.getElementById('lumi-viewport-bar-root');
           need(!!bar, 'TopViewportBar not mounted');
-          const stage = document.getElementById('lumi-viewport-stage');
-          need(!!stage, 'Viewport stage missing');
-          const stageInfo = viewportController?.getStageInfo?.() || { mode: 'unknown', fallback: 'n/a', enabled: stateManager.get('ui.viewport.enabled') };
-          console.info(`[LUMI] preset=${p} ${logical.width}x${logical.height} scale=${scale} mode=${stageInfo.mode} (fallback:${stageInfo.fallback || 'none'}) enabled=${stageInfo.enabled}`);
-          console.info('[LUMI SelfCheck] done');
+
+          // Only check stage existence if viewport is enabled
+          const enabled = get('ui.viewport.enabled');
+          if (enabled) {
+            const stage = document.getElementById('lumi-viewport-stage');
+            need(!!stage, 'Viewport stage missing');
+          }
         })();
       } catch (_) { }
-
-      console.log('[LUMI] Initialized successfully');
     }
 
     // Persist/restore sessions (simplified: host-only key to avoid race conditions)
@@ -10036,13 +10165,10 @@ ${TOKENS_CSS}
     async function restoreSessions() {
       try {
         const key = getSessionsKey();
-        console.log('[LUMI] Restoring sessions from key:', key);
         const data = await chromeBridge.storageGet([key]);
         const payload = data && data[key];
-        console.log('[LUMI] Restored payload:', payload);
 
         if (!payload || !Array.isArray(payload.list) || !payload.list.length) {
-          console.log('[LUMI] No sessions to restore');
           return;
         }
 
@@ -10068,7 +10194,6 @@ ${TOKENS_CSS}
           'sessions.list': normalizedList,
           'sessions.currentId': payload.currentId || payload.list[0]?.id
         });
-        console.log('[LUMI] Sessions restored:', payload.list.length, 'sessions');
       } catch (err) {
         console.error('[LUMI] Restore sessions failed:', err);
       }
