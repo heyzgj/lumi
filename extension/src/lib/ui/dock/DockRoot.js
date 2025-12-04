@@ -1216,7 +1216,16 @@ export default class DockRoot {
       return;
     }
 
-    // Prefer the matched project's working directory as identity when available
+    // Prefer Display Name when available; fallback to working directory basename
+    try {
+      const name = project && typeof project.name === 'string' ? project.name.trim() : '';
+      if (name) {
+        this.projectLabel.textContent = `Lumi — ${name}`;
+        return;
+      }
+    } catch (_) { }
+
+    // Fallback: use working directory basename as identity
     try {
       const projectWd = project && typeof project === 'object' ? project.workingDirectory : null;
       if (projectWd && typeof projectWd === 'string') {

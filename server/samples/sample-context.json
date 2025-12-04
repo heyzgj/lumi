@@ -1,5 +1,5 @@
 {
-  "intent": "按照 [@element1] edit的进行修改，然后把 [@element2] 的图片变成三排的，以及按照 [@screenshot1] 的guideline对登录功能进行更改",
+  "intent": "Apply the edits specified for [@element1]; arrange the images in [@element2] into three rows; and update the login functionality according to the guidelines in [@screenshot1].",
   "pageUrl": "https://example.com",
   "pageTitle": "Example",
   "selectionMode": "element",

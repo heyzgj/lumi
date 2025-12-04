@@ -387,7 +387,7 @@
   }
 `;
 
-  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);\n  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n:root.dark-dock, .dark-dock, .dark {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);\n  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 56px;\n}\n";
+  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);\n  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n:root.dark-dock, .dark-dock, .dark {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);\n  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n";
 
   /**
    * DOM Utilities
@@ -5206,7 +5206,16 @@ ${TOKENS_CSS}
         return;
       }
 
-      // Prefer the matched project's working directory as identity when available
+      // Prefer Display Name when available; fallback to working directory basename
+      try {
+        const name = project && typeof project.name === 'string' ? project.name.trim() : '';
+        if (name) {
+          this.projectLabel.textContent = `Lumi — ${name}`;
+          return;
+        }
+      } catch (_) { }
+
+      // Fallback: use working directory basename as identity
       try {
         const projectWd = project && typeof project === 'object' ? project.workingDirectory : null;
         if (projectWd && typeof projectWd === 'string') {
@@ -8622,7 +8631,6 @@ ${TOKENS_CSS}
     const topBanner = { update: () => { }, hide: () => { }, setRightOffset: () => { } };
     let dockRoot = null;
     let editModal = null;
-    // InteractionBubble removed for a simpler UX
     const styleApplier = new StyleApplier(eventBus);
     const styleHistory = new StyleHistory();
 
@@ -8983,8 +8991,6 @@ ${TOKENS_CSS}
         // Do not insert plain-text tokens into Dock input; chips reflect selection state.
       });
 
-      // Legacy 'element:remove' handler removed (Bubble deprecated)
-
       // Revert DOM to baseline when chip/tag is removed
       eventBus.on('element:pre-remove', ({ index, snapshot }) => {
         try {
@@ -9284,7 +9290,6 @@ ${TOKENS_CSS}
         try { annotateManager && annotateManager.setInlineHost(); } catch (_) { }
       });
 
-      // Dock events (legacy bubble hooks mapped to dock)
       eventBus.on('bubble:close', () => {
         stateManager.set('ui.dockOpen', false);
         if (dockRoot) dockRoot.setVisible(false);
@@ -9343,8 +9348,6 @@ ${TOKENS_CSS}
       });
 
       eventBus.on('engine:availability-updated', ({ codex, claude }) => {
-        console.log('[Content] Engine availability event received:', { codex, claude });
-        // Bubble hidden; Dock can reflect status; errors routed via TopBanner
         const current = engineManager.getCurrentEngine();
         if (!engineManager.isEngineAvailable(current)) {
           const fallback = codex ? 'codex' : claude ? 'claude' : null;
@@ -9368,7 +9371,6 @@ ${TOKENS_CSS}
 
       // State subscription: Update UI when engine state changes
       stateManager.subscribe('engine.current', (newEngine, oldEngine) => {
-        // Dock updates engine label; Bubble hidden
       });
 
       // Keep TopBanner width aligned with Dock squeeze
@@ -9575,9 +9577,29 @@ ${TOKENS_CSS}
       // Open Settings
       eventBus.on('settings:open', () => {
         try {
-          chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+          // Try to use runtime API first
+          chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' }, (response) => {
+            // Check if extension context is still valid
+            if (chrome.runtime.lastError) {
+              // Extension was reloaded, fall back to direct URL
+              console.warn('[LUMI] Extension context invalidated, opening options via URL');
+              try {
+                const optionsUrl = chrome.runtime.getURL('options.html');
+                window.open(optionsUrl, '_blank');
+              } catch (urlErr) {
+                console.error('[LUMI] Failed to open options page:', urlErr);
+              }
+            }
+          });
         } catch (err) {
-          console.error('[LUMI] Failed to open settings:', err);
+          // sendMessage failed entirely, try direct URL
+          console.warn('[LUMI] Message passing unavailable, opening options via URL');
+          try {
+            const optionsUrl = chrome.runtime.getURL('options.html');
+            window.open(optionsUrl, '_blank');
+          } catch (urlErr) {
+            console.error('[LUMI] Failed to open options page:', urlErr);
+          }
         }
       });
 
@@ -10018,11 +10040,19 @@ ${TOKENS_CSS}
       injectGlobalStyles();
       // Manual theming only; auto detection disabled
 
-      // Restore sessions before mounting UI
+      // Initialize engine preference and run an initial health check
+      // so that project mapping is known before restoring sessions.
+      await engineManager.init();
+      try {
+        await healthChecker.checkOnce();
+      } catch (_) {
+        // Ignore initial health failures; periodic checks will keep running.
+      }
+
+      // Restore sessions scoped to the current project (if any)
       await restoreSessions();
 
       // Mount UI components
-      // No top banner UI
       dockRoot = new DockRoot(eventBus, stateManager);
       dockRoot.mount();
       // Mount Edit Modal inside Dock's ShadowRoot to avoid page CSS leakage (e.g., Google/Baidu resets)
@@ -10033,13 +10063,9 @@ ${TOKENS_CSS}
         editModal = new DockEditModal(eventBus, stateManager, document.body);
       }
       editModal.mount();
-      // Interaction bubble removed
-
-      // ControlsOverlay currently disabled; use highlight pen modal instead
 
       // Initialize selectors after UI is ready
       elementSelector = new ElementSelector(eventBus, stateManager, highlightManager, topBanner, document, window);
-      // screenshotSelector removed; annotateManager initialized earlier
 
 
       // Bind all events (after UI is mounted)
@@ -10125,10 +10151,7 @@ ${TOKENS_CSS}
         }
       });
 
-      // Initialize engine (restore saved preference)
-      await engineManager.init();
-
-      // Start health checker
+      // Start periodic health checks
       healthChecker.start();
 
       // Runtime self-check (non-fatal)
@@ -10158,13 +10181,24 @@ ${TOKENS_CSS}
 
     // Persist/restore sessions (simplified: host-only key to avoid race conditions)
     function getSessionsKey() {
-      const host = window.location.host;
-      return `lumi.sessions:${host}`;
+      try {
+        const allowed = stateManager.get('projects.allowed');
+        const project = stateManager.get('projects.current');
+        const projectId = project && typeof project.id === 'string' ? project.id.trim() : '';
+        if (allowed && projectId) {
+          return `lumi.sessions:project:${projectId}`;
+        }
+      } catch (_) {
+        // Fall through to null
+      }
+      // Unmapped or unknown project: do not persist history
+      return null;
     }
 
     async function restoreSessions() {
       try {
         const key = getSessionsKey();
+        if (!key) return;
         const data = await chromeBridge.storageGet([key]);
         const payload = data && data[key];
 
@@ -10202,6 +10236,7 @@ ${TOKENS_CSS}
     function persistSessions() {
       try {
         const key = getSessionsKey();
+        if (!key) return;
         const list = stateManager.get('sessions.list') || [];
         const currentId = stateManager.get('sessions.currentId');
         const payload = { list, currentId, t: Date.now() };

@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
 let currentProjects = [];
 let lastInvalidProjectCount = 0;
 let toastTimeout = null;
+let lastSavedProjects = [];
 
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');
@@ -61,26 +62,72 @@ function generateProjectId() {
 
 function normalizeHostPattern(value) {
   if (!value) return '';
-  let pattern = String(value).trim().toLowerCase();
-  if (!pattern) return '';
+  let input = String(value).trim();
+  if (!input) return '';
 
-  if (pattern.startsWith('http://')) {
-    pattern = pattern.slice(7);
-  } else if (pattern.startsWith('https://')) {
-    pattern = pattern.slice(8);
+  const lower = input.toLowerCase();
+
+  // file:// URL → local path prefix
+  if (lower.startsWith('file://')) {
+    try {
+      const url = new URL(input);
+      let pathname = url.pathname || '';
+      if (!pathname) return '';
+      if (!pathname.endsWith('/')) {
+        const idx = pathname.lastIndexOf('/');
+        if (idx > 0) pathname = pathname.slice(0, idx + 1);
+      }
+      if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+      return pathname;
+    } catch (_) {
+      let path = input.slice('file://'.length);
+      if (!path.startsWith('/')) path = `/${path}`;
+      if (!path.endsWith('/')) {
+        const idx = path.lastIndexOf('/');
+        if (idx > 0) path = path.slice(0, idx + 1);
+      }
+      return path;
+    }
   }
 
-  if (pattern.startsWith('//')) {
-    pattern = pattern.slice(2);
+  // Absolute filesystem path
+  if (input.startsWith('/')) {
+    let path = input;
+    if (!path.endsWith('/')) {
+      const idx = path.lastIndexOf('/');
+      if (idx > 0) path = path.slice(0, idx + 1);
+    }
+    return path;
   }
 
-  pattern = pattern.replace(/\s+/g, '');
+  // HTTP(S) URL or bare host
+  let hostPart = '';
 
-  if (pattern.endsWith('/')) {
-    pattern = pattern.replace(/\/+$/, '');
+  if (lower.startsWith('http://') || lower.startsWith('https://')) {
+    try {
+      const url = new URL(input);
+      hostPart = url.host;
+    } catch (_) {
+      hostPart = input.replace(/^https?:\/\//i, '');
+    }
+  } else if (lower.startsWith('//')) {
+    try {
+      const url = new URL(`http:${input}`);
+      hostPart = url.host;
+    } catch (_) {
+      hostPart = input.slice(2);
+    }
+  } else {
+    const slashIndex = input.indexOf('/');
+    hostPart = slashIndex >= 0 ? input.slice(0, slashIndex) : input;
   }
 
-  return pattern;
+  hostPart = hostPart.trim().toLowerCase();
+  if (!hostPart) return '';
+  while (hostPart.endsWith('/')) {
+    hostPart = hostPart.slice(0, -1);
+  }
+  return hostPart;
 }
 
 function sanitizeProjects(projects = []) {
@@ -100,7 +147,7 @@ function sanitizeProjects(projects = []) {
         : [];
       const enabled = project.enabled !== false;
 
-      if (!workingDirectory) {
+      if (!workingDirectory || hosts.length === 0) {
         return null;
       }
 
@@ -321,9 +368,20 @@ function addProjectFromModal() {
     dirInput.focus();
     return;
   }
+  if (!hostsRaw) {
+    if (hostsInput) hostsInput.focus();
+    return;
+  }
+
   const hosts = hostsRaw
-    ? hostsRaw.split(',').map((host) => normalizeHostPattern(host)).filter(Boolean)
-    : [];
+    .split(',')
+    .map((host) => normalizeHostPattern(host))
+    .filter(Boolean);
+
+  if (!hosts.length) {
+    if (hostsInput) hostsInput.focus();
+    return;
+  }
 
   syncProjectsFromUI();
 
@@ -347,6 +405,27 @@ function addProjectFromModal() {
   currentProjects = [...currentProjects, newProject];
   renderProjects();
   closeProjectModal();
+}
+
+function cleanupSessionsForRemovedProjects(removedProjectIds = []) {
+  if (!Array.isArray(removedProjectIds) || removedProjectIds.length === 0) return;
+
+  const keys = removedProjectIds
+    .filter((id) => typeof id === 'string' && id.trim().length)
+    .map((id) => `lumi.sessions:project:${id.trim()}`);
+
+  if (!keys.length) return;
+
+  try {
+    chrome.storage.local.remove(keys, () => {
+      const err = chrome.runtime && chrome.runtime.lastError;
+      if (err && err.message) {
+        console.warn('[LUMI] Failed to cleanup project sessions:', err.message);
+      }
+    });
+  } catch (error) {
+    console.warn('[LUMI] Failed to cleanup project sessions:', error && error.message ? error.message : error);
+  }
 }
 
 function sendMessage(message) {
@@ -374,6 +453,7 @@ async function loadSettings() {
       if (!merged.defaultEngine && result.engine) {
         merged.defaultEngine = result.engine;
       }
+      lastSavedProjects = sanitizeProjects(merged.projects || []);
       resolve(merged);
     });
   });
@@ -493,10 +573,22 @@ async function saveSettings(section) {
     invalidNotice = ` Skipped ${lastInvalidProjectCount}.`;
     lastInvalidProjectCount = 0;
   }
+  let removedProjectIds = [];
+  if (!section || section === 'projects') {
+    const previous = Array.isArray(lastSavedProjects) ? lastSavedProjects : [];
+    const next = Array.isArray(settings.projects) ? settings.projects : [];
+    const prevIds = new Set(previous.map((project) => (typeof project.id === 'string' ? project.id.trim() : '')).filter(Boolean));
+    const nextIds = new Set(next.map((project) => (typeof project.id === 'string' ? project.id.trim() : '')).filter(Boolean));
+    removedProjectIds = Array.from(prevIds).filter((id) => !nextIds.has(id));
+  }
   try {
     await chrome.storage.local.set({ [STORAGE_KEY]: settings, engine: settings.defaultEngine });
     await sendMessage({ type: 'APPLY_SETTINGS', payload: settings });
     renderProjects(settings.projects);
+    if (!section || section === 'projects') {
+      cleanupSessionsForRemovedProjects(removedProjectIds);
+      lastSavedProjects = sanitizeProjects(settings.projects || []);
+    }
     const label = labelFor(section);
     setStatus(`Saved ${label}.${invalidNotice}`, 'success');
   } catch (error) {

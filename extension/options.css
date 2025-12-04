@@ -1,4 +1,7 @@
-:root { color-scheme: light; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+:root {
+  color-scheme: light;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
 
 * {
   box-sizing: border-box;
@@ -61,9 +64,16 @@ body {
   transition: background 160ms ease, transform 160ms ease;
 }
 
-.nav-link:hover { transform: translateX(2px); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.nav-link:hover {
+  transform: translateX(2px);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 
-.nav-link.active { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--on-accent); box-shadow: var(--shadow); }
+.nav-link.active {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow);
+}
 
 .sidebar-actions {
   margin-top: auto;
@@ -172,7 +182,11 @@ select {
 }
 
 input:focus,
-select:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
+select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
+}
 
 small {
   color: var(--text-secondary);
@@ -219,13 +233,24 @@ button {
   color: var(--dock-fg);
 }
 
-button:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
 
-button.primary { background: var(--accent); color: var(--on-accent); }
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
 
-button.primary:hover { background: color-mix(in srgb, var(--accent) 90%, transparent); }
+button.primary:hover {
+  background: color-mix(in srgb, var(--accent) 90%, transparent);
+}
 
-button.ghost { background: transparent; border: 1px solid var(--dock-stroke); }
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--dock-stroke);
+}
 
 .status-banner {
   border-radius: 16px;
@@ -236,11 +261,23 @@ button.ghost { background: transparent; border: 1px solid var(--dock-stroke); }
   color: var(--text-secondary);
 }
 
-.status-banner.success { background: color-mix(in srgb, var(--success) 16%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: color-mix(in srgb, var(--success) 90%, white); }
+.status-banner.success {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  color: color-mix(in srgb, var(--success) 90%, white);
+}
 
-.status-banner.error { background: color-mix(in srgb, var(--error) 14%, transparent); border-color: color-mix(in srgb, var(--error) 45%, transparent); color: color-mix(in srgb, var(--error) 90%, white); }
+.status-banner.error {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  color: color-mix(in srgb, var(--error) 90%, white);
+}
 
-.status-banner.info { background: color-mix(in srgb, var(--dock-stroke) 16%, transparent); border-color: color-mix(in srgb, var(--dock-stroke) 35%, transparent); color: var(--text-secondary); }
+.status-banner.info {
+  background: color-mix(in srgb, var(--dock-stroke) 16%, transparent);
+  border-color: color-mix(in srgb, var(--dock-stroke) 35%, transparent);
+  color: var(--text-secondary);
+}
 
 .projects-list {
   display: flex;
@@ -282,7 +319,10 @@ button.ghost { background: transparent; border: 1px solid var(--dock-stroke); }
   justify-content: flex-end;
 }
 
-.project-row .remove-project { background: color-mix(in srgb, var(--error) 18%, transparent); color: color-mix(in srgb, var(--error) 95%, white); }
+.project-row .remove-project {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+  color: color-mix(in srgb, var(--error) 95%, white);
+}
 
 .empty-state {
   border: 1px dashed var(--dock-stroke);
@@ -365,11 +405,20 @@ button.ghost { background: transparent; border: 1px solid var(--dock-stroke); }
   transform: translateY(0);
 }
 
-#toast.success { border-color: color-mix(in srgb, var(--success) 45%, transparent); background: color-mix(in srgb, var(--success) 18%, transparent); }
+#toast.success {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+}
 
-#toast.error { border-color: color-mix(in srgb, var(--error) 50%, transparent); background: color-mix(in srgb, var(--error) 16%, transparent); }
+#toast.error {
+  border-color: color-mix(in srgb, var(--error) 50%, transparent);
+  background: color-mix(in srgb, var(--error) 16%, transparent);
+}
 
-#toast.info { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+#toast.info {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 
 @media (max-width: 900px) {
   .page {

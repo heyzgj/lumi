@@ -39,24 +39,72 @@ function sanitizeUrl(url) {
 
 function normalizeHostPattern(value) {
   if (!value) return '';
-  let pattern = String(value).trim().toLowerCase();
-  if (!pattern) return '';
+  let input = String(value).trim();
+  if (!input) return '';
 
-  if (pattern.startsWith('http://')) {
-    pattern = pattern.slice(7);
-  } else if (pattern.startsWith('https://')) {
-    pattern = pattern.slice(8);
+  const lower = input.toLowerCase();
+
+  // file:// URL → local path prefix
+  if (lower.startsWith('file://')) {
+    try {
+      const url = new URL(input);
+      let pathname = url.pathname || '';
+      if (!pathname) return '';
+      if (!pathname.endsWith('/')) {
+        const idx = pathname.lastIndexOf('/');
+        if (idx > 0) pathname = pathname.slice(0, idx + 1);
+      }
+      if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+      return pathname;
+    } catch (_) {
+      let path = input.slice('file://'.length);
+      if (!path.startsWith('/')) path = `/${path}`;
+      if (!path.endsWith('/')) {
+        const idx = path.lastIndexOf('/');
+        if (idx > 0) path = path.slice(0, idx + 1);
+      }
+      return path;
+    }
   }
 
-  if (pattern.startsWith('//')) {
-    pattern = pattern.slice(2);
+  // Absolute filesystem path
+  if (input.startsWith('/')) {
+    let path = input;
+    if (!path.endsWith('/')) {
+      const idx = path.lastIndexOf('/');
+      if (idx > 0) path = path.slice(0, idx + 1);
+    }
+    return path;
   }
 
-  if (pattern.endsWith('/')) {
-    pattern = pattern.replace(/\/+$/, '');
+  // HTTP(S) URL or bare host
+  let hostPart = '';
+
+  if (lower.startsWith('http://') || lower.startsWith('https://')) {
+    try {
+      const url = new URL(input);
+      hostPart = url.host;
+    } catch (_) {
+      hostPart = input.replace(/^https?:\/\//i, '');
+    }
+  } else if (lower.startsWith('//')) {
+    try {
+      const url = new URL(`http:${input}`);
+      hostPart = url.host;
+    } catch (_) {
+      hostPart = input.slice(2);
+    }
+  } else {
+    const slashIndex = input.indexOf('/');
+    hostPart = slashIndex >= 0 ? input.slice(0, slashIndex) : input;
   }
 
-  return pattern;
+  hostPart = hostPart.trim().toLowerCase();
+  if (!hostPart) return '';
+  while (hostPart.endsWith('/')) {
+    hostPart = hostPart.slice(0, -1);
+  }
+  return hostPart;
 }
 
 function sanitizeProjects(projects = []) {
@@ -74,7 +122,7 @@ function sanitizeProjects(projects = []) {
         : [];
       const enabled = project.enabled !== false;
 
-      if (!workingDirectory) return null;
+      if (!workingDirectory || hosts.length === 0) return null;
 
       return {
         id,
