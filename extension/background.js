@@ -52,7 +52,7 @@ function normalizeHostPattern(value) {
       if (!pathname) return '';
       if (!pathname.endsWith('/')) {
         const idx = pathname.lastIndexOf('/');
-        if (idx > 0) pathname = pathname.slice(0, idx + 1);
+        if (idx >= 0) pathname = pathname.slice(0, idx + 1);
       }
       if (!pathname.startsWith('/')) pathname = `/${pathname}`;
       return pathname;
@@ -61,7 +61,7 @@ function normalizeHostPattern(value) {
       if (!path.startsWith('/')) path = `/${path}`;
       if (!path.endsWith('/')) {
         const idx = path.lastIndexOf('/');
-        if (idx > 0) path = path.slice(0, idx + 1);
+        if (idx >= 0) path = path.slice(0, idx + 1);
       }
       return path;
     }
@@ -72,7 +72,7 @@ function normalizeHostPattern(value) {
     let path = input;
     if (!path.endsWith('/')) {
       const idx = path.lastIndexOf('/');
-      if (idx > 0) path = path.slice(0, idx + 1);
+      if (idx >= 0) path = path.slice(0, idx + 1);
     }
     return path;
   }
@@ -427,6 +427,7 @@ async function forwardStreamToServer(engine, context, tabId, streamId) {
     console.error('[LUMI] STREAM fetch failed:', error?.message);
     emitError(error?.message || 'Failed to connect to stream');
     emitDone({ success: false, error: error?.message || 'Stream aborted', timestamp: Date.now() });
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -519,13 +520,6 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
 
     forwardStreamToServer(engine, context, tabId, streamId).catch((error) => {
       console.error('[LUMI] EXECUTE_STREAM failed:', error);
-      try {
-        chrome.tabs.sendMessage(tabId, {
-          type: 'STREAM_ERROR',
-          streamId,
-          error: error?.message || 'Stream execution failed'
-        });
-      } catch (_) { }
     });
     sendResponse({ success: true });
     return true;
