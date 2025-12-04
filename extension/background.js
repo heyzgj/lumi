@@ -542,11 +542,14 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
   }
 
   if (type === 'OPEN_OPTIONS') {
-    chrome.runtime.openOptionsPage().catch((error) => {
-      console.error('[LUMI] Failed to open options page:', error);
-      sendResponse({ success: false, error: error?.message });
-    });
-    sendResponse({ success: true });
+    chrome.runtime.openOptionsPage()
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[LUMI] Failed to open options page:', error);
+        sendResponse({ success: false, error: error?.message });
+      });
     return true;
   }
 
@@ -637,10 +640,34 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   try {
     const url = new URL(tab.url);
     const host = url.host;
+    const isFile = url.protocol === 'file:';
+    const pathname = url.pathname || '';
 
-    const mapped = projects.some(p =>
-      p.enabled && (p.hosts || []).some(pattern => hostMatches(pattern, host))
-    );
+    const mapped = projects.some((project) => {
+      if (!project || project.enabled === false) return false;
+      const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+      if (!hosts.length) return false;
+      return hosts.some((pattern) => {
+        const raw = String(pattern || '').trim().toLowerCase();
+        if (!raw) return false;
+
+        // file:// 页面按路径前缀匹配
+        if (isFile && (raw.startsWith('file:///') || raw.startsWith('/'))) {
+          let prefix = raw;
+          if (prefix.startsWith('file://')) {
+            prefix = prefix.slice('file://'.length);
+          }
+          const currentPath = (pathname || '').toLowerCase();
+          return currentPath.startsWith(prefix);
+        }
+
+        // 其它协议按 host pattern 匹配
+        if (!isFile) {
+          return hostMatches(pattern, host);
+        }
+        return false;
+      });
+    });
 
     if (!mapped) return;
 
