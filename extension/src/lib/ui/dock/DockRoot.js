@@ -116,7 +116,7 @@ export default class DockRoot {
                   <path d="M4 3l8 18 2-7 7-2z"></path>
                 </svg>
               </button>
-              <button class="icon" id="shot-btn" title="Screenshot" aria-label="Screenshot">
+              <button class="icon" id="shot-btn" title="Annotation" aria-label="Annotation">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                   <path d="M7 13l3-3 5 6 3-4"></path>
