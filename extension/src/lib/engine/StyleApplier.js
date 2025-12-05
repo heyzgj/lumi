@@ -30,7 +30,9 @@ export default class StyleApplier {
     const selector = this.getSelectorForElement(element, context);
     const key = this.getRuleKey(selector, property, context);
 
-    const ruleBody = `${property}: ${value};`;
+    // Normalize JS-style property (e.g. marginTop) to CSS property (margin-top)
+    const cssProperty = property.replace(/([A-Z])/g, '-$1').toLowerCase();
+    const ruleBody = `${cssProperty}: ${value};`;
     const cssRule = `${selector} { ${ruleBody} }`;
 
     this.removeRule(key);
@@ -118,4 +120,3 @@ export default class StyleApplier {
     return `${base}-${index !== undefined ? index : 'x'}-${random}`;
   }
 }
-

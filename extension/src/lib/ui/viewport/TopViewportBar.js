@@ -19,36 +19,32 @@ export default class TopViewportBar {
     this.shadow.innerHTML = `
       <style>
         /* Uses design tokens from :root (see extension/shared/tokens.css) */
-        .bar { 
-          position: relative; 
-          height: var(--header-height); 
-          display: flex; 
-          align-items: center; 
-          gap: 12px; 
+        .bar {
+          position: relative;
+          height: var(--header-height);
+          display: flex;
+          align-items: center;
+          gap: 12px;
           padding: 0 20px;
-          /* Glassmorphism */
-          background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
-          backdrop-filter: blur(24px);
-          -webkit-backdrop-filter: blur(24px);
+          background: var(--dock-bg);
           border-bottom: 1px solid var(--dock-stroke);
-          box-shadow: 0 4px 24px -4px rgba(0,0,0,0.08);
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-          font-size: 13px; 
+          box-shadow: var(--shadow);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 13px;
           color: var(--dock-fg);
-          transition: background 0.3s ease;
         }
         select, input { 
           font-size: 12px; 
           border: 1px solid var(--dock-stroke); 
           border-radius: 8px; 
-          background: color-mix(in srgb, var(--dock-bg) 60%, transparent); 
+          background: var(--dock-bg);
           color: var(--dock-fg); 
           padding: 6px 10px; 
           outline: none;
           transition: all 0.2s ease;
         }
         select:hover, input:hover {
-          background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
+          background: color-mix(in srgb, var(--dock-bg) 96%, transparent);
           border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent);
         }
         select:focus, input:focus {

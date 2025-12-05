@@ -421,8 +421,18 @@ export default class DockEditModal {
             const inlineStyle = data.inline || {};
             Object.keys(inlineStyle).forEach(prop => {
                 try {
-                    if (typeof prop === 'string' && inlineStyle[prop] !== undefined) {
-                        element.style[prop] = inlineStyle[prop];
+                    if (typeof prop !== 'string' || inlineStyle[prop] === undefined) return;
+                    const value = inlineStyle[prop];
+                    if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                        const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                        const style = element.style;
+                        if (!value) {
+                            style.removeProperty(cssProperty);
+                        } else {
+                            style.setProperty(cssProperty, value, '');
+                        }
+                    } else {
+                        element.style[prop] = value;
                     }
                 } catch (e) { }
             });
@@ -441,8 +451,18 @@ export default class DockEditModal {
             const inlineStyle = base.inline || {};
             Object.keys(inlineStyle).forEach(prop => {
                 try {
-                    if (typeof prop === 'string' && inlineStyle[prop] !== undefined) {
-                        element.style[prop] = inlineStyle[prop];
+                    if (typeof prop !== 'string' || inlineStyle[prop] === undefined) return;
+                    const value = inlineStyle[prop];
+                    if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                        const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                        const style = element.style;
+                        if (!value) {
+                            style.removeProperty(cssProperty);
+                        } else {
+                            style.setProperty(cssProperty, value, '');
+                        }
+                    } else {
+                        element.style[prop] = value;
                     }
                 } catch (e) { }
             });
@@ -1037,8 +1057,22 @@ export default class DockEditModal {
             const prev = step.prevByIndex.get(idx) || {};
             const el = t.element;
             step.keys.forEach((key) => {
-                if (key === 'text') { if (this.canEditText(el)) el.textContent = prev.text; }
-                else el.style[key] = prev[key] || '';
+                if (key === 'text') {
+                    if (this.canEditText(el)) el.textContent = prev.text;
+                    return;
+                }
+                const prevVal = prev[key] || '';
+                if (key.startsWith('margin') || key.startsWith('padding')) {
+                    const cssProperty = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+                    const style = el.style;
+                    if (!prevVal) {
+                        style.removeProperty(cssProperty);
+                    } else {
+                        style.setProperty(cssProperty, prevVal, '');
+                    }
+                } else {
+                    el.style[key] = prevVal;
+                }
             });
         });
         this.current = {};
@@ -1053,8 +1087,8 @@ export default class DockEditModal {
     isOpen() { return !!this.container && this.container.style.display === 'flex'; }
 
     resetChanges() {
-        // Reset to original page state (baseline from first selection)
-        this.restoreBaseline();
+        // Reset to the state when the modal was opened (discard current preview changes)
+        this.restoreBase();
         this.current = {};
         this.intents = {};
         // Re-collect base from the now-restored DOM

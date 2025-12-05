@@ -11,9 +11,9 @@ export const DOCK_STYLES = `
     right: 0;
     height: 100vh;
     width: 420px;
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background: var(--dock-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     text-align: left;
     border-left: 1px solid var(--dock-stroke);
     box-shadow: var(--shadow);
@@ -709,6 +709,16 @@ export const DOCK_STYLES = `
     flex: 1; /* Push chevron to right */
   }
 
+  .timeline-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--dock-fg);
+    margin-top: 2px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+
   .timeline-chevron {
     color: var(--dock-fg-2);
     display: flex;
@@ -767,7 +777,11 @@ export const DOCK_STYLES = `
   /* Specific Entry Types */
   .timeline-entry.thinking .timeline-title {
     font-style: italic;
-    color: var(--dock-fg-2);
+    color: var(--dock-fg); /* Keep title strong for Thinking */
+  }
+
+  .timeline-entry.thinking .timeline-body {
+    color: var(--dock-fg-2); /* De-emphasize body under Thinking */
   }
   
   .timeline-file-list {

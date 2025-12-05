@@ -67,8 +67,8 @@ function normalizeHostPattern(value) {
     }
   }
 
-  // Absolute filesystem path
-  if (input.startsWith('/')) {
+  // Absolute filesystem path (but not protocol-relative URLs like //example.com)
+  if (input.startsWith('/') && !input.startsWith('//')) {
     let path = input;
     if (!path.endsWith('/')) {
       const idx = path.lastIndexOf('/');
@@ -665,11 +665,28 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     if (!mapped) return;
 
+    // Capture the URL for this injection attempt so late-resolving scripts
+    // from a previous navigation cannot mark a new page as injected.
+    const expectedUrl = tab.url;
+
     // Inject content script
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['content.js']
     });
+
+    // If the tab has navigated since we scheduled this injection, do not
+    // record it as injected for the new page.
+    try {
+      const current = await chrome.tabs.get(tabId);
+      if (!current || current.url !== expectedUrl) {
+        console.warn('[LUMI] Injection completed after navigation change; skipping injectedTabs flag');
+        return;
+      }
+    } catch (_) {
+      // Tab may have been closed or become unreachable; nothing else to do.
+      return;
+    }
 
     injectedTabs.add(tabId);
     console.log('[LUMI] Auto-injected content script for', host);

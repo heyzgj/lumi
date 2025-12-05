@@ -15,7 +15,7 @@ export default class StateManager {
         dockWidth: 420,
         dockTab: 'chat',
         dockState: 'normal', // 'normal' | 'compact' | 'expanded'
-        theme: 'light', // 'light' | 'dark' | 'auto'
+        theme: 'light', // 'light' | 'dark'
         viewport: {
           enabled: true,
           preset: 'responsive',

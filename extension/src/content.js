@@ -469,11 +469,19 @@ function bootstrap() {
             if (prop === 'text') return; // handled by baseline
             // If baseline provides a value, restore it; else remove inline style
             const base = snapshot.baseline && snapshot.baseline.inline ? snapshot.baseline.inline[prop] : undefined;
-            if (base === undefined || base === null || base === '') {
-              try { el.style[prop] = ''; } catch (_) { }
-            } else {
-              try { el.style[prop] = base; } catch (_) { }
-            }
+            const next = (base === undefined || base === null || base === '') ? '' : base;
+            try {
+              if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                if (!next) {
+                  el.style.removeProperty(cssProperty);
+                } else {
+                  el.style.setProperty(cssProperty, next, '');
+                }
+              } else {
+                el.style[prop] = next;
+              }
+            } catch (_) { }
           });
         }
         // 2) Restore text content only for leaf nodes with a string baseline
@@ -893,6 +901,17 @@ function bootstrap() {
       if (Object.keys(committed).length) {
         styleHistory.push({ index, selector, changes: committed, prev });
       }
+
+      // Normalize inline preview for margin/padding so committed rules take over
+      Object.keys(changes || {}).forEach((prop) => {
+        if (!prop) return;
+        if (prop.startsWith('margin') || prop.startsWith('padding')) {
+          try {
+            const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+            element.style.removeProperty(cssProperty);
+          } catch (_) { }
+        }
+      });
 
       // Mark element
       elements[index].edited = true;

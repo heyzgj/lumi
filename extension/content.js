@@ -122,7 +122,7 @@
           dockWidth: 420,
           dockTab: 'chat',
           dockState: 'normal', // 'normal' | 'compact' | 'expanded'
-          theme: 'light', // 'light' | 'dark' | 'auto'
+          theme: 'light', // 'light' | 'dark'
           viewport: {
             enabled: true,
             preset: 'responsive',
@@ -2789,9 +2789,9 @@ ${TOKENS_CSS}
     right: 0;
     height: 100vh;
     width: 420px;
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background: var(--dock-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     text-align: left;
     border-left: 1px solid var(--dock-stroke);
     box-shadow: var(--shadow);
@@ -3487,6 +3487,16 @@ ${TOKENS_CSS}
     flex: 1; /* Push chevron to right */
   }
 
+  .timeline-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--dock-fg);
+    margin-top: 2px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+
   .timeline-chevron {
     color: var(--dock-fg-2);
     display: flex;
@@ -3545,7 +3555,11 @@ ${TOKENS_CSS}
   /* Specific Entry Types */
   .timeline-entry.thinking .timeline-title {
     font-style: italic;
-    color: var(--dock-fg-2);
+    color: var(--dock-fg); /* Keep title strong for Thinking */
+  }
+
+  .timeline-entry.thinking .timeline-body {
+    color: var(--dock-fg-2); /* De-emphasize body under Thinking */
   }
   
   .timeline-file-list {
@@ -5826,44 +5840,20 @@ ${TOKENS_CSS}
     }
   }
 
-  let __dockThemeMode = 'auto'; // 'auto' | 'light' | 'dark'
-
-  function applyDockThemeAuto() {
-    try {
-      if (__dockThemeMode !== 'auto') return; // respect manual override
-      const parseRGB = (str) => {
-        if (!str) return null;
-        const m = String(str).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
-        return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-      };
-      const luminance = ([r, g, b]) => {
-        const s = [r, g, b]
-          .map((v) => v / 255)
-          .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
-        return 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
-      };
-      const bodyBg = getComputedStyle(document.body).backgroundColor;
-      const rgb = parseRGB(bodyBg);
-      const preferDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      const isDark = rgb ? luminance(rgb) < 0.5 : preferDark;
-      document.documentElement.classList.toggle('dark-dock', !!isDark);
-    } catch (_) {
-      // best effort only
-    }
-  }
+  let __dockThemeMode = 'light'; // 'light' | 'dark'
 
   function setDockThemeMode(mode = 'auto') {
-    __dockThemeMode = (mode === 'dark' || mode === 'light') ? mode : 'auto';
-    if (__dockThemeMode === 'dark') {
-      try { document.documentElement.classList.add('dark-dock'); } catch (_) {}
-      return 'dark';
-    }
-    if (__dockThemeMode === 'light') {
-      try { document.documentElement.classList.remove('dark-dock'); } catch (_) {}
-      return 'light';
-    }
-    applyDockThemeAuto();
-    return 'auto';
+    // Normalize to explicit light/dark; treat legacy 'auto' as light.
+    __dockThemeMode = (mode === 'dark') ? 'dark' : 'light';
+    try {
+      const root = document.documentElement;
+      if (__dockThemeMode === 'dark') {
+        root.classList.add('dark-dock');
+      } else {
+        root.classList.remove('dark-dock');
+      }
+    } catch (_) {}
+    return __dockThemeMode;
   }
 
   /**
@@ -6612,8 +6602,18 @@ ${TOKENS_CSS}
               const inlineStyle = data.inline || {};
               Object.keys(inlineStyle).forEach(prop => {
                   try {
-                      if (typeof prop === 'string' && inlineStyle[prop] !== undefined) {
-                          element.style[prop] = inlineStyle[prop];
+                      if (typeof prop !== 'string' || inlineStyle[prop] === undefined) return;
+                      const value = inlineStyle[prop];
+                      if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                          const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                          const style = element.style;
+                          if (!value) {
+                              style.removeProperty(cssProperty);
+                          } else {
+                              style.setProperty(cssProperty, value, '');
+                          }
+                      } else {
+                          element.style[prop] = value;
                       }
                   } catch (e) { }
               });
@@ -6632,8 +6632,18 @@ ${TOKENS_CSS}
               const inlineStyle = base.inline || {};
               Object.keys(inlineStyle).forEach(prop => {
                   try {
-                      if (typeof prop === 'string' && inlineStyle[prop] !== undefined) {
-                          element.style[prop] = inlineStyle[prop];
+                      if (typeof prop !== 'string' || inlineStyle[prop] === undefined) return;
+                      const value = inlineStyle[prop];
+                      if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                          const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                          const style = element.style;
+                          if (!value) {
+                              style.removeProperty(cssProperty);
+                          } else {
+                              style.setProperty(cssProperty, value, '');
+                          }
+                      } else {
+                          element.style[prop] = value;
                       }
                   } catch (e) { }
               });
@@ -7228,8 +7238,22 @@ ${TOKENS_CSS}
               const prev = step.prevByIndex.get(idx) || {};
               const el = t.element;
               step.keys.forEach((key) => {
-                  if (key === 'text') { if (this.canEditText(el)) el.textContent = prev.text; }
-                  else el.style[key] = prev[key] || '';
+                  if (key === 'text') {
+                      if (this.canEditText(el)) el.textContent = prev.text;
+                      return;
+                  }
+                  const prevVal = prev[key] || '';
+                  if (key.startsWith('margin') || key.startsWith('padding')) {
+                      const cssProperty = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+                      const style = el.style;
+                      if (!prevVal) {
+                          style.removeProperty(cssProperty);
+                      } else {
+                          style.setProperty(cssProperty, prevVal, '');
+                      }
+                  } else {
+                      el.style[key] = prevVal;
+                  }
               });
           });
           this.current = {};
@@ -7244,8 +7268,8 @@ ${TOKENS_CSS}
       isOpen() { return !!this.container && this.container.style.display === 'flex'; }
 
       resetChanges() {
-          // Reset to original page state (baseline from first selection)
-          this.restoreBaseline();
+          // Reset to the state when the modal was opened (discard current preview changes)
+          this.restoreBase();
           this.current = {};
           this.intents = {};
           // Re-collect base from the now-restored DOM
@@ -7411,7 +7435,9 @@ ${TOKENS_CSS}
       const selector = this.getSelectorForElement(element, context);
       const key = this.getRuleKey(selector, property, context);
 
-      const ruleBody = `${property}: ${value};`;
+      // Normalize JS-style property (e.g. marginTop) to CSS property (margin-top)
+      const cssProperty = property.replace(/([A-Z])/g, '-$1').toLowerCase();
+      const ruleBody = `${cssProperty}: ${value};`;
       const cssRule = `${selector} { ${ruleBody} }`;
 
       this.removeRule(key);
@@ -8424,36 +8450,32 @@ ${TOKENS_CSS}
       this.shadow.innerHTML = `
       <style>
         /* Uses design tokens from :root (see extension/shared/tokens.css) */
-        .bar { 
-          position: relative; 
-          height: var(--header-height); 
-          display: flex; 
-          align-items: center; 
-          gap: 12px; 
+        .bar {
+          position: relative;
+          height: var(--header-height);
+          display: flex;
+          align-items: center;
+          gap: 12px;
           padding: 0 20px;
-          /* Glassmorphism */
-          background: color-mix(in srgb, var(--dock-bg) 85%, transparent);
-          backdrop-filter: blur(24px);
-          -webkit-backdrop-filter: blur(24px);
+          background: var(--dock-bg);
           border-bottom: 1px solid var(--dock-stroke);
-          box-shadow: 0 4px 24px -4px rgba(0,0,0,0.08);
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-          font-size: 13px; 
+          box-shadow: var(--shadow);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 13px;
           color: var(--dock-fg);
-          transition: background 0.3s ease;
         }
         select, input { 
           font-size: 12px; 
           border: 1px solid var(--dock-stroke); 
           border-radius: 8px; 
-          background: color-mix(in srgb, var(--dock-bg) 60%, transparent); 
+          background: var(--dock-bg);
           color: var(--dock-fg); 
           padding: 6px 10px; 
           outline: none;
           transition: all 0.2s ease;
         }
         select:hover, input:hover {
-          background: color-mix(in srgb, var(--dock-bg) 80%, transparent);
+          background: color-mix(in srgb, var(--dock-bg) 96%, transparent);
           border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent);
         }
         select:focus, input:focus {
@@ -9004,11 +9026,19 @@ ${TOKENS_CSS}
               if (prop === 'text') return; // handled by baseline
               // If baseline provides a value, restore it; else remove inline style
               const base = snapshot.baseline && snapshot.baseline.inline ? snapshot.baseline.inline[prop] : undefined;
-              if (base === undefined || base === null || base === '') {
-                try { el.style[prop] = ''; } catch (_) { }
-              } else {
-                try { el.style[prop] = base; } catch (_) { }
-              }
+              const next = (base === undefined || base === null || base === '') ? '' : base;
+              try {
+                if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                  const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                  if (!next) {
+                    el.style.removeProperty(cssProperty);
+                  } else {
+                    el.style.setProperty(cssProperty, next, '');
+                  }
+                } else {
+                  el.style[prop] = next;
+                }
+              } catch (_) { }
             });
           }
           // 2) Restore text content only for leaf nodes with a string baseline
@@ -9428,6 +9458,17 @@ ${TOKENS_CSS}
         if (Object.keys(committed).length) {
           styleHistory.push({ index, selector, changes: committed, prev });
         }
+
+        // Normalize inline preview for margin/padding so committed rules take over
+        Object.keys(changes || {}).forEach((prop) => {
+          if (!prop) return;
+          if (prop.startsWith('margin') || prop.startsWith('padding')) {
+            try {
+              const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+              element.style.removeProperty(cssProperty);
+            } catch (_) { }
+          }
+        });
 
         // Mark element
         elements[index].edited = true;
