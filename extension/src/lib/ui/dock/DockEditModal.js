@@ -819,7 +819,7 @@ export default class DockEditModal {
         textarea.value = value === 'mixed' ? '' : (value || '');
         textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
 
-        textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--accent)'; textarea.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+        textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--lumi-accent)'; textarea.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--lumi-accent) 20%, transparent)'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
         textarea.addEventListener('blur', () => { textarea.style.borderColor = 'var(--dock-stroke)'; textarea.style.boxShadow = 'none'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
 
         textarea.addEventListener('input', () => {
@@ -844,7 +844,7 @@ export default class DockEditModal {
             font-family:inherit;font-size:13px;
         `;
 
-        input.addEventListener('focus', () => { input.style.borderColor = 'var(--accent)'; input.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+        input.addEventListener('focus', () => { input.style.borderColor = 'var(--lumi-accent)'; input.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--lumi-accent) 20%, transparent)'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
         input.addEventListener('blur', () => { input.style.borderColor = 'var(--dock-stroke)'; input.style.boxShadow = 'none'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
         input.step = opts.step || '1';
         if (opts.min !== undefined) input.min = opts.min;

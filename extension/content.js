@@ -387,7 +387,7 @@
   }
 `;
 
-  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --accent: #3B82F6;\n  --success: #10B981;\n  --error: #EF4444;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);\n  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n:root.dark-dock, .dark-dock, .dark {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --accent: #60A5FA;\n  --success: #34D399;\n  --error: #F87171;\n  --on-accent: #ffffff;\n  --on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);\n  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n";
+  const TOKENS_CSS = ":root {\n  --dock-bg: #ffffff;\n  --dock-stroke: rgba(0,0,0,0.08);\n  --dock-fg: #111111;\n  --dock-fg-2: #5F6368;\n  --lumi-accent: #3B82F6;\n  --lumi-success: #10B981;\n  --lumi-error: #EF4444;\n  --lumi-on-accent: #ffffff;\n  --lumi-on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);\n  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n:root.dark-dock, .dark-dock, .dark {\n  --dock-bg: #161618;\n  --dock-stroke: rgba(255,255,255,0.12);\n  --dock-fg: #F5F5F7;\n  --dock-fg-2: #B0B3B8;\n  --lumi-accent: #60A5FA;\n  --lumi-success: #34D399;\n  --lumi-error: #F87171;\n  --lumi-on-accent: #ffffff;\n  --lumi-on-strong: #ffffff;\n  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);\n  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);\n  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);\n  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);\n  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);\n  --radius-panel: 18px;\n  --radius-chip: 8px;\n  --header-height: 32px;\n}\n";
 
   /**
    * DOM Utilities
@@ -677,7 +677,7 @@
       const fill = this.doc.createElement('div');
       fill.style.cssText = `
       position:absolute; inset:0; border-radius:inherit;
-      background: color-mix(in srgb, var(--accent) 6%, transparent);
+      background: color-mix(in srgb, var(--lumi-accent) 6%, transparent);
       pointer-events:none; opacity:0; transition: opacity 120ms ease;
     `;
       halo.appendChild(fill);
@@ -881,8 +881,8 @@
       top: ${bbox.top}px;
       width: ${bbox.width}px;
       height: ${bbox.height}px;
-      border: 2px dashed var(--accent);
-      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border: 2px dashed var(--lumi-accent);
+      background: color-mix(in srgb, var(--lumi-accent) 14%, transparent);
       pointer-events: none;
       z-index: 2147483645;
     `;
@@ -926,7 +926,7 @@
       pointer-events: auto;
       z-index: 2147483645;
       border-radius: ${radius};
-      box-shadow: 0 0 0 2px var(--accent);
+      box-shadow: 0 0 0 2px var(--lumi-accent);
       background: transparent;
       cursor: pointer;
       transition: box-shadow 0.15s ease;
@@ -1229,9 +1229,9 @@ ${TOKENS_CSS}
 }
 
 .btn.active {
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: 0 4px 12px -2px var(--accent);
+  background: var(--lumi-accent);
+  color: var(--lumi-on-accent);
+  box-shadow: 0 4px 12px -2px var(--lumi-accent);
 }
 
 .btn svg {
@@ -1285,11 +1285,11 @@ ${TOKENS_CSS}
 }
 
 .action-btn.danger {
-  color: var(--error);
+  color: var(--lumi-error);
 }
 
 .action-btn.danger:hover {
-  background: color-mix(in srgb, var(--error) 10%, transparent);
+  background: color-mix(in srgb, var(--lumi-error) 10%, transparent);
   transform: translateY(-2px);
 }
 `;
@@ -7000,7 +7000,7 @@ ${TOKENS_CSS}
           textarea.value = value === 'mixed' ? '' : (value || '');
           textarea.placeholder = value === 'mixed' ? 'Mixed' : '';
 
-          textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--accent)'; textarea.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+          textarea.addEventListener('focus', () => { textarea.style.borderColor = 'var(--lumi-accent)'; textarea.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--lumi-accent) 20%, transparent)'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
           textarea.addEventListener('blur', () => { textarea.style.borderColor = 'var(--dock-stroke)'; textarea.style.boxShadow = 'none'; textarea.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
 
           textarea.addEventListener('input', () => {
@@ -7025,7 +7025,7 @@ ${TOKENS_CSS}
             font-family:inherit;font-size:13px;
         `;
 
-          input.addEventListener('focus', () => { input.style.borderColor = 'var(--accent)'; input.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent)'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
+          input.addEventListener('focus', () => { input.style.borderColor = 'var(--lumi-accent)'; input.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--lumi-accent) 20%, transparent)'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 80%, transparent)'; });
           input.addEventListener('blur', () => { input.style.borderColor = 'var(--dock-stroke)'; input.style.boxShadow = 'none'; input.style.background = 'color-mix(in srgb, var(--dock-bg) 60%, transparent)'; });
           input.step = opts.step || '1';
           if (opts.min !== undefined) input.min = opts.min;
@@ -8479,8 +8479,8 @@ ${TOKENS_CSS}
           border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent);
         }
         select:focus, input:focus {
-          border-color: var(--accent);
-          box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+          border-color: var(--lumi-accent);
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--lumi-accent) 20%, transparent);
         }
         .btn { 
           height: 32px; 

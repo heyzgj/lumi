@@ -38,9 +38,9 @@ export default class ControlsOverlay {
       left: 0;
       right: 0;
       bottom: 0;
-      border: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+      border: 2px solid color-mix(in srgb, var(--lumi-accent) 65%, transparent);
       border-radius: 4px;
-      background: color-mix(in srgb, var(--accent) 8%, transparent);
+      background: color-mix(in srgb, var(--lumi-accent) 8%, transparent);
       pointer-events: none;
     `;
     overlay.appendChild(box);
@@ -213,7 +213,7 @@ export default class ControlsOverlay {
       width: ${HANDLE_SIZE}px;
       height: ${HANDLE_SIZE}px;
       background: var(--dock-fg);
-      border: 2px solid color-mix(in srgb, var(--accent) 80%, transparent);
+      border: 2px solid color-mix(in srgb, var(--lumi-accent) 80%, transparent);
       border-radius: 50%;
       pointer-events: auto;
       cursor: pointer;

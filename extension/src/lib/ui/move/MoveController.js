@@ -264,7 +264,7 @@ export default class MoveController {
       if (!target) return;
       if (active) {
         target.dataset.prevOutline = target.style.outline || '';
-        target.style.outline = '2px solid color-mix(in srgb, var(--accent, #3B82F6) 60%, transparent)';
+        target.style.outline = '2px solid color-mix(in srgb, var(--lumi-accent, #3B82F6) 60%, transparent)';
       } else {
         target.style.outline = target.dataset.prevOutline || '';
         delete target.dataset.prevOutline;

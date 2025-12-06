@@ -20,9 +20,9 @@ export default class TopBanner {
       right: 0;
       z-index: 2147483646;
       padding: 12px 24px;
-      background: var(--accent);
+      background: var(--lumi-accent);
       backdrop-filter: blur(12px);
-      color: var(--on-accent);
+      color: var(--lumi-on-accent);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 13px;
       font-weight: 500;

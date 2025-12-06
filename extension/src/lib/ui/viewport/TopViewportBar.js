@@ -48,8 +48,8 @@ export default class TopViewportBar {
           border-color: color-mix(in srgb, var(--dock-fg) 20%, transparent);
         }
         select:focus, input:focus {
-          border-color: var(--accent);
-          box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+          border-color: var(--lumi-accent);
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--lumi-accent) 20%, transparent);
         }
         .btn { 
           height: 32px; 

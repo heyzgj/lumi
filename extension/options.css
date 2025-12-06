@@ -56,7 +56,7 @@ body {
   border: none;
   border-radius: 12px;
   padding: 10px 16px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--lumi-accent) 12%, transparent);
   color: var(--dock-fg);
   text-align: left;
   font-size: 14px;
@@ -66,12 +66,12 @@ body {
 
 .nav-link:hover {
   transform: translateX(2px);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--lumi-accent) 18%, transparent);
 }
 
 .nav-link.active {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-  color: var(--on-accent);
+  background: color-mix(in srgb, var(--lumi-accent) 28%, transparent);
+  color: var(--lumi-on-accent);
   box-shadow: var(--shadow);
 }
 
@@ -184,8 +184,8 @@ select {
 input:focus,
 select:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--lumi-accent) 60%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--lumi-accent) 20%, transparent);
 }
 
 small {
@@ -239,12 +239,12 @@ button:hover {
 }
 
 button.primary {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--lumi-accent);
+  color: var(--lumi-on-accent);
 }
 
 button.primary:hover {
-  background: color-mix(in srgb, var(--accent) 90%, transparent);
+  background: color-mix(in srgb, var(--lumi-accent) 90%, transparent);
 }
 
 button.ghost {
@@ -256,21 +256,21 @@ button.ghost {
   border-radius: 16px;
   padding: 14px 18px;
   font-size: 14px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--lumi-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lumi-accent) 35%, transparent);
   color: var(--text-secondary);
 }
 
 .status-banner.success {
-  background: color-mix(in srgb, var(--success) 16%, transparent);
-  border-color: color-mix(in srgb, var(--success) 45%, transparent);
-  color: color-mix(in srgb, var(--success) 90%, white);
+  background: color-mix(in srgb, var(--lumi-success) 16%, transparent);
+  border-color: color-mix(in srgb, var(--lumi-success) 45%, transparent);
+  color: color-mix(in srgb, var(--lumi-success) 90%, white);
 }
 
 .status-banner.error {
-  background: color-mix(in srgb, var(--error) 14%, transparent);
-  border-color: color-mix(in srgb, var(--error) 45%, transparent);
-  color: color-mix(in srgb, var(--error) 90%, white);
+  background: color-mix(in srgb, var(--lumi-error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--lumi-error) 45%, transparent);
+  color: color-mix(in srgb, var(--lumi-error) 90%, white);
 }
 
 .status-banner.info {
@@ -320,8 +320,8 @@ button.ghost {
 }
 
 .project-row .remove-project {
-  background: color-mix(in srgb, var(--error) 18%, transparent);
-  color: color-mix(in srgb, var(--error) 95%, white);
+  background: color-mix(in srgb, var(--lumi-error) 18%, transparent);
+  color: color-mix(in srgb, var(--lumi-error) 95%, white);
 }
 
 .empty-state {
@@ -406,18 +406,18 @@ button.ghost {
 }
 
 #toast.success {
-  border-color: color-mix(in srgb, var(--success) 45%, transparent);
-  background: color-mix(in srgb, var(--success) 18%, transparent);
+  border-color: color-mix(in srgb, var(--lumi-success) 45%, transparent);
+  background: color-mix(in srgb, var(--lumi-success) 18%, transparent);
 }
 
 #toast.error {
-  border-color: color-mix(in srgb, var(--error) 50%, transparent);
-  background: color-mix(in srgb, var(--error) 16%, transparent);
+  border-color: color-mix(in srgb, var(--lumi-error) 50%, transparent);
+  background: color-mix(in srgb, var(--lumi-error) 16%, transparent);
 }
 
 #toast.info {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--lumi-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--lumi-accent) 18%, transparent);
 }
 
 @media (max-width: 900px) {

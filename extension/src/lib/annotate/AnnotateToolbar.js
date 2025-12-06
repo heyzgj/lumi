@@ -70,9 +70,9 @@ ${TOKENS_CSS}
 }
 
 .btn.active {
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: 0 4px 12px -2px var(--accent);
+  background: var(--lumi-accent);
+  color: var(--lumi-on-accent);
+  box-shadow: 0 4px 12px -2px var(--lumi-accent);
 }
 
 .btn svg {
@@ -126,11 +126,11 @@ ${TOKENS_CSS}
 }
 
 .action-btn.danger {
-  color: var(--error);
+  color: var(--lumi-error);
 }
 
 .action-btn.danger:hover {
-  background: color-mix(in srgb, var(--error) 10%, transparent);
+  background: color-mix(in srgb, var(--lumi-error) 10%, transparent);
   transform: translateY(-2px);
 }
 `;

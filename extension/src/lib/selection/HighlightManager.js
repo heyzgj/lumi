@@ -48,7 +48,7 @@ export default class HighlightManager {
     const fill = this.doc.createElement('div');
     fill.style.cssText = `
       position:absolute; inset:0; border-radius:inherit;
-      background: color-mix(in srgb, var(--accent) 6%, transparent);
+      background: color-mix(in srgb, var(--lumi-accent) 6%, transparent);
       pointer-events:none; opacity:0; transition: opacity 120ms ease;
     `;
     halo.appendChild(fill);
@@ -252,8 +252,8 @@ export default class HighlightManager {
       top: ${bbox.top}px;
       width: ${bbox.width}px;
       height: ${bbox.height}px;
-      border: 2px dashed var(--accent);
-      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border: 2px dashed var(--lumi-accent);
+      background: color-mix(in srgb, var(--lumi-accent) 14%, transparent);
       pointer-events: none;
       z-index: 2147483645;
     `;
@@ -297,7 +297,7 @@ export default class HighlightManager {
       pointer-events: auto;
       z-index: 2147483645;
       border-radius: ${radius};
-      box-shadow: 0 0 0 2px var(--accent);
+      box-shadow: 0 0 0 2px var(--lumi-accent);
       background: transparent;
       cursor: pointer;
       transition: box-shadow 0.15s ease;
