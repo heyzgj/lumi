@@ -1,37 +1,51 @@
 <p align="center">
-  <img src="assets/LUMI.png" alt="LUMI" width="400" />
+  <img src="assets/LUMI.png" alt="LUMI" width="500" />
+</p>
+
+<p align="center">
+  Visual Prompt for AI coding agents.
 </p>
 <p align="center">
-  <strong>👀 See it. Click it. Fix it.</strong>
+  <a href="https://deepwiki.com/heyzgj/lumi"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 <p align="center">
   <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="700" />
 </p>
 
-## What is LUMI
+## What is Lumi?
 
-**LUMI gives your AI coding agent vision.**
+Lumi is a Chrome extension that turns your visual edits and annotations into high‑fidelity context for tools like Cursor, Antigravity, Windsurf, Lovable, or your own CLI. Every click and tweak is captured as structured data — DOM diffs, computed styles, and screenshots — so your AI can actually “see” the UI and ship the right code on the first try.
 
-Instead of describing what's on your screen, you **show** it. Click any element, add a comment, and let your AI see exactly what you mean.
+## Key Features
 
-LUMI is a Chrome extension that connects directly to AI coding agents like **Codex** and **Claude Code**, enabling true visual collaboration. Your AI can now see your UI, understand context from screenshots, and make precise changes without guessing selectors or navigation paths.
+1. **Visual DOM Editor (WYSIWYG)**  
+   Click any element to adjust spacing, colors, typography, and layout with live preview. Lumi records every change as a precise DOM/CSS diff.
 
-## Features
+2. **Intent‑Based Annotation**  
+   Draw, highlight, and comment directly on top of the UI. Use it to describe flows, logic changes, and refactors visually.
 
-✨ **Visual Selection** - Click any element on your page to select it instantly  
-📸 **Screenshot Annotations** - Capture and annotate with a floating glass toolbar  
-🎯 **Direct Editing** - Edit colors, text, spacing, and styles with live preview in a glassmorphic modal  
-🤖 **AI-Powered Changes** - Natural language instructions transformed into code  
-🔄 **Session Management** - Keep track of multiple conversations and changes  
-⚡ **Works Everywhere** - Any web app, any framework, any stack
+3. **Universal Context Export**  
+   One click “Copy Prompt” exports diffs + screenshots + intent into a portable context block you can drop into Cursor, Claude, Windsurf, Lovable, etc.
 
+4. **Native CLI Integration** *(Optional)*  
+   Wire Lumi to your local CLI (e.g. Codex or Claude Code). Send visual context straight from the browser to your terminal, keeping the whole loop in one place.
 
+## Upcoming Features
+
+1. **Real time AI generated preview**  
+2. **Support more CLI coding agents like gemini CLI**  
 
 
 ## Requirements
+
+**Core:**
 - Node.js 20+
 - Chrome 115+
-- At least one CLI: Codex CLI and/or Claude Code
+
+**Optional (for AI Mode):**
+- Codex CLI and/or Claude Code
+*(Not required if you only plan to use the "Copy Prompt" feature with Cursor/Lovable)*
+
 
 ## Quick Start
 1. **Clone the repository**
@@ -46,7 +60,7 @@ LUMI is a Chrome extension that connects directly to AI coding agents like **Cod
    ```
    Installs dependencies for `extension/` and `server/`, asks where to store `config.json`, and checks that the CLIs are visible on your `$PATH`.
 
-3. **Run the bridge**
+3. **Run the server**
    ```bash
    npm run dev
    ```
@@ -67,13 +81,11 @@ This is **the only section you need to change** for basic usage:
 
 **Projects** - Tell LUMI where your code lives and which sites to work with
 - Click "Add" and enter:
-  - **Name**: Friendly name (e.g., "My Website")
   - **Working Directory**: Full path to your project folder
   - **Hosts**: Your development server URL (e.g., `localhost:3000`)
 
 **Example for a typical React/Next.js project:**
 ```
-Name: "My App"
 Working Directory: "/Users/john/Documents/my-react-app"
 Hosts: "localhost:3000"
 ```
@@ -95,23 +107,13 @@ Click the "Test" button - should show "Connected" in green.
 **Pro tip:** If you're unsure about any setting, ask your AI assistant! They can explain what each option does and help you find your working directory and host information.
 
 ## Daily Use
-1. Keep the server running (from the project directory: `npm run dev`).
-2. Visit a mapped host and click the LUMI icon in the bottom-right to open the Dock.
-3. **Use the Dock to:**
-   - **Select elements**: Click the cursor icon or press `Cmd/Ctrl+E`, then click any element on the page
-   - **Annotate screenshots**: Click the camera icon or press `Cmd/Ctrl+S` to enter annotation mode
-     - Use the floating glass toolbar to draw rectangles, arrows, text, or freehand
-     - Click the checkmark to add the annotated screenshot to chat
+1. Start Server: npm run dev in your lumi directory.
+2. Launch: Visit a mapped host and click the LUMI icon to open the extension.
+3. **Workflow:**
+   - **Inspect**: Click the Cursor icon to select and edit elements.
    - **Edit directly**: Click any selected element's chip to open the edit modal
-   - **Chat with AI**: Type your instruction in the composer, choose an engine, and send
-4. **Session management**: Switch between "Chat" and "History" tabs to manage multiple conversations.
-5. Watch the Chat timeline for status updates and review the server log (`~/.lumi/server.log`) if anything fails.
-
-## UI Features
-- **Premium Glass Design**: The entire UI uses a translucent glassmorphism aesthetic with floating shadows
-- **Dark/Light Theme**: Toggle between modes using the sun/moon icon in the Dock header
-- **Micro-interactions**: Buttons lift on hover and compress on click for satisfying feedback
-- **Copy Prompt**: Click the clipboard icon to copy the current prompt with all context
+   - **Annotate**: Click the Annotation Mode icon to draw overlays and explain intent.
+   - **Export**: Click "Copy Prompt" to paste into Cursor/Claude, or "Send" to run via local CLI.
 
 ## Troubleshooting
 - **Port busy** → `lsof -nP -iTCP:3456` then kill the process, or run with a different `LUMI_PORT` and update the Options Page.

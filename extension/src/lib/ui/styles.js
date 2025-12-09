@@ -34,7 +34,8 @@ export const GLOBAL_STYLES = `
   html.lumi-overlay-dragging, body.lumi-overlay-dragging {
     user-select: none !important;
   }
-  body.lumi-scroll-lock {
+  body.lumi-scroll-lock,
+  body.lumi-annotate-lock {
     overflow: hidden !important;
   }
 `;

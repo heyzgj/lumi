@@ -382,7 +382,8 @@
   html.lumi-overlay-dragging, body.lumi-overlay-dragging {
     user-select: none !important;
   }
-  body.lumi-scroll-lock {
+  body.lumi-scroll-lock,
+  body.lumi-annotate-lock {
     overflow: hidden !important;
   }
 `;
@@ -1491,6 +1492,8 @@ ${TOKENS_CSS}
           this.keydownTargets = [];
           this.resizeTargets = [];
           this.hostType = 'inline';
+          this.bodyScrollLocked = false;
+          this.extraWheelTargets = [];
 
           // Bind methods
           this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -1503,6 +1506,7 @@ ${TOKENS_CSS}
           this.handleViewportScroll = this.handleViewportScroll.bind(this);
           this.setInlineHost = this.setInlineHost.bind(this);
           this.setIframeHost = this.setIframeHost.bind(this);
+          this.handleWheelBlock = this.handleWheelBlock.bind(this);
 
           this.unsubscribers = [];
       }
@@ -1556,11 +1560,28 @@ ${TOKENS_CSS}
           this.isActive = true;
 
           const { doc, container } = this.getHostContext();
+
+          // Lock page scroll while annotating (viewport overlay UX)
+          if (!this.bodyScrollLocked) {
+              try {
+                  document.body.classList.add('lumi-annotate-lock');
+                  this.bodyScrollLocked = true;
+              } catch (_) { }
+          }
+
           // Create canvas overlay
           this.canvas = doc.createElement('canvas');
           this.canvas.id = 'lumi-annotate-canvas';
           // z-index 2147483645 is one less than Dock (...46) so UI overlays it
-          this.canvas.style.cssText = 'position: absolute; inset: 0; z-index: 2147483645; cursor: crosshair;';
+          if (this.hostContext?.type === 'inline' && container === doc.body) {
+              // Inline pages: treat annotate as a pure viewport overlay so it always
+              // covers the current visible area regardless of scroll position.
+              this.canvas.style.cssText = 'position: fixed; inset: 0; z-index: 2147483645; cursor: crosshair;';
+          } else {
+              // Viewport/iframe stages: keep the canvas anchored to the stage container
+              // so coordinates stay aligned with the emulated viewport.
+              this.canvas.style.cssText = 'position: absolute; inset: 0; z-index: 2147483645; cursor: crosshair;';
+          }
           container.appendChild(this.canvas);
 
           // Initialize Fabric
@@ -1613,6 +1634,14 @@ ${TOKENS_CSS}
           // Unbind events
           this.unbindEvents();
 
+          // Release scroll lock if we acquired it
+          if (this.bodyScrollLocked) {
+              try {
+                  document.body.classList.remove('lumi-annotate-lock');
+              } catch (_) { }
+              this.bodyScrollLocked = false;
+          }
+
           // Reset state
           this.stateManager.set('ui.mode', 'idle');
       }
@@ -1626,12 +1655,19 @@ ${TOKENS_CSS}
           // Window events
           window.addEventListener('resize', this.handleResize);
           window.addEventListener('keydown', this.handleKeyDown);
+          try {
+              window.addEventListener('wheel', this.handleWheelBlock, { passive: false, capture: true });
+          } catch (_) { }
           const { win } = this.getHostContext();
           if (win && win !== window) {
               win.addEventListener('resize', this.handleResize);
               win.addEventListener('keydown', this.handleKeyDown);
               this.resizeTargets.push(win);
               this.keydownTargets.push(win);
+              try {
+                  win.addEventListener('wheel', this.handleWheelBlock, { passive: false, capture: true });
+                  this.extraWheelTargets.push(win);
+              } catch (_) { }
           }
 
           // Bus events
@@ -1661,6 +1697,9 @@ ${TOKENS_CSS}
       unbindEvents() {
           window.removeEventListener('resize', this.handleResize);
           window.removeEventListener('keydown', this.handleKeyDown);
+          try {
+              window.removeEventListener('wheel', this.handleWheelBlock, { capture: true });
+          } catch (_) { }
           this.keydownTargets.forEach(target => {
               try { target.removeEventListener('keydown', this.handleKeyDown); } catch (_) { }
           });
@@ -1669,6 +1708,10 @@ ${TOKENS_CSS}
               try { target.removeEventListener('resize', this.handleResize); } catch (_) { }
           });
           this.resizeTargets = [];
+          this.extraWheelTargets.forEach(target => {
+              try { target.removeEventListener('wheel', this.handleWheelBlock, { capture: true }); } catch (_) { }
+          });
+          this.extraWheelTargets = [];
 
           // Unsubscribe from all bus/state events
           this.unsubscribers.forEach(unsubscribe => unsubscribe());
@@ -1680,6 +1723,12 @@ ${TOKENS_CSS}
               this.updateCanvasBounds();
               this.updateToolbarPosition();
           }
+      }
+
+      handleWheelBlock(e) {
+          try {
+              e.preventDefault();
+          } catch (_) { }
       }
 
       updateToolbarPosition() {
