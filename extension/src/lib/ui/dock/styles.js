@@ -380,12 +380,12 @@ export const DOCK_STYLES = `
     white-space: pre-wrap;
   }
   .diff-line.add {
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-    color: color-mix(in srgb, var(--success) 60%, var(--dock-fg));
+    background: color-mix(in srgb, var(--lumi-success) 12%, transparent);
+    color: color-mix(in srgb, var(--lumi-success) 60%, var(--dock-fg));
   }
   .diff-line.del {
-    background: color-mix(in srgb, var(--error) 12%, transparent);
-    color: color-mix(in srgb, var(--error) 60%, var(--dock-fg));
+    background: color-mix(in srgb, var(--lumi-error) 12%, transparent);
+    color: color-mix(in srgb, var(--lumi-error) 60%, var(--dock-fg));
   }
   .diff-line.ctx {
     color: var(--dock-fg-2);
@@ -573,7 +573,7 @@ export const DOCK_STYLES = `
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--success);
+    background: var(--lumi-success);
     box-shadow: 0 0 0 1px var(--surface);
   }
   .chip button { border: none; background: transparent; padding: 0; cursor: pointer; color: inherit; }
@@ -596,7 +596,7 @@ export const DOCK_STYLES = `
     background: var(--surface);
   }
   .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
-  .engine.available .dot { background: var(--success); }
+  .engine.available .dot { background: var(--lumi-success); }
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }

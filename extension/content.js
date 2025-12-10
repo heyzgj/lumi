@@ -3283,12 +3283,12 @@ ${TOKENS_CSS}
     white-space: pre-wrap;
   }
   .diff-line.add {
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-    color: color-mix(in srgb, var(--success) 60%, var(--dock-fg));
+    background: color-mix(in srgb, var(--lumi-success) 12%, transparent);
+    color: color-mix(in srgb, var(--lumi-success) 60%, var(--dock-fg));
   }
   .diff-line.del {
-    background: color-mix(in srgb, var(--error) 12%, transparent);
-    color: color-mix(in srgb, var(--error) 60%, var(--dock-fg));
+    background: color-mix(in srgb, var(--lumi-error) 12%, transparent);
+    color: color-mix(in srgb, var(--lumi-error) 60%, var(--dock-fg));
   }
   .diff-line.ctx {
     color: var(--dock-fg-2);
@@ -3476,7 +3476,7 @@ ${TOKENS_CSS}
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--success);
+    background: var(--lumi-success);
     box-shadow: 0 0 0 1px var(--surface);
   }
   .chip button { border: none; background: transparent; padding: 0; cursor: pointer; color: inherit; }
@@ -3499,7 +3499,7 @@ ${TOKENS_CSS}
     background: var(--surface);
   }
   .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dock-stroke); }
-  .engine.available .dot { background: var(--success); }
+  .engine.available .dot { background: var(--lumi-success); }
   .engine select { border: none; background: transparent; font-size: 12px; color: inherit; outline: none; cursor: pointer; }
 
   .actions { display: flex; gap: 10px; align-items: center; }
@@ -6693,7 +6693,7 @@ ${TOKENS_CSS}
                   this.backdrop.style.width = dockWidth + 'px';
               }
               const maxModal = Math.max(260, dockWidth - 48);
-              const modalWidth = Math.min(360, maxModal);
+              const modalWidth = Math.min(400, maxModal);
               this.container.style.width = modalWidth + 'px';
               this.container.style.right = '24px';
           } catch (_) { }
@@ -6933,14 +6933,11 @@ ${TOKENS_CSS}
               group.innerHTML = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--dock-fg-2);">Color</div>`;
               form.appendChild(group);
 
-              const row = document.createElement('div');
-              row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
-
-              row.appendChild(this.renderColorDropdown('Text', 'color', base.color));
+              // Stack color dropdowns vertically for more space
+              group.appendChild(this.renderColorDropdown('Text', 'color', base.color));
               if (schema.type !== 'image') {
-                  row.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor));
+                  group.appendChild(this.renderColorDropdown('Background', 'backgroundColor', base.backgroundColor));
               }
-              group.appendChild(row);
           }
 
           if (schema.controls.has('spacing')) {
@@ -6999,7 +6996,8 @@ ${TOKENS_CSS}
 
           const popover = document.createElement('div');
           popover.style.cssText = `
-            position:absolute;top:100%;left:0;width:240px;z-index:100;
+            position:absolute;top:100%;left:0;right:0;
+            z-index:100;
             background:var(--dock-bg);border:1px solid var(--dock-stroke);
             border-radius:12px;box-shadow:var(--shadow);padding:12px;
             display:none;flex-direction:column;gap:12px;margin-top:4px;
@@ -7110,7 +7108,7 @@ ${TOKENS_CSS}
           popover.appendChild(tabs);
           popover.appendChild(content);
 
-          // Toggle Popover
+          // Toggle Popover with smart positioning
           trigger.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -7120,6 +7118,32 @@ ${TOKENS_CSS}
               popover.style.display = isVisible ? 'none' : 'flex';
               if (!isVisible) {
                   if (this.tokens.colors.length > 0) renderTokens(); else renderCustom();
+
+                  // Smart positioning: check if there's enough space below
+                  setTimeout(() => {
+                      const rect = popover.getBoundingClientRect();
+                      const spaceBelow = window.innerHeight - rect.bottom;
+                      rect.height;
+
+                      // If not enough space below (< 20px margin), flip to top
+                      if (spaceBelow < 20) {
+                          popover.style.top = 'auto';
+                          popover.style.bottom = '100%';
+                          popover.style.marginTop = '0';
+                          popover.style.marginBottom = '4px';
+                      } else {
+                          popover.style.top = '100%';
+                          popover.style.bottom = 'auto';
+                          popover.style.marginTop = '4px';
+                          popover.style.marginBottom = '0';
+                      }
+
+                      // Add max-height to prevent overflow
+                      const availableHeight = Math.max(spaceBelow, rect.top);
+                      const maxHeight = Math.min(320, availableHeight - 40);
+                      content.style.maxHeight = `${maxHeight}px`;
+                      content.style.overflowY = 'auto';
+                  }, 0);
               }
           });
 
