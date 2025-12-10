@@ -692,6 +692,16 @@ export default class DockEditModal {
 
         const content = document.createElement('div');
 
+        // Function to update trigger display
+        const updateTrigger = (newValue) => {
+            const displayVal = newValue === 'mixed' ? 'Mixed' : (newValue || 'None');
+            const displayColor = newValue === 'mixed' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : (newValue || 'transparent');
+            trigger.innerHTML = `
+                <div style="width:16px;height:16px;border-radius:4px;border:1px solid var(--dock-stroke);background:${displayColor};flex-shrink:0;"></div>
+                <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayVal}</span>
+            `;
+        };
+
         const renderTokens = () => {
             btnTokens.style.cssText = styleBtn(true);
             btnCustom.style.cssText = styleBtn(false);
@@ -723,8 +733,8 @@ export default class DockEditModal {
                             this.current[key] = token.value;
                             this.intents[key] = `Set ${label.toLowerCase()} to var(${token.name})`;
                             this.preview();
+                            updateTrigger(token.value);
                             popover.style.display = 'none';
-                            this.renderForm(); // Update trigger
                         });
                         list.appendChild(row);
                     });
@@ -745,24 +755,42 @@ export default class DockEditModal {
             const row = document.createElement('div');
             row.style.cssText = `display:flex;align-items:center;gap:8px;padding:4px;`;
 
+            // Use current value if modified, otherwise use initial value
+            const currentValue = this.current[key] !== undefined ? this.current[key] : value;
+
             const colorInput = document.createElement('input');
             colorInput.type = 'color';
-            colorInput.value = this.toHex(value === 'mixed' ? '#000000' : value);
+            colorInput.value = this.toHex(currentValue === 'mixed' ? '#000000' : currentValue);
             colorInput.style.cssText = `width:32px;height:32px;border:none;background:transparent;cursor:pointer;`;
 
             const textInput = document.createElement('input');
             textInput.type = 'text';
-            textInput.value = value === 'mixed' ? 'Mixed' : (value || '');
+            textInput.value = currentValue === 'mixed' ? 'Mixed' : (currentValue || '');
             textInput.style.cssText = `flex:1;padding:6px;border:1px solid var(--dock-stroke);border-radius:6px;background:transparent;color:var(--dock-fg);font-size:12px;`;
 
             const update = (val) => {
                 this.current[key] = val;
                 this.intents[key] = `Set ${label.toLowerCase()} to ${val}`;
                 this.preview();
+                updateTrigger(val);
             };
 
-            colorInput.addEventListener('input', (e) => { e.stopPropagation(); textInput.value = colorInput.value; update(colorInput.value); });
-            textInput.addEventListener('change', (e) => { e.stopPropagation(); update(textInput.value); colorInput.value = this.toHex(textInput.value); });
+            colorInput.addEventListener('input', (e) => {
+                e.stopPropagation();
+                textInput.value = colorInput.value;
+                update(colorInput.value);
+            });
+            colorInput.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent popover from closing
+            });
+            textInput.addEventListener('change', (e) => {
+                e.stopPropagation();
+                update(textInput.value);
+                colorInput.value = this.toHex(textInput.value);
+            });
+            textInput.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent popover from closing
+            });
 
             row.appendChild(colorInput);
             row.appendChild(textInput);
