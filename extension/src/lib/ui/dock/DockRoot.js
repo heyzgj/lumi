@@ -1731,7 +1731,19 @@ export default class DockRoot {
 
   updatePlaceholder() {
     if (!this.editorEl) return;
-    const text = this.editorEl.textContent.replace(/[\u200B\uFEFF]/g, '').trim();
+
+    // CRITICAL: Clean up orphaned whitespace text nodes left after chip deletion
+    // This prevents placeholder from showing when only whitespace remains
+    const childNodes = Array.from(this.editorEl.childNodes);
+    childNodes.forEach((node) => {
+      // Remove text nodes that are ONLY whitespace (spaces, NBSP, etc.)
+      if (node.nodeType === Node.TEXT_NODE && /^\s*$/.test(node.textContent || '')) {
+        node.remove();
+      }
+    });
+
+    // Now check if there's real content
+    const text = this.editorEl.textContent.replace(/\s/g, '');
     const chipCount = this.getChipNodes().length;
     const hasContent = text.length > 0 || chipCount > 0;
 
