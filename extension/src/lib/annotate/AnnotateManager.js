@@ -23,7 +23,16 @@ export default class AnnotateManager {
             type: 'inline',
             doc: document,
             win: window,
-            containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+            // When viewport is enabled, mount to #lumi-viewport-root (position: fixed)
+            // This ensures annotation covers the visible viewport area correctly
+            // Do NOT use #lumi-viewport-canvas (scrollable) or #lumi-viewport-stage (has transform)
+            containerResolver: () => {
+                const viewportEnabled = this.stateManager.get('ui.viewport.enabled');
+                if (viewportEnabled) {
+                    return document.getElementById('lumi-viewport-root') || document.body;
+                }
+                return document.body;
+            }
         };
         this.keydownTargets = [];
         this.resizeTargets = [];
@@ -53,7 +62,14 @@ export default class AnnotateManager {
             type: 'inline',
             doc: document,
             win: window,
-            containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+            // When viewport is enabled, mount to #lumi-viewport-root (position: fixed)
+            containerResolver: () => {
+                const viewportEnabled = this.stateManager.get('ui.viewport.enabled');
+                if (viewportEnabled) {
+                    return document.getElementById('lumi-viewport-root') || document.body;
+                }
+                return document.body;
+            }
         };
         this.hostType = 'inline';
         if (this.isActive) {
@@ -87,7 +103,19 @@ export default class AnnotateManager {
         try {
             container = (typeof ctx.containerResolver === 'function' && ctx.containerResolver()) || ctx.container;
         } catch (_) { }
-        if (!container) container = doc.body || doc.documentElement || document.body;
+        if (!container) {
+            // Fallback: check viewport state and use appropriate container
+            const viewportEnabled = this.stateManager.get('ui.viewport.enabled');
+            if (viewportEnabled) {
+                // Use viewport-root which is position:fixed
+                container = doc.getElementById('lumi-viewport-root') ||
+                    doc.body ||
+                    doc.documentElement ||
+                    document.body;
+            } else {
+                container = doc.body || doc.documentElement || document.body;
+            }
+        }
         return { doc, win, container };
     }
 
@@ -108,16 +136,22 @@ export default class AnnotateManager {
         // Create canvas overlay
         this.canvas = doc.createElement('canvas');
         this.canvas.id = 'lumi-annotate-canvas';
+
+        // Check if we are mounting to a stage container
+        const hasStageContainer = container.id === 'lumi-viewport-canvas' ||
+            container.id === 'lumi-viewport-stage' ||
+            this.hostContext?.type === 'iframe';
+
         // z-index 2147483645 is one less than Dock (...46) so UI overlays it
-        if (this.hostContext?.type === 'inline' && container === doc.body) {
-            // Inline pages: treat annotate as a pure viewport overlay so it always
-            // covers the current visible area regardless of scroll position.
-            this.canvas.style.cssText = 'position: fixed; inset: 0; z-index: 2147483645; cursor: crosshair;';
-        } else {
-            // Viewport/iframe stages: keep the canvas anchored to the stage container
-            // so coordinates stay aligned with the emulated viewport.
+        if (hasStageContainer) {
+            // Viewport/iframe stages: use absolute positioning to stay aligned with content scrolling/transform
             this.canvas.style.cssText = 'position: absolute; inset: 0; z-index: 2147483645; cursor: crosshair;';
+        } else {
+            // No stage container: use fixed overlay that covers the entire visible viewport
+            this.canvas.style.cssText = 'position: fixed; inset: 0; z-index: 2147483645; cursor: crosshair;';
         }
+        // Store positioning mode for use in updateCanvasBounds
+        this._useFixedPositioning = !hasStageContainer;
         container.appendChild(this.canvas);
 
         // Initialize Fabric
@@ -127,6 +161,16 @@ export default class AnnotateManager {
             selection: false, // Manual selection handling
             enableRetinaScaling: false // Keep 1:1 with CSS pixels to avoid pointer drift
         });
+
+        // CRITICAL: Fabric.js wraps the canvas in a .canvas-container div.
+        // We must apply the same positioning styles to the wrapper, otherwise
+        // the overlay won't cover the viewport correctly.
+        const wrapper = this.canvas.parentElement;
+        if (wrapper && wrapper.classList.contains('canvas-container')) {
+            // Copy canvas positioning to wrapper
+            wrapper.style.cssText = this.canvas.style.cssText;
+        }
+
         this.updateCanvasBounds();
 
         // Initialize Toolbar
@@ -363,8 +407,27 @@ export default class AnnotateManager {
         if (!this.canvas || !this.fabricCanvas) return;
         const { container } = this.getHostContext();
         const rect = container?.getBoundingClientRect ? container.getBoundingClientRect() : null;
-        const width = Math.max(1, Math.round(container?.clientWidth || rect?.width || window.innerWidth));
-        const height = Math.max(1, Math.round(container?.clientHeight || rect?.height || window.innerHeight));
+
+        let width, height;
+
+        // For fixed positioning, ALWAYS use viewport dimensions
+        if (this._useFixedPositioning) {
+            width = window.innerWidth;
+            height = window.innerHeight;
+        } else {
+            // Stage/absolute mode: use container dimensions
+            const hasStageContainer = container?.id === 'lumi-viewport-canvas' ||
+                container?.id === 'lumi-viewport-stage';
+
+            if (hasStageContainer && rect) {
+                width = Math.max(1, Math.round(rect.width));
+                height = Math.max(1, Math.round(rect.height));
+            } else {
+                // Fallback
+                width = Math.max(1, Math.round(container?.clientWidth || rect?.width || window.innerWidth));
+                height = Math.max(1, Math.round(container?.clientHeight || rect?.height || window.innerHeight));
+            }
+        }
 
         // Keep Fabric dimensions in CSS pixels; Fabric will handle retina scaling internally.
         this.canvas.width = width;

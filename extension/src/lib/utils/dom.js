@@ -115,30 +115,31 @@ export function getComputedStyleSummary(element) {
  */
 export function shouldIgnoreElement(element) {
   if (!element) return true;
-  
+
   // Ignore LUMI's own elements
-  if (element.closest('#lumi-bubble-container') || 
-      element.closest('#lumi-top-banner') ||
-      element.closest('#lumi-dock-root') ||
-      element.closest('#lumi-interaction-bubble') ||
-      element.closest('#dock-edit-modal') ||
-      element.id === 'dock-edit-overlay' ||
-      element.id === 'lumi-dock-launcher' ||
-      element.closest('#lumi-controls-overlay') ||
-      element.classList?.contains('lumi-highlight') ||
-      element.classList?.contains('lumi-screenshot-overlay') ||
-      element.classList?.contains('lumi-highlight-pen')) {
+  if (element.closest('#lumi-bubble-container') ||
+    element.closest('#lumi-top-banner') ||
+    element.closest('#lumi-dock-root') ||
+    element.closest('#lumi-viewport-bar-root') ||
+    element.closest('#lumi-interaction-bubble') ||
+    element.closest('#dock-edit-modal') ||
+    element.id === 'dock-edit-overlay' ||
+    element.id === 'lumi-dock-launcher' ||
+    element.closest('#lumi-controls-overlay') ||
+    element.classList?.contains('lumi-highlight') ||
+    element.classList?.contains('lumi-screenshot-overlay') ||
+    element.classList?.contains('lumi-highlight-pen')) {
     return true;
   }
   // Ignore clicks inside Shadow DOM hosted by the dock
   try {
     const root = element.getRootNode && element.getRootNode();
     if (root && root.host && root.host.id === 'lumi-dock-root') return true;
-  } catch (_) {}
-  
+  } catch (_) { }
+
   const tag = element.tagName && element.tagName.toLowerCase();
   if (tag === 'html' || tag === 'body') return true;
-  
+
   return false;
 }
 

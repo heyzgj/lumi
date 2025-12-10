@@ -1620,6 +1620,7 @@ export default class DockRoot {
     close.title = 'Remove Screenshot';
     close.addEventListener('click', (e) => {
       e.stopPropagation();
+      this.hideShotPreview(); // Ensure tooltip is hidden immediately
       const idRaw = chip.dataset.shotId;
       const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
       try {
@@ -1730,8 +1731,16 @@ export default class DockRoot {
 
   updatePlaceholder() {
     if (!this.editorEl) return;
-    const hasContent = this.editorEl.textContent.trim().length > 0 || this.getChipNodes().length > 0;
-    this.editorEl.classList.toggle('has-content', hasContent);
+    const text = this.editorEl.textContent.replace(/[\u200B\uFEFF]/g, '').trim();
+    const chipCount = this.getChipNodes().length;
+    const hasContent = text.length > 0 || chipCount > 0;
+
+    // Force update of class to ensure CSS sees correct state
+    if (hasContent) {
+      this.editorEl.classList.add('has-content');
+    } else {
+      this.editorEl.classList.remove('has-content');
+    }
   }
 
   // Screenshot preview helpers

@@ -507,30 +507,31 @@
    */
   function shouldIgnoreElement(element) {
     if (!element) return true;
-    
+
     // Ignore LUMI's own elements
-    if (element.closest('#lumi-bubble-container') || 
-        element.closest('#lumi-top-banner') ||
-        element.closest('#lumi-dock-root') ||
-        element.closest('#lumi-interaction-bubble') ||
-        element.closest('#dock-edit-modal') ||
-        element.id === 'dock-edit-overlay' ||
-        element.id === 'lumi-dock-launcher' ||
-        element.closest('#lumi-controls-overlay') ||
-        element.classList?.contains('lumi-highlight') ||
-        element.classList?.contains('lumi-screenshot-overlay') ||
-        element.classList?.contains('lumi-highlight-pen')) {
+    if (element.closest('#lumi-bubble-container') ||
+      element.closest('#lumi-top-banner') ||
+      element.closest('#lumi-dock-root') ||
+      element.closest('#lumi-viewport-bar-root') ||
+      element.closest('#lumi-interaction-bubble') ||
+      element.closest('#dock-edit-modal') ||
+      element.id === 'dock-edit-overlay' ||
+      element.id === 'lumi-dock-launcher' ||
+      element.closest('#lumi-controls-overlay') ||
+      element.classList?.contains('lumi-highlight') ||
+      element.classList?.contains('lumi-screenshot-overlay') ||
+      element.classList?.contains('lumi-highlight-pen')) {
       return true;
     }
     // Ignore clicks inside Shadow DOM hosted by the dock
     try {
       const root = element.getRootNode && element.getRootNode();
       if (root && root.host && root.host.id === 'lumi-dock-root') return true;
-    } catch (_) {}
-    
+    } catch (_) { }
+
     const tag = element.tagName && element.tagName.toLowerCase();
     if (tag === 'html' || tag === 'body') return true;
-    
+
     return false;
   }
 
@@ -1022,6 +1023,7 @@
       // Bind methods
       this.handleMouseMove = this.handleMouseMove.bind(this);
       this.handleClick = this.handleClick.bind(this);
+      this.handleKeyDown = this.handleKeyDown.bind(this);
     }
 
     // Local helper: whether text content can be edited safely (leaf nodes only)
@@ -1044,6 +1046,7 @@
 
       this.doc.addEventListener('mousemove', this.handleMouseMove, true);
       this.doc.addEventListener('click', this.handleClick, true);
+      this.doc.addEventListener('keydown', this.handleKeyDown, true);
       // Block page interactions while picking
       const block = (e) => { e.preventDefault(); e.stopPropagation(); };
       ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(evt => {
@@ -1068,6 +1071,7 @@
 
       this.doc.removeEventListener('mousemove', this.handleMouseMove, true);
       this.doc.removeEventListener('click', this.handleClick, true);
+      this.doc.removeEventListener('keydown', this.handleKeyDown, true);
       // Remove blockers
       this._blockers.forEach(({ evt, block }) => {
         this.doc.removeEventListener(evt, block, true);
@@ -1086,6 +1090,15 @@
       if (hoveredElement !== e.target) {
         this.stateManager.set('selection.hoveredElement', e.target);
         this.highlightManager.showHover(e.target);
+      }
+    }
+
+    handleKeyDown(e) {
+      if (!this.isActive) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.deactivate();
       }
     }
 
@@ -1487,7 +1500,16 @@ ${TOKENS_CSS}
               type: 'inline',
               doc: document,
               win: window,
-              containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+              // When viewport is enabled, mount to #lumi-viewport-root (position: fixed)
+              // This ensures annotation covers the visible viewport area correctly
+              // Do NOT use #lumi-viewport-canvas (scrollable) or #lumi-viewport-stage (has transform)
+              containerResolver: () => {
+                  const viewportEnabled = this.stateManager.get('ui.viewport.enabled');
+                  if (viewportEnabled) {
+                      return document.getElementById('lumi-viewport-root') || document.body;
+                  }
+                  return document.body;
+              }
           };
           this.keydownTargets = [];
           this.resizeTargets = [];
@@ -1517,7 +1539,14 @@ ${TOKENS_CSS}
               type: 'inline',
               doc: document,
               win: window,
-              containerResolver: () => document.getElementById('lumi-viewport-canvas') || document.getElementById('lumi-viewport-stage') || document.body
+              // When viewport is enabled, mount to #lumi-viewport-root (position: fixed)
+              containerResolver: () => {
+                  const viewportEnabled = this.stateManager.get('ui.viewport.enabled');
+                  if (viewportEnabled) {
+                      return document.getElementById('lumi-viewport-root') || document.body;
+                  }
+                  return document.body;
+              }
           };
           this.hostType = 'inline';
           if (this.isActive) {
@@ -1551,7 +1580,19 @@ ${TOKENS_CSS}
           try {
               container = (typeof ctx.containerResolver === 'function' && ctx.containerResolver()) || ctx.container;
           } catch (_) { }
-          if (!container) container = doc.body || doc.documentElement || document.body;
+          if (!container) {
+              // Fallback: check viewport state and use appropriate container
+              const viewportEnabled = this.stateManager.get('ui.viewport.enabled');
+              if (viewportEnabled) {
+                  // Use viewport-root which is position:fixed
+                  container = doc.getElementById('lumi-viewport-root') ||
+                      doc.body ||
+                      doc.documentElement ||
+                      document.body;
+              } else {
+                  container = doc.body || doc.documentElement || document.body;
+              }
+          }
           return { doc, win, container };
       }
 
@@ -1572,16 +1613,22 @@ ${TOKENS_CSS}
           // Create canvas overlay
           this.canvas = doc.createElement('canvas');
           this.canvas.id = 'lumi-annotate-canvas';
+
+          // Check if we are mounting to a stage container
+          const hasStageContainer = container.id === 'lumi-viewport-canvas' ||
+              container.id === 'lumi-viewport-stage' ||
+              this.hostContext?.type === 'iframe';
+
           // z-index 2147483645 is one less than Dock (...46) so UI overlays it
-          if (this.hostContext?.type === 'inline' && container === doc.body) {
-              // Inline pages: treat annotate as a pure viewport overlay so it always
-              // covers the current visible area regardless of scroll position.
-              this.canvas.style.cssText = 'position: fixed; inset: 0; z-index: 2147483645; cursor: crosshair;';
-          } else {
-              // Viewport/iframe stages: keep the canvas anchored to the stage container
-              // so coordinates stay aligned with the emulated viewport.
+          if (hasStageContainer) {
+              // Viewport/iframe stages: use absolute positioning to stay aligned with content scrolling/transform
               this.canvas.style.cssText = 'position: absolute; inset: 0; z-index: 2147483645; cursor: crosshair;';
+          } else {
+              // No stage container: use fixed overlay that covers the entire visible viewport
+              this.canvas.style.cssText = 'position: fixed; inset: 0; z-index: 2147483645; cursor: crosshair;';
           }
+          // Store positioning mode for use in updateCanvasBounds
+          this._useFixedPositioning = !hasStageContainer;
           container.appendChild(this.canvas);
 
           // Initialize Fabric
@@ -1591,6 +1638,16 @@ ${TOKENS_CSS}
               selection: false, // Manual selection handling
               enableRetinaScaling: false // Keep 1:1 with CSS pixels to avoid pointer drift
           });
+
+          // CRITICAL: Fabric.js wraps the canvas in a .canvas-container div.
+          // We must apply the same positioning styles to the wrapper, otherwise
+          // the overlay won't cover the viewport correctly.
+          const wrapper = this.canvas.parentElement;
+          if (wrapper && wrapper.classList.contains('canvas-container')) {
+              // Copy canvas positioning to wrapper
+              wrapper.style.cssText = this.canvas.style.cssText;
+          }
+
           this.updateCanvasBounds();
 
           // Initialize Toolbar
@@ -1827,8 +1884,27 @@ ${TOKENS_CSS}
           if (!this.canvas || !this.fabricCanvas) return;
           const { container } = this.getHostContext();
           const rect = container?.getBoundingClientRect ? container.getBoundingClientRect() : null;
-          const width = Math.max(1, Math.round(container?.clientWidth || rect?.width || window.innerWidth));
-          const height = Math.max(1, Math.round(container?.clientHeight || rect?.height || window.innerHeight));
+
+          let width, height;
+
+          // For fixed positioning, ALWAYS use viewport dimensions
+          if (this._useFixedPositioning) {
+              width = window.innerWidth;
+              height = window.innerHeight;
+          } else {
+              // Stage/absolute mode: use container dimensions
+              const hasStageContainer = container?.id === 'lumi-viewport-canvas' ||
+                  container?.id === 'lumi-viewport-stage';
+
+              if (hasStageContainer && rect) {
+                  width = Math.max(1, Math.round(rect.width));
+                  height = Math.max(1, Math.round(rect.height));
+              } else {
+                  // Fallback
+                  width = Math.max(1, Math.round(container?.clientWidth || rect?.width || window.innerWidth));
+                  height = Math.max(1, Math.round(container?.clientHeight || rect?.height || window.innerHeight));
+              }
+          }
 
           // Keep Fabric dimensions in CSS pixels; Fabric will handle retina scaling internally.
           this.canvas.width = width;
@@ -3373,11 +3449,15 @@ ${TOKENS_CSS}
     white-space: pre-wrap;
     word-break: break-word;
     text-align: left;
+    position: relative;
   }
-  .composer-top .editor:empty:before {
+  .composer-top .editor:not(.has-content):before {
     content: attr(data-placeholder);
     color: var(--dock-fg-2);
     pointer-events: none;
+    position: absolute;
+    left: 0;
+    top: 0;
   }
   .chip {
     display: inline-flex;
@@ -5673,6 +5753,7 @@ ${TOKENS_CSS}
       close.title = 'Remove Screenshot';
       close.addEventListener('click', (e) => {
         e.stopPropagation();
+        this.hideShotPreview(); // Ensure tooltip is hidden immediately
         const idRaw = chip.dataset.shotId;
         const id = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
         try {
@@ -5783,8 +5864,16 @@ ${TOKENS_CSS}
 
     updatePlaceholder() {
       if (!this.editorEl) return;
-      const hasContent = this.editorEl.textContent.trim().length > 0 || this.getChipNodes().length > 0;
-      this.editorEl.classList.toggle('has-content', hasContent);
+      const text = this.editorEl.textContent.replace(/[\u200B\uFEFF]/g, '').trim();
+      const chipCount = this.getChipNodes().length;
+      const hasContent = text.length > 0 || chipCount > 0;
+
+      // Force update of class to ensure CSS sees correct state
+      if (hasContent) {
+        this.editorEl.classList.add('has-content');
+      } else {
+        this.editorEl.classList.remove('has-content');
+      }
     }
 
     // Screenshot preview helpers

@@ -18,6 +18,7 @@ export default class ElementSelector {
     // Bind methods
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleClick = this.handleClick.bind(this);
+    this.handleKeyDown = this.handleKeyDown.bind(this);
   }
 
   // Local helper: whether text content can be edited safely (leaf nodes only)
@@ -40,6 +41,7 @@ export default class ElementSelector {
 
     this.doc.addEventListener('mousemove', this.handleMouseMove, true);
     this.doc.addEventListener('click', this.handleClick, true);
+    this.doc.addEventListener('keydown', this.handleKeyDown, true);
     // Block page interactions while picking
     const block = (e) => { e.preventDefault(); e.stopPropagation(); };
     ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(evt => {
@@ -64,6 +66,7 @@ export default class ElementSelector {
 
     this.doc.removeEventListener('mousemove', this.handleMouseMove, true);
     this.doc.removeEventListener('click', this.handleClick, true);
+    this.doc.removeEventListener('keydown', this.handleKeyDown, true);
     // Remove blockers
     this._blockers.forEach(({ evt, block }) => {
       this.doc.removeEventListener(evt, block, true);
@@ -82,6 +85,15 @@ export default class ElementSelector {
     if (hoveredElement !== e.target) {
       this.stateManager.set('selection.hoveredElement', e.target);
       this.highlightManager.showHover(e.target);
+    }
+  }
+
+  handleKeyDown(e) {
+    if (!this.isActive) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this.deactivate();
     }
   }
 

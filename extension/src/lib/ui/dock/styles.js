@@ -546,11 +546,15 @@ export const DOCK_STYLES = `
     white-space: pre-wrap;
     word-break: break-word;
     text-align: left;
+    position: relative;
   }
-  .composer-top .editor:empty:before {
+  .composer-top .editor:not(.has-content):before {
     content: attr(data-placeholder);
     color: var(--dock-fg-2);
     pointer-events: none;
+    position: absolute;
+    left: 0;
+    top: 0;
   }
   .chip {
     display: inline-flex;
