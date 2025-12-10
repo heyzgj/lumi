@@ -461,38 +461,49 @@ function bootstrap() {
       try {
         if (!snapshot || !snapshot.element) return;
         const el = snapshot.element;
-        // 1) Revert edited properties tracked in wysiwyg.edits for this index
+
+        // 1) Restore text content first
+        if (snapshot.baseline && typeof snapshot.baseline.text === 'string') {
+          try { el.textContent = snapshot.baseline.text; } catch (_) { }
+        }
+
+        // 2) Restore all inline styles from baseline
+        const baseInline = (snapshot.baseline && snapshot.baseline.inline) || {};
+        Object.entries(baseInline).forEach(([prop, value]) => {
+          try {
+            // Handle margin/padding with setProperty for proper reset
+            if (prop.startsWith('margin') || prop.startsWith('padding')) {
+              const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+              if (!value || value === '') {
+                el.style.removeProperty(cssProperty);
+              } else {
+                el.style.setProperty(cssProperty, value, '');
+              }
+            } else {
+              // For other props, just set directly (or remove if empty)
+              el.style[prop] = value || '';
+            }
+          } catch (_) { }
+        });
+
+        // 3) Additionally remove any edited props not in baseline (for safety)
         const edits = stateManager.get('wysiwyg.edits') || [];
         const entry = edits.find(e => e && e.index === index);
         if (entry && entry.changes) {
           Object.keys(entry.changes).forEach((prop) => {
-            if (prop === 'text') return; // handled by baseline
-            // If baseline provides a value, restore it; else remove inline style
-            const base = snapshot.baseline && snapshot.baseline.inline ? snapshot.baseline.inline[prop] : undefined;
-            const next = (base === undefined || base === null || base === '') ? '' : base;
-            try {
-              if (prop.startsWith('margin') || prop.startsWith('padding')) {
-                const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
-                if (!next) {
+            // If this prop was edited but not in baseline, remove it
+            if (baseInline[prop] === undefined) {
+              try {
+                if (prop.startsWith('margin') || prop.startsWith('padding')) {
+                  const cssProperty = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
                   el.style.removeProperty(cssProperty);
                 } else {
-                  el.style.setProperty(cssProperty, next, '');
+                  el.style[prop] = '';
                 }
-              } else {
-                el.style[prop] = next;
-              }
-            } catch (_) { }
+              } catch (_) { }
+            }
           });
         }
-        // 2) Restore text content only for leaf nodes with a string baseline
-        if (snapshot.baseline && typeof snapshot.baseline.text === 'string') {
-          try { el.textContent = snapshot.baseline.text; } catch (_) { }
-        }
-        // 3) Restore key inline properties from baseline to guarantee full reset
-        const baseInline = (snapshot.baseline && snapshot.baseline.inline) || {};
-        Object.entries(baseInline).forEach(([prop, value]) => {
-          try { el.style[prop] = value || ''; } catch (_) { }
-        });
       } catch (_) { /* ignore */ }
     });
 
