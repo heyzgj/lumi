@@ -60,14 +60,14 @@ test('StateManager notifies subscribers on change', () => {
   const stateManager = new StateManager(eventBus);
   
   let notified = false;
-  stateManager.subscribe('ui.bubbleVisible', (newVal, oldVal) => {
+  stateManager.subscribe('ui.dockOpen', (newVal, oldVal) => {
     notified = true;
     if (newVal !== true || oldVal !== false) {
       throw new Error('Wrong values in notification');
     }
   });
-  
-  stateManager.set('ui.bubbleVisible', true);
+
+  stateManager.set('ui.dockOpen', true);
   
   if (!notified) {
     throw new Error('Subscriber not notified');
@@ -115,7 +115,7 @@ test('StateManager batch updates work correctly', () => {
   });
   
   stateManager.batch({
-    'ui.bubbleVisible': true,
+    'ui.dockOpen': true,
     'ui.mode': 'element'
   });
   
@@ -123,7 +123,7 @@ test('StateManager batch updates work correctly', () => {
     throw new Error('Batch event not received');
   }
   
-  if (stateManager.get('ui.bubbleVisible') !== true) {
+  if (stateManager.get('ui.dockOpen') !== true) {
     throw new Error('Batch update failed');
   }
   
@@ -178,14 +178,14 @@ test('StateManager snapshot is immutable', () => {
   const eventBus = new EventBus();
   const stateManager = new StateManager(eventBus);
   
-  stateManager.set('ui.bubbleVisible', true);
+  stateManager.set('ui.dockOpen', true);
   const snapshot = stateManager.snapshot();
   
   // Modify snapshot
-  snapshot.ui.bubbleVisible = false;
+  snapshot.ui.dockOpen = false;
   
   // Original state should be unchanged
-  if (stateManager.get('ui.bubbleVisible') !== true) {
+  if (stateManager.get('ui.dockOpen') !== true) {
     throw new Error('Snapshot mutation affected original state');
   }
   
@@ -220,5 +220,3 @@ if (failed > 0) {
   console.log('✅ Logic verification PASSED');
   process.exit(0);
 }
-
-

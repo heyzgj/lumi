@@ -26,6 +26,11 @@ const DEFAULT_SETTINGS = {
 
 let serverUrl = DEFAULT_SERVER_URL;
 let serverHealthy = false;
+let BG_DEBUG = false;
+
+function bgLog(...args) {
+  try { if (BG_DEBUG) console.info('[LUMI BG]', ...args); } catch (_) { }
+}
 
 function sanitizeUrl(url) {
   if (!url || typeof url !== 'string') return DEFAULT_SERVER_URL;
@@ -34,24 +39,72 @@ function sanitizeUrl(url) {
 
 function normalizeHostPattern(value) {
   if (!value) return '';
-  let pattern = String(value).trim().toLowerCase();
-  if (!pattern) return '';
+  let input = String(value).trim();
+  if (!input) return '';
 
-  if (pattern.startsWith('http://')) {
-    pattern = pattern.slice(7);
-  } else if (pattern.startsWith('https://')) {
-    pattern = pattern.slice(8);
+  const lower = input.toLowerCase();
+
+  // file:// URL → local path prefix
+  if (lower.startsWith('file://')) {
+    try {
+      const url = new URL(input);
+      let pathname = url.pathname || '';
+      if (!pathname) return '';
+      if (!pathname.endsWith('/')) {
+        const idx = pathname.lastIndexOf('/');
+        if (idx >= 0) pathname = pathname.slice(0, idx + 1);
+      }
+      if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+      return pathname;
+    } catch (_) {
+      let path = input.slice('file://'.length);
+      if (!path.startsWith('/')) path = `/${path}`;
+      if (!path.endsWith('/')) {
+        const idx = path.lastIndexOf('/');
+        if (idx >= 0) path = path.slice(0, idx + 1);
+      }
+      return path;
+    }
   }
 
-  if (pattern.startsWith('//')) {
-    pattern = pattern.slice(2);
+  // Absolute filesystem path (but not protocol-relative URLs like //example.com)
+  if (input.startsWith('/') && !input.startsWith('//')) {
+    let path = input;
+    if (!path.endsWith('/')) {
+      const idx = path.lastIndexOf('/');
+      if (idx >= 0) path = path.slice(0, idx + 1);
+    }
+    return path;
   }
 
-  if (pattern.endsWith('/')) {
-    pattern = pattern.replace(/\/+$/, '');
+  // HTTP(S) URL or bare host
+  let hostPart = '';
+
+  if (lower.startsWith('http://') || lower.startsWith('https://')) {
+    try {
+      const url = new URL(input);
+      hostPart = url.host;
+    } catch (_) {
+      hostPart = input.replace(/^https?:\/\//i, '');
+    }
+  } else if (lower.startsWith('//')) {
+    try {
+      const url = new URL(`http:${input}`);
+      hostPart = url.host;
+    } catch (_) {
+      hostPart = input.slice(2);
+    }
+  } else {
+    const slashIndex = input.indexOf('/');
+    hostPart = slashIndex >= 0 ? input.slice(0, slashIndex) : input;
   }
 
-  return pattern;
+  hostPart = hostPart.trim().toLowerCase();
+  if (!hostPart) return '';
+  while (hostPart.endsWith('/')) {
+    hostPart = hostPart.slice(0, -1);
+  }
+  return hostPart;
 }
 
 function sanitizeProjects(projects = []) {
@@ -130,6 +183,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
     const next = changes[STORAGE_KEY].newValue || DEFAULT_SETTINGS;
     serverUrl = sanitizeUrl(next.serverUrl);
   }
+  if (area === 'local' && changes.lumiDebug) {
+    BG_DEBUG = !!changes.lumiDebug.newValue;
+    bgLog('lumiDebug toggled:', BG_DEBUG);
+  }
 });
 
 // Initialize on install/update
@@ -177,6 +234,8 @@ async function checkServerHealth() {
 
 // Handle extension icon click - inject content script
 chrome.action.onClicked.addListener(async (tab) => {
+  // Allow toggling/injection on any host; page-level blocking is handled in-app
+  console.info('[LUMI] action clicked for', tab?.url || 'unknown', 'inject=forced');
   console.log('[LUMI] Extension icon clicked for tab:', tab.id);
 
   try {
@@ -187,7 +246,14 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     if (result.result) {
       console.log('[LUMI] Content script already injected, toggling bubble');
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' });
+      try {
+        chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' }, () => {
+          const err = chrome.runtime.lastError;
+          if (err) console.debug('[LUMI] toggle sendMessage lastError (non-fatal):', err.message);
+        });
+      } catch (err) {
+        console.debug('[LUMI] toggle sendMessage threw (non-fatal):', err?.message);
+      }
       return;
     }
 
@@ -198,8 +264,15 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     console.log('[LUMI] Content script injected successfully');
     setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' });
-    }, 80);
+      try {
+        chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_BUBBLE' }, () => {
+          const err = chrome.runtime.lastError;
+          if (err) console.debug('[LUMI] post-inject sendMessage lastError (non-fatal):', err.message);
+        });
+      } catch (err) {
+        console.debug('[LUMI] post-inject sendMessage threw (non-fatal):', err?.message);
+      }
+    }, 120);
   } catch (error) {
     console.error('[LUMI] Failed to inject content script:', error);
   }
@@ -249,6 +322,117 @@ async function forwardToServer(engine, context) {
   }
 }
 
+async function forwardStreamToServer(engine, context, tabId, streamId) {
+  if (!tabId) {
+    console.warn('[LUMI] Missing tabId for stream request');
+    return;
+  }
+
+  const emitToTab = (payload) => {
+    try {
+      chrome.tabs.sendMessage(tabId, payload, () => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          console.debug('[LUMI] stream sendMessage lastError (non-fatal):', err.message);
+        }
+      });
+    } catch (error) {
+      console.debug('[LUMI] stream sendMessage threw (non-fatal):', error?.message);
+    }
+  };
+
+  const emitError = (message) => {
+    emitToTab({ type: 'STREAM_ERROR', streamId, error: message });
+  };
+
+  const emitDone = (result) => {
+    emitToTab({ type: 'STREAM_DONE', streamId, result });
+  };
+
+  const emitChunk = (chunk) => {
+    emitToTab({ type: 'STREAM_CHUNK', streamId, chunk });
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3900000); // 65 minutes
+
+  try {
+    const response = await fetch(`${serverUrl}/execute/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ engine, context }),
+      signal: controller.signal
+    });
+
+    if (!response.ok || !response.body) {
+      const errorData = await response.json().catch(() => ({}));
+      const message = errorData.error || `Server returned ${response.status}`;
+      emitError(message);
+      emitDone({ success: false, error: message, timestamp: Date.now() });
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const handleEvent = (raw) => {
+      if (!raw) return;
+      const dataLines = raw
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.replace(/^data:\s?/, ''))
+        .join('\n');
+      if (!dataLines.trim()) return;
+      let payload;
+      try {
+        payload = JSON.parse(dataLines);
+      } catch (error) {
+        console.warn('[LUMI] Failed to parse SSE payload:', error?.message);
+        return;
+      }
+      const { type } = payload || {};
+      if (type === 'chunk' && payload.chunk) {
+        emitChunk(payload.chunk);
+        return;
+      }
+      if (type === 'error') {
+        emitError(payload.error || 'Stream error');
+        return;
+      }
+      if (type === 'done') {
+        emitDone(payload);
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep = buffer.indexOf('\n\n');
+      while (sep !== -1) {
+        const raw = buffer.slice(0, sep).trim();
+        buffer = buffer.slice(sep + 2);
+        handleEvent(raw);
+        sep = buffer.indexOf('\n\n');
+      }
+    }
+
+    if (buffer.trim()) {
+      handleEvent(buffer.trim());
+    }
+  } catch (error) {
+    console.error('[LUMI] STREAM fetch failed:', error?.message);
+    emitError(error?.message || 'Failed to connect to stream');
+    emitDone({ success: false, error: error?.message || 'Stream aborted', timestamp: Date.now() });
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function handleApplySettings(payload = {}) {
   const merged = mergeSettings(payload);
   const projects = sanitizeProjects(merged.projects);
@@ -282,6 +466,7 @@ async function handleApplySettings(payload = {}) {
 chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) => {
   const { type } = message;
   console.log('[LUMI] Message received:', type);
+  bgLog('onMessage', type);
 
   if (type === 'CHECK_SERVER') {
     checkServerHealth()
@@ -306,6 +491,7 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
 
   if (type === 'SEND_TO_SERVER') {
     const { engine, context } = message.payload || {};
+    bgLog('SEND_TO_SERVER', { engine, intent: context?.intent?.slice?.(0, 60) });
     forwardToServer(engine, context)
       .then((result) => sendResponse(result))
       .catch((error) => {
@@ -321,11 +507,41 @@ chrome.runtime.onMessage.addListener((message = {}, sender = {}, sendResponse) =
     return true;
   }
 
+  if (type === 'EXECUTE_STREAM') {
+    const { engine, context, streamId } = message.payload || {};
+    const tabId = sender?.tab?.id;
+    bgLog('EXECUTE_STREAM', { engine, intent: context?.intent?.slice?.(0, 60), streamId });
+
+    if (!tabId) {
+      console.warn('[LUMI] EXECUTE_STREAM missing tabId');
+      sendResponse({ success: false, error: 'Missing tab ID for stream request' });
+      return true;
+    }
+
+    forwardStreamToServer(engine, context, tabId, streamId).catch((error) => {
+      console.error('[LUMI] EXECUTE_STREAM failed:', error);
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (type === 'APPLY_SETTINGS') {
     handleApplySettings(message.payload)
       .then((settings) => sendResponse({ success: true, settings }))
       .catch((error) => {
         console.error('[LUMI] APPLY_SETTINGS failed:', error);
+        sendResponse({ success: false, error: error?.message });
+      });
+    return true;
+  }
+
+  if (type === 'OPEN_OPTIONS') {
+    chrome.runtime.openOptionsPage()
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[LUMI] Failed to open options page:', error);
         sendResponse({ success: false, error: error?.message });
       });
     return true;
@@ -376,7 +592,135 @@ function handleScreenshotCapture(sender, sendResponse) {
   }
 }
 
+// Auto-inject on mapped hosts
+const injectedTabs = new Set();
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hostMatches(pattern, host) {
+  if (!pattern || !host) return false;
+  const normalizedPattern = pattern.trim().toLowerCase();
+  const normalizedHost = host.trim().toLowerCase();
+  if (!normalizedPattern.includes('*')) {
+    return normalizedPattern === normalizedHost;
+  }
+  const regex = new RegExp('^' + normalizedPattern.split('*').map(escapeRegex).join('.*') + '$');
+  return regex.test(normalizedHost);
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Clear injection flag when navigation starts (page refresh/reload)
+  if (changeInfo.status === 'loading') {
+    injectedTabs.delete(tabId);
+    return;
+  }
+
+  // Only inject when page has fully loaded
+  if (changeInfo.status !== 'complete') return;
+
+  // Avoid duplicate injection within same page lifecycle
+  if (injectedTabs.has(tabId)) return;
+
+  // Check if auto-inject is enabled
+  const { autoInject = true } = await chrome.storage.local.get('autoInject');
+  if (autoInject === false) return;
+
+  // Check if host is mapped to a project
+  const settings = await refreshSettings();
+  const projects = settings.projects || [];
+
+  try {
+    const url = new URL(tab.url);
+    const host = url.host;
+    const isFile = url.protocol === 'file:';
+    const pathname = url.pathname || '';
+
+    const mapped = projects.some((project) => {
+      if (!project || project.enabled === false) return false;
+      const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+      if (!hosts.length) return false;
+      return hosts.some((pattern) => {
+        const raw = String(pattern || '').trim().toLowerCase();
+        if (!raw) return false;
+
+        // file:// 页面按路径前缀匹配
+        if (isFile && (raw.startsWith('file:///') || raw.startsWith('/'))) {
+          let prefix = raw;
+          if (prefix.startsWith('file://')) {
+            prefix = prefix.slice('file://'.length);
+          }
+          const currentPath = (pathname || '').toLowerCase();
+          return currentPath.startsWith(prefix);
+        }
+
+        // 其它协议按 host pattern 匹配
+        if (!isFile) {
+          return hostMatches(pattern, host);
+        }
+        return false;
+      });
+    });
+
+    if (!mapped) return;
+
+    // Capture the URL for this injection attempt so late-resolving scripts
+    // from a previous navigation cannot mark a new page as injected.
+    const expectedUrl = tab.url;
+
+    // Inject content script
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.js']
+    });
+
+    // If the tab has navigated since we scheduled this injection, do not
+    // record it as injected for the new page.
+    try {
+      const current = await chrome.tabs.get(tabId);
+      if (!current || current.url !== expectedUrl) {
+        console.warn('[LUMI] Injection completed after navigation change; skipping injectedTabs flag');
+        return;
+      }
+    } catch (_) {
+      // Tab may have been closed or become unreachable; nothing else to do.
+      return;
+    }
+
+    injectedTabs.add(tabId);
+    console.log('[LUMI] Auto-injected content script for', host);
+
+    // Don't auto-open Dock on refresh - let user click icon to open
+  } catch (err) {
+    console.error('[LUMI] Auto-inject failed:', err);
+  }
+});
+
+// Clean up closed tabs
+chrome.tabs.onRemoved.addListener((tabId) => {
+  injectedTabs.delete(tabId);
+});
+
+// Rebuild injected tabs on startup (in case extension was reloaded)
+chrome.runtime.onStartup.addListener(async () => {
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => !!window.LUMI_INJECTED
+      });
+      if (result?.result) {
+        injectedTabs.add(tab.id);
+      }
+    } catch (err) {
+      // Tab may not be accessible, ignore
+    }
+  }
+});
+
 // Check server on startup
 checkServerHealth();
 
-console.log('[LUMI] Background service worker initialized v3.0 (configurable server)');
+console.log('[LUMI] Background service worker initialized v3.1 (auto-inject + session persistence)');

@@ -16,12 +16,12 @@ describe('DOM Utils', () => {
     it('should return class selector for element with classes', () => {
       const div = document.createElement('div');
       div.className = 'class1 class2 class3';
-      expect(getElementSelector(div)).toBe('div.class1.class2');
+      expect(getElementSelector(div)).toBe('div.class1.class2:nth-of-type(1)');
     });
 
-    it('should return tag name for element without ID or classes', () => {
+    it('should include nth-of-type when element is not uniquely identifiable', () => {
       const div = document.createElement('div');
-      expect(getElementSelector(div)).toBe('div');
+      expect(getElementSelector(div)).toBe('div:nth-of-type(1)');
     });
   });
 
@@ -75,4 +75,3 @@ describe('DOM Utils', () => {
     });
   });
 });
-

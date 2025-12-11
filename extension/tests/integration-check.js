@@ -4,18 +4,17 @@
 
 import EventBus from '../src/lib/core/EventBus.js';
 import StateManager from '../src/lib/core/StateManager.js';
-import BubbleUI from '../src/lib/ui/BubbleUI.js';
 import TopBanner from '../src/lib/ui/TopBanner.js';
-import ContextTags from '../src/lib/ui/ContextTags.js';
 import HighlightManager from '../src/lib/selection/HighlightManager.js';
-import ElementSelector from '../src/lib/selection/ElementSelector.js';
-import ScreenshotSelector from '../src/lib/selection/ScreenshotSelector.js';
 import EngineManager from '../src/lib/engine/EngineManager.js';
 import HealthChecker from '../src/lib/engine/HealthChecker.js';
 import ChromeBridge from '../src/lib/communication/ChromeBridge.js';
 import ServerClient from '../src/lib/communication/ServerClient.js';
 import { getElementSelector, readableElementName, shouldIgnoreElement, getComputedStyleSummary } from '../src/lib/utils/dom.js';
-import { BUBBLE_STYLES, GLOBAL_STYLES } from '../src/lib/ui/styles.js';
+import DockRoot from '../src/lib/ui/dock/DockRoot.js';
+import DockEditModal from '../src/lib/ui/dock/DockEditModal.js';
+import { GLOBAL_STYLES } from '../src/lib/ui/styles.js';
+import { DOCK_STYLES } from '../src/lib/ui/dock/styles.js';
 
 console.log('🔍 Starting integration check...\n');
 
@@ -51,9 +50,17 @@ test('TopBanner can be instantiated', () => {
   if (!banner.mount || !banner.show) throw new Error('Missing methods');
 });
 
-test('BUBBLE_STYLES is defined', () => {
-  if (typeof BUBBLE_STYLES !== 'string') throw new Error('Not a string');
-  if (BUBBLE_STYLES.length < 100) throw new Error('Too short');
+test('DOCK_STYLES is defined', () => {
+  if (typeof DOCK_STYLES !== 'string') throw new Error('Not a string');
+  if (DOCK_STYLES.length < 100) throw new Error('Too short');
+});
+
+test('DockRoot export is available', () => {
+  if (typeof DockRoot !== 'function') throw new Error('DockRoot not exported as function/class');
+});
+
+test('DockEditModal export is available', () => {
+  if (typeof DockEditModal !== 'function') throw new Error('DockEditModal not exported as function/class');
 });
 
 test('GLOBAL_STYLES is defined', () => {
@@ -141,10 +148,10 @@ test('EventBus can pass events between modules', () => {
 test('StateManager can manage state changes', () => {
   const eventBus = new EventBus();
   const stateManager = new StateManager(eventBus);
-  
-  stateManager.set('ui.bubbleVisible', true);
-  const value = stateManager.get('ui.bubbleVisible');
-  
+
+  stateManager.set('ui.dockOpen', true);
+  const value = stateManager.get('ui.dockOpen');
+
   if (value !== true) throw new Error('State not updated correctly');
 });
 
@@ -157,5 +164,3 @@ if (failed > 0) {
   console.log('✅ Integration check PASSED');
   process.exit(0);
 }
-
-

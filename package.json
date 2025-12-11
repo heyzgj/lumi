@@ -12,6 +12,8 @@
     "build": "npm run build --prefix extension",
     "test": "npm run test --prefix extension && npm run test --prefix server",
     "package:extension": "npm run build --prefix extension && (cd extension && npm run package --if-present)",
-    "lint": "npm run lint --prefix extension --if-present"
+    "lint": "npm run lint --prefix extension --if-present",
+    "build:tokens": "node scripts/build-tokens.cjs",
+    "scan:styles": "node scripts/scan-hardcoded-styles.cjs"
   }
 }

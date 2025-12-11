@@ -15,30 +15,30 @@ export default class HealthChecker {
 
   start(interval = 10000) {
     if (this.isRunning) return;
-    
+
     this.isRunning = true;
-    
+
     // Initial check
     this.checkOnce();
-    
+
     // Periodic checks
     this.intervalId = setInterval(() => {
       this.checkOnce();
     }, interval);
-    
+
     this.eventBus.emit('health-checker:started');
   }
 
   stop() {
     if (!this.isRunning) return;
-    
+
     this.isRunning = false;
-    
+
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    
+
     this.eventBus.emit('health-checker:stopped');
   }
 
@@ -59,14 +59,18 @@ export default class HealthChecker {
         : Array.isArray(rawConfig?.config?.projects)
           ? rawConfig.config.projects
           : [];
+      const workingDirectory = rawConfig?.workingDirectory
+        || rawConfig?.config?.workingDirectory
+        || null;
       const host = window.location?.host || '';
       const projectMatch = resolveProject(projects, window.location?.href);
-      const projectAllowed = projects.length === 0 || !!projectMatch?.project;
+      const projectAllowed = !!projectMatch?.project;
 
       this.stateManager.batch({
         'projects.allowed': projectAllowed,
         'projects.current': projectMatch?.project || null,
-        'projects.list': projects
+        'projects.list': projects,
+        'server.workingDirectory': workingDirectory
       });
 
       if (!projectAllowed) {
@@ -88,8 +92,9 @@ export default class HealthChecker {
         // Update engine availability through EngineManager (respects init state)
         this.engineManager.updateAvailability(codexAvailable, claudeAvailable);
       } else if (result.healthy) {
-        // Server healthy but no specific capabilities, assume codex available
-        this.engineManager.updateAvailability(true, false);
+        // Server healthy but no capabilities payload; keep previous availability
+        const prev = this.engineManager.getAvailableEngines() || {};
+        this.engineManager.updateAvailability(!!prev.codex, !!prev.claude);
       } else {
         // Server not healthy
         this.engineManager.updateAvailability(false, false);
@@ -103,7 +108,7 @@ export default class HealthChecker {
       console.error('[HealthChecker] Check failed:', error);
       this.stateManager.set('engine.serverHealthy', false);
       this.engineManager.updateAvailability(false, false);
-      
+
       this.eventBus.emit('health-check:error', error);
       this.stateManager.batch({
         'projects.allowed': false,
@@ -135,13 +140,43 @@ function resolveProject(projects, pageUrl) {
 
   try {
     const url = new URL(pageUrl);
-    const host = url.host.toLowerCase();
+    const host = (url.host || '').toLowerCase();
+    const isFile = url.protocol === 'file:';
+    const pathname = (url.pathname || '').toLowerCase();
     let best = null;
     let bestScore = -Infinity;
     for (const project of projects) {
       if (!project || project.enabled === false) continue;
       const hosts = Array.isArray(project.hosts) ? project.hosts : [];
+      if (hosts.length === 0) {
+        // Wildcard project: matches any URL with lowest priority
+        const score = -1;
+        if (score > bestScore) {
+          bestScore = score;
+          best = project;
+        }
+        continue;
+      }
       for (const pattern of hosts) {
+        const raw = String(pattern || '').trim().toLowerCase();
+        if (!raw) continue;
+
+        // file:// 页面支持路径前缀匹配
+        if (isFile && (raw.startsWith('file:///') || raw.startsWith('/'))) {
+          let prefix = raw;
+          if (prefix.startsWith('file://')) {
+            prefix = prefix.slice('file://'.length);
+          }
+          if (!pathname.startsWith(prefix)) continue;
+          const score = 5000 + prefix.length;
+          if (score > bestScore) {
+            bestScore = score;
+            best = project;
+          }
+          continue;
+        }
+
+        // 其它协议按 host pattern 匹配
         if (!hostMatches(pattern, host)) continue;
         const normalized = String(pattern).trim().toLowerCase();
         const wildcards = (normalized.match(/\*/g) || []).length;

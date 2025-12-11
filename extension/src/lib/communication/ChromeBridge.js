@@ -116,6 +116,24 @@ export default class ChromeBridge {
   }
 
   /**
+   * Stream execution request to server
+   */
+  executeStreamOnServer(engine, context, streamId) {
+    return new Promise((resolve, reject) => {
+      this.sendMessage({
+        type: 'EXECUTE_STREAM',
+        payload: { engine, context, streamId }
+      }, (response) => {
+        if (response && response.error) {
+          reject(new Error(response.error));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+  }
+
+  /**
    * Get from storage
    */
   storageGet(keys) {

@@ -10,16 +10,37 @@ export default class StateManager {
     // Initial state structure
     this.state = {
       ui: {
-        bubbleVisible: false,
-        bubblePosition: { left: 24, bottom: 24 },
         mode: 'idle', // 'idle' | 'element' | 'screenshot'
-        loading: false,
-        loadingText: 'Processing...'
+        dockOpen: false,
+        dockWidth: 420,
+        dockTab: 'chat',
+        dockState: 'normal', // 'normal' | 'compact' | 'expanded'
+        theme: 'light', // 'light' | 'dark'
+        viewport: {
+          enabled: true,
+          preset: 'responsive',
+          logical: { width: 1280, height: 800 },
+          fit: 'width',
+          scale: 1,
+          mode: 'center',
+          auto: true,
+          useIframeStage: false
+        }
       },
       selection: {
         elements: [],
         screenshots: [],
         hoveredElement: null
+      },
+      sessions: {
+        currentId: null,
+        list: []
+      },
+      wysiwyg: {
+        active: false,
+        pending: null, // { index, changes }
+        edits: [], // [{ index, selector, changes, summary? }]
+        hasDiffs: false
       },
       engine: {
         current: 'codex',
@@ -47,7 +68,7 @@ export default class StateManager {
 
   /**
    * Get current state or specific path
-   * @param {string} [path] - Dot-separated path (e.g., 'ui.bubbleVisible')
+   * @param {string} [path] - Dot-separated path (e.g., 'ui.dockOpen')
    * @returns {any} State value
    */
   get(path) {
@@ -64,12 +85,14 @@ export default class StateManager {
    */
   set(path, value, silent = false) {
     const oldValue = this.get(path);
-    
+
     // Only update if value actually changed
-    if (oldValue === value) return;
-    
-    this._setNestedValue(this.state, path, value);
-    
+    const sameRef = oldValue === value;
+    if (!sameRef) {
+      this._setNestedValue(this.state, path, value);
+    }
+
+    // Even when references match (objects/arrays mutated in place), still notify subscribers
     if (!silent) {
       this._notify(path, value, oldValue);
     }
@@ -81,10 +104,10 @@ export default class StateManager {
    */
   batch(updates) {
     Object.entries(updates).forEach(([path, value]) => {
-      this.set(path, value, true); // Silent updates
+      this.set(path, value, false);
     });
-    
-    // Single notification for all changes
+
+    // Single notification for all changes (aggregated payload)
     this.eventBus.emit('state:batch-update', updates);
   }
 
@@ -129,16 +152,27 @@ export default class StateManager {
     
     this.state = {
       ui: {
-        bubbleVisible: false,
-        bubblePosition: { left: 24, bottom: 24 },
         mode: 'idle',
-        loading: false,
-        loadingText: 'Processing...'
+        dockOpen: false,
+        dockWidth: 420,
+        dockTab: 'chat',
+        dockState: 'normal',
+        theme: 'light'
       },
       selection: {
         elements: [],
         screenshots: [],
         hoveredElement: null
+      },
+      sessions: {
+        currentId: null,
+        list: []
+      },
+      wysiwyg: {
+        active: false,
+        pending: null,
+        edits: [],
+        hasDiffs: false
       },
       engine: {
         current: 'codex',

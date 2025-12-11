@@ -25,7 +25,7 @@ describe('StateManager', () => {
     });
 
     it('should get nested value by path', () => {
-      expect(stateManager.get('ui.bubbleVisible')).toBe(false);
+      expect(stateManager.get('ui.dockOpen')).toBe(false);
       expect(stateManager.get('engine.current')).toBe('codex');
     });
 
@@ -36,27 +36,27 @@ describe('StateManager', () => {
 
   describe('set', () => {
     it('should update state at path', () => {
-      stateManager.set('ui.bubbleVisible', true);
-      expect(stateManager.get('ui.bubbleVisible')).toBe(true);
+      stateManager.set('ui.dockOpen', true);
+      expect(stateManager.get('ui.dockOpen')).toBe(true);
     });
 
     it('should notify subscribers on change', () => {
       const callback = jest.fn();
-      stateManager.subscribe('ui.bubbleVisible', callback);
-      
-      stateManager.set('ui.bubbleVisible', true);
-      
+      stateManager.subscribe('ui.dockOpen', callback);
+
+      stateManager.set('ui.dockOpen', true);
+
       expect(callback).toHaveBeenCalledWith(true, false);
     });
 
     it('should emit global state change event', () => {
       const callback = jest.fn();
       eventBus.on('state:change', callback);
-      
-      stateManager.set('ui.bubbleVisible', true);
-      
+
+      stateManager.set('ui.dockOpen', true);
+
       expect(callback).toHaveBeenCalledWith({
-        path: 'ui.bubbleVisible',
+        path: 'ui.dockOpen',
         newValue: true,
         oldValue: false
       });
@@ -64,29 +64,29 @@ describe('StateManager', () => {
 
     it('should emit specific state change event', () => {
       const callback = jest.fn();
-      eventBus.on('state:ui.bubbleVisible', callback);
-      
-      stateManager.set('ui.bubbleVisible', true);
-      
+      eventBus.on('state:ui.dockOpen', callback);
+
+      stateManager.set('ui.dockOpen', true);
+
       expect(callback).toHaveBeenCalledWith(true, false);
     });
 
     it('should not notify if value unchanged', () => {
       const callback = jest.fn();
-      stateManager.subscribe('ui.bubbleVisible', callback);
-      
-      stateManager.set('ui.bubbleVisible', false); // Same as initial
-      
+      stateManager.subscribe('ui.dockOpen', callback);
+
+      stateManager.set('ui.dockOpen', false); // Same as initial
+
       expect(callback).not.toHaveBeenCalled();
     });
 
     it('should support silent updates', () => {
       const callback = jest.fn();
-      stateManager.subscribe('ui.bubbleVisible', callback);
-      
-      stateManager.set('ui.bubbleVisible', true, true); // Silent
-      
-      expect(stateManager.get('ui.bubbleVisible')).toBe(true);
+      stateManager.subscribe('ui.dockOpen', callback);
+
+      stateManager.set('ui.dockOpen', true, true); // Silent
+
+      expect(stateManager.get('ui.dockOpen')).toBe(true);
       expect(callback).not.toHaveBeenCalled();
     });
   });
@@ -94,12 +94,12 @@ describe('StateManager', () => {
   describe('batch', () => {
     it('should update multiple paths at once', () => {
       stateManager.batch({
-        'ui.bubbleVisible': true,
+        'ui.dockOpen': true,
         'ui.mode': 'element',
         'engine.current': 'claude'
       });
-      
-      expect(stateManager.get('ui.bubbleVisible')).toBe(true);
+
+      expect(stateManager.get('ui.dockOpen')).toBe(true);
       expect(stateManager.get('ui.mode')).toBe('element');
       expect(stateManager.get('engine.current')).toBe('claude');
     });
@@ -109,7 +109,7 @@ describe('StateManager', () => {
       eventBus.on('state:batch-update', callback);
       
       const updates = {
-        'ui.bubbleVisible': true,
+        'ui.dockOpen': true,
         'ui.mode': 'element'
       };
       
@@ -159,21 +159,21 @@ describe('StateManager', () => {
       const snapshot = stateManager.snapshot();
       
       // Modify snapshot
-      snapshot.ui.bubbleVisible = true;
+      snapshot.ui.dockOpen = true;
       
       // Original state should be unchanged
-      expect(stateManager.get('ui.bubbleVisible')).toBe(false);
+      expect(stateManager.get('ui.dockOpen')).toBe(false);
     });
   });
 
   describe('reset', () => {
     it('should reset state to initial values', () => {
-      stateManager.set('ui.bubbleVisible', true);
+      stateManager.set('ui.dockOpen', true);
       stateManager.set('engine.current', 'claude');
       
       stateManager.reset();
       
-      expect(stateManager.get('ui.bubbleVisible')).toBe(false);
+      expect(stateManager.get('ui.dockOpen')).toBe(false);
       expect(stateManager.get('engine.current')).toBe('codex');
     });
 
@@ -187,4 +187,3 @@ describe('StateManager', () => {
     });
   });
 });
-

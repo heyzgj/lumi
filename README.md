@@ -1,28 +1,51 @@
 <p align="center">
-  <img src="assets/LUMI.png" alt="LUMI" width="400" />
+  <img src="assets/LUMI.png" alt="LUMI" width="500" />
+</p>
+
+<p align="center">
+  Visual Prompt Layer for Coding Agents.
 </p>
 <p align="center">
-  <strong>👀 See it. Click it. Fix it.</strong>
+  <a href="https://deepwiki.com/heyzgj/lumi"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 <p align="center">
-  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="700" />
+  <video src="assets/demo_showcase.mp4" width="700" controls></video>
 </p>
 
-## Overview
+## What is Lumi?
 
-**Lumi lets your AI see.**  
-For the first time, you don’t have to describe what’s on your screen — you can *show* it.  
-Click what you see, say what you want, and Lumi turns your coding agent into a true visual collaborator.
+Lumi is a Chrome extension that turns your visual edits and annotations into high‑fidelity context for tools like Cursor, Antigravity, Windsurf, Lovable, or your own CLI. Every click and tweak is captured as structured data — DOM diffs, computed styles, and screenshots — so your AI can actually “see” the UI and ship the right code on the first try.
 
-Lumi is a Chrome extension that connects directly to your coding agent (like **Codex** or **Claude Code**) to enable visual, in-browser editing for any web app.  
-No more guessing selectors or typing long prompts — just click, speak, and watch your app update instantly.
+## Key Features
 
+1. **Visual DOM Editor (WYSIWYG)**  
+   Click any element to adjust spacing, colors, typography, and layout with live preview. Lumi records every change as a precise DOM/CSS diff.
+
+2. **Intent‑Based Annotation**  
+   Draw, highlight, and comment directly on top of the UI. Use it to describe flows, logic changes, and refactors visually.
+
+3. **Universal Context Export**  
+   One click “Copy Prompt” exports diffs + screenshots + intent into a portable context block you can drop into Cursor, Claude, Windsurf, Lovable, etc.
+
+4. **Native CLI Integration** *(Optional)*  
+   Wire Lumi to your local CLI (e.g. Codex or Claude Code). Send visual context straight from the browser to your terminal, keeping the whole loop in one place.
+
+## Upcoming Features
+
+1. **Real time AI generated preview**  
+2. **Support more CLI coding agents like gemini CLI**  
 
 
 ## Requirements
+
+**Core:**
 - Node.js 20+
 - Chrome 115+
-- At least one CLI: Codex and or Claude Code CLI
+
+**Optional (for AI Mode):**
+- Codex CLI and/or Claude Code
+*(Not required if you only plan to use the "Copy Prompt" feature with Cursor/Lovable)*
+
 
 ## Quick Start
 1. **Clone the repository**
@@ -37,7 +60,7 @@ No more guessing selectors or typing long prompts — just click, speak, and wat
    ```
    Installs dependencies for `extension/` and `server/`, asks where to store `config.json`, and checks that the CLIs are visible on your `$PATH`.
 
-3. **Run the bridge**
+3. **Run the server**
    ```bash
    npm run dev
    ```
@@ -58,13 +81,11 @@ This is **the only section you need to change** for basic usage:
 
 **Projects** - Tell LUMI where your code lives and which sites to work with
 - Click "Add" and enter:
-  - **Name**: Friendly name (e.g., "My Website")
   - **Working Directory**: Full path to your project folder
   - **Hosts**: Your development server URL (e.g., `localhost:3000`)
 
 **Example for a typical React/Next.js project:**
 ```
-Name: "My App"
 Working Directory: "/Users/john/Documents/my-react-app"
 Hosts: "localhost:3000"
 ```
@@ -86,15 +107,18 @@ Click the "Test" button - should show "Connected" in green.
 **Pro tip:** If you're unsure about any setting, ask your AI assistant! They can explain what each option does and help you find your working directory and host information.
 
 ## Daily Use
-1. Keep the server running (from the project directory: `npm run dev`).
-2. Visit a mapped host and click the LUMI icon to inject the bubble.
-3. Select DOM nodes or grab a screenshot, type your instruction, choose an engine, and send.
-   - If you capture a screenshot, the server saves it and (for Claude) appends the local path to the prompt so Claude can inspect it.
-4. Watch the bubble for status and review the server log (`~/.lumi/server.log`) if anything fails.
+1. Start Server: npm run dev in your lumi directory.
+2. Launch: Visit a mapped host and click the LUMI icon to open the extension.
+3. **Workflow:**
+   - **Inspect**: Click the Cursor icon to select and edit elements.
+   - **Edit directly**: Click any selected element's chip to open the edit modal
+   - **Annotate**: Click the Annotation Mode icon to draw overlays and explain intent.
+   - **Export**: Click "Copy Prompt" to paste into Cursor/Claude, or "Send" to run via local CLI.
 
 ## Troubleshooting
 - **Port busy** → `lsof -nP -iTCP:3456` then kill the process, or run with a different `LUMI_PORT` and update the Options Page.
 - **CLI not found** → ensure `codex --version` / `claude --version` work in the same shell; delete `<configDir>/cli-capabilities.json` to refresh detection.
-- **“Not configured for this page”** → add the current host in the Projects panel and save.
+- **"Not configured for this page"** → add the current host in the Projects panel and save.
+- **Dock not appearing** → Reload the page and click the launcher orb in the bottom-right corner.
 
 Happy building ❤️

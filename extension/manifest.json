@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LUMI",
   "version": "3.0.0",
-  "description": "Select a page region or element, describe your intent, and let local AI (Codex/Claude) propose code changes via native host.",
+  "description": "Select a page region or element, describe your intent, and let a local AI (Codex/Claude) propose code changes via a localhost bridge.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -11,13 +11,12 @@
   "options_page": "options.html",
   "permissions": [
     "activeTab",
+    "tabs",
     "scripting",
-    "storage",
-    "tabs"
+    "storage"
   ],
   "host_permissions": [
-    "http://localhost/*",
-    "http://127.0.0.1/*"
+    "<all_urls>"
   ],
   "action": {
     "default_title": "LUMI - Select and Edit"
@@ -25,11 +24,5 @@
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  "content_scripts": []
 }

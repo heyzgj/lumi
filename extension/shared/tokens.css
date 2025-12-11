@@ -1,0 +1,38 @@
+:root {
+  --dock-bg: #ffffff;
+  --dock-stroke: rgba(0,0,0,0.08);
+  --dock-fg: #111111;
+  --dock-fg-2: #5F6368;
+  --lumi-accent: #3B82F6;
+  --lumi-success: #10B981;
+  --lumi-error: #EF4444;
+  --lumi-on-accent: #ffffff;
+  --lumi-on-strong: #ffffff;
+  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+  --surface: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+  --surface-hover: color-mix(in srgb, var(--dock-fg) 8%, transparent);
+  --shadow: 0 12px 48px -12px rgba(0,0,0,0.12);
+  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.16);
+  --radius-panel: 18px;
+  --radius-chip: 8px;
+  --header-height: 54px;
+}
+:root.dark-dock, .dark-dock, .dark {
+  --dock-bg: #161618;
+  --dock-stroke: rgba(255,255,255,0.12);
+  --dock-fg: #F5F5F7;
+  --dock-fg-2: #B0B3B8;
+  --lumi-accent: #60A5FA;
+  --lumi-success: #34D399;
+  --lumi-error: #F87171;
+  --lumi-on-accent: #ffffff;
+  --lumi-on-strong: #ffffff;
+  --glass-bg: color-mix(in srgb, var(--dock-bg) 85%, transparent);
+  --surface: color-mix(in srgb, var(--dock-fg) 6%, transparent);
+  --surface-hover: color-mix(in srgb, var(--dock-fg) 10%, transparent);
+  --shadow: 0 16px 48px -12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 24px 64px -16px rgba(0,0,0,0.6);
+  --radius-panel: 18px;
+  --radius-chip: 8px;
+  --header-height: 54px;
+}
