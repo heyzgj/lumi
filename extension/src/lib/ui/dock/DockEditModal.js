@@ -166,12 +166,26 @@ export default class DockEditModal {
 
         if (!this.targets.length) return;
 
+        // Detect target document (may be iframe)
+        const firstElement = this.targets[0].element;
+        const targetDoc = firstElement.ownerDocument || document;
+        const targetWin = targetDoc.defaultView || window;
+
+
+
+        // Set target document for scanner (supports iframe content)
+        this.tokenScanner.setTargetDocument(targetDoc, targetWin);
+
         // Scan tokens on open
         this.tokens = this.tokenScanner.scan();
 
         this.current = {};
         this.intents = {};
         this.collectBase();
+
+        // Add current element's colors to the top of token list
+        this.addCurrentColorsToTokens();
+
         this.renderForm();
 
         this.stateManager.set('wysiwyg.pending', null);
@@ -410,6 +424,40 @@ export default class DockEditModal {
         });
         this.base = base;
         this.inline = inline;
+    }
+
+    /**
+     * Add current element's colors to token list so they always appear
+     * This ensures the exact color used by the selected element is available
+     */
+    addCurrentColorsToTokens() {
+        if (!this.base) return;
+
+        const currentColors = [];
+
+        // Add text color if valid
+        if (this.base.color && this.base.color !== 'mixed') {
+            const exists = this.tokens.colors.some(t => t.value === this.base.color);
+            if (!exists) {
+                currentColors.push({ name: '--current-text-color', value: this.base.color });
+            }
+        }
+
+        // Add background color if valid
+        if (this.base.backgroundColor &&
+            this.base.backgroundColor !== 'mixed' &&
+            this.base.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+            this.base.backgroundColor !== 'transparent') {
+            const exists = this.tokens.colors.some(t => t.value === this.base.backgroundColor);
+            if (!exists) {
+                currentColors.push({ name: '--current-bg-color', value: this.base.backgroundColor });
+            }
+        }
+
+        // Prepend current colors to the list
+        if (currentColors.length > 0) {
+            this.tokens.colors = [...currentColors, ...this.tokens.colors];
+        }
     }
 
     restoreBase() {
@@ -1090,6 +1138,10 @@ export default class DockEditModal {
                         const cssProperty = k.replace(/([A-Z])/g, '-$1').toLowerCase();
                         console.log(`[DockEditModal] preview() applying ${cssProperty}: ${v} !important to`, element);
                         element.style.setProperty(cssProperty, v, 'important');
+                    } else if (k === 'backgroundColor' && v && v.includes('gradient')) {
+                        // Gradients need to use 'background' not 'backgroundColor'
+                        element.style.background = v;
+                        element.style.backgroundColor = ''; // Clear any solid color
                     } else {
                         element.style[k] = v;
                     }
