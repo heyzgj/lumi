@@ -9,7 +9,7 @@
   <a href="https://deepwiki.com/heyzgj/lumi"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 <p align="center">
-  <video src="assets/demo_showcase.mp4" width="700" controls></video>
+  <img src="assets/demo_showcase.gif" alt="LUMI DEMO" width="700" />
 </p>
 
 ## What is Lumi?
