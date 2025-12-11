@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  Visual Prompt for AI coding agents.
+  Visual Prompt Layer for Coding Agents.
 </p>
 <p align="center">
   <a href="https://deepwiki.com/heyzgj/lumi"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 <p align="center">
-  <img src="assets/lumi_screenshot.png" alt="LUMI in Action" width="700" />
+  <video src="assets/demo_showcase.mp4" width="700" controls></video>
 </p>
 
 ## What is Lumi?
