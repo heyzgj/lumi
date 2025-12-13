@@ -108,6 +108,7 @@ export default class DockRoot {
               <select id="engine-select">
                 <option value="codex">Codex</option>
                 <option value="claude">Claude Code</option>
+                <option value="droid">Droid</option>
               </select>
             </div>
             <div class="actions">
@@ -215,8 +216,10 @@ export default class DockRoot {
     } catch (_) { }
 
     this.engineSelect.addEventListener('change', () => {
-      const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
-      this.eventBus.emit('engine:select', value);
+      const value = this.engineSelect.value;
+      if (value === 'codex' || value === 'claude' || value === 'droid') {
+        this.eventBus.emit('engine:select', value);
+      }
     });
 
     this.editorEl.addEventListener('input', () => {
@@ -1188,7 +1191,11 @@ export default class DockRoot {
 
   updateEngine(engine) {
     if (this.engineSelect) {
-      this.engineSelect.value = engine === 'claude' ? 'claude' : 'codex';
+      if (engine === 'codex' || engine === 'claude' || engine === 'droid') {
+        this.engineSelect.value = engine;
+      } else {
+        this.engineSelect.value = 'codex';
+      }
     }
     this.updateEngineAvailability();
   }

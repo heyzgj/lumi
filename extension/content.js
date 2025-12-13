@@ -2273,12 +2273,12 @@ ${TOKENS_CSS}
 
     async init() {
       // Initialize availability to unknown state (will be updated by HealthChecker)
-      this.stateManager.set('engine.available', { codex: false, claude: false });
+      this.stateManager.set('engine.available', { codex: false, claude: false, droid: false });
 
       // Load saved engine preference
       const stored = await this.chromeBridge.storageGet(['engine']);
 
-      if (stored.engine && (stored.engine === 'codex' || stored.engine === 'claude')) {
+      if (stored.engine && (stored.engine === 'codex' || stored.engine === 'claude' || stored.engine === 'droid')) {
         this.selectEngine(stored.engine, true); // silent = true, no save
         this.stateManager.set('engine.restored', true);
       } else {
@@ -2290,7 +2290,7 @@ ${TOKENS_CSS}
     }
 
     selectEngine(engine, silent = false) {
-      if (engine !== 'codex' && engine !== 'claude') {
+      if (engine !== 'codex' && engine !== 'claude' && engine !== 'droid') {
         console.error('[EngineManager] Invalid engine:', engine);
         return;
       }
@@ -2305,7 +2305,7 @@ ${TOKENS_CSS}
       this.eventBus.emit('engine:selected', engine);
     }
 
-    updateAvailability(codex, claude) {
+    updateAvailability(codex, claude, droid) {
       // Only update availability if engine has been restored from storage
       // This prevents health check from overwriting user selection during initialization
       const restored = this.stateManager.get('engine.restored');
@@ -2317,10 +2317,11 @@ ${TOKENS_CSS}
       const previous = this.stateManager.get('engine.available') || {};
       const next = {
         codex: !!codex,
-        claude: !!claude
+        claude: !!claude,
+        droid: !!droid
       };
 
-      if (previous.codex === next.codex && previous.claude === next.claude) {
+      if (previous.codex === next.codex && previous.claude === next.claude && previous.droid === next.droid) {
         return;
       }
 
@@ -2433,16 +2434,17 @@ ${TOKENS_CSS}
         if (result.healthy && caps) {
           const codexAvailable = !!(caps.codex && caps.codex.available);
           const claudeAvailable = !!(caps.claude && caps.claude.available);
+          const droidAvailable = !!(caps.droid && caps.droid.available);
 
           // Update engine availability through EngineManager (respects init state)
-          this.engineManager.updateAvailability(codexAvailable, claudeAvailable);
+          this.engineManager.updateAvailability(codexAvailable, claudeAvailable, droidAvailable);
         } else if (result.healthy) {
           // Server healthy but no capabilities payload; keep previous availability
           const prev = this.engineManager.getAvailableEngines() || {};
-          this.engineManager.updateAvailability(!!prev.codex, !!prev.claude);
+          this.engineManager.updateAvailability(!!prev.codex, !!prev.claude, !!prev.droid);
         } else {
           // Server not healthy
-          this.engineManager.updateAvailability(false, false);
+          this.engineManager.updateAvailability(false, false, false);
         }
 
         this.eventBus.emit('health-check:completed', {
@@ -2452,7 +2454,7 @@ ${TOKENS_CSS}
       } catch (error) {
         console.error('[HealthChecker] Check failed:', error);
         this.stateManager.set('engine.serverHealthy', false);
-        this.engineManager.updateAvailability(false, false);
+        this.engineManager.updateAvailability(false, false, false);
 
         this.eventBus.emit('health-check:error', error);
         this.stateManager.batch({
@@ -4246,6 +4248,7 @@ ${TOKENS_CSS}
               <select id="engine-select">
                 <option value="codex">Codex</option>
                 <option value="claude">Claude Code</option>
+                <option value="droid">Droid</option>
               </select>
             </div>
             <div class="actions">
@@ -4353,8 +4356,10 @@ ${TOKENS_CSS}
       } catch (_) { }
 
       this.engineSelect.addEventListener('change', () => {
-        const value = this.engineSelect.value === 'claude' ? 'claude' : 'codex';
-        this.eventBus.emit('engine:select', value);
+        const value = this.engineSelect.value;
+        if (value === 'codex' || value === 'claude' || value === 'droid') {
+          this.eventBus.emit('engine:select', value);
+        }
       });
 
       this.editorEl.addEventListener('input', () => {
@@ -5321,7 +5326,11 @@ ${TOKENS_CSS}
 
     updateEngine(engine) {
       if (this.engineSelect) {
-        this.engineSelect.value = engine === 'claude' ? 'claude' : 'codex';
+        if (engine === 'codex' || engine === 'claude' || engine === 'droid') {
+          this.engineSelect.value = engine;
+        } else {
+          this.engineSelect.value = 'codex';
+        }
       }
       this.updateEngineAvailability();
     }
@@ -10316,9 +10325,12 @@ ${TOKENS_CSS}
 
         const engine = engineManager.getCurrentEngine();
         if (!engineManager.isEngineAvailable(engine)) {
-          const message = engine === 'claude'
-            ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
-            : 'Codex CLI not detected. Please install Codex CLI to enable.';
+          let message = 'Codex CLI not detected. Please install Codex CLI to enable.';
+          if (engine === 'claude') {
+            message = 'Claude CLI not detected. Please install Claude Code CLI to enable.';
+          } else if (engine === 'droid') {
+            message = 'Droid CLI not detected. Please install Factory Droid CLI and set FACTORY_API_KEY.';
+          }
           topBanner.update(message);
           setTimeout(() => topBanner.hide(), 2200);
           return;
@@ -10400,7 +10412,7 @@ ${TOKENS_CSS}
           let result = null;
           let usedStream = false;
           const streamId = streamMsgId ? ('st' + Math.random().toString(36).slice(2)) : null;
-          const canUseStream = engine === 'codex';
+          const canUseStream = engine === 'codex' || engine === 'claude' || engine === 'droid';
 
           if (streamId && sessionId && canUseStream) {
             activeStreams.set(streamId, { sessionId, messageId: streamMsgId });

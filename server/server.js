@@ -39,6 +39,11 @@ const defaultConfig = {
     permissionMode: 'acceptEdits',
     extraArgs: ''
   },
+  droid: {
+    model: 'claude-sonnet-4-5-20250929',
+    autoLevel: 'medium',
+    extraArgs: ''
+  },
   projects: []
 };
 
@@ -88,6 +93,10 @@ function normalizeConfig(raw = {}) {
     claude: {
       ...defaultConfig.claude,
       ...(raw.claude || {})
+    },
+    droid: {
+      ...defaultConfig.droid,
+      ...(raw.droid || {})
     }
   };
 
@@ -123,6 +132,10 @@ function mergeConfig(current, updates = {}) {
     claude: {
       ...current.claude,
       ...(updates.claude || {})
+    },
+    droid: {
+      ...current.droid,
+      ...(updates.droid || {})
     },
     projects: updates.projects !== undefined ? updates.projects : current.projects
   };
@@ -225,6 +238,7 @@ function publicConfig() {
     defaultEngine: config.defaultEngine,
     codex: config.codex,
     claude: config.claude,
+    droid: config.droid,
     projects: config.projects
   };
 }
@@ -550,6 +564,8 @@ app.post('/execute', async (req, res) => {
     let result;
     if (engine === 'claude') {
       result = await executeClaude(context, screenshotPath, { cwd: workingDirectory, project });
+    } else if (engine === 'droid') {
+      result = await executeDroid(context, screenshotPath, { cwd: workingDirectory, project });
     } else {
       result = await executeCodex(context, screenshotPath, { cwd: workingDirectory, project });
     }
@@ -658,6 +674,8 @@ app.post('/execute/stream', async (req, res) => {
     let result;
     if (engine === 'claude') {
       result = await streamClaude(context, screenshotPath, execOptions, streamOptions);
+    } else if (engine === 'droid') {
+      result = await streamDroid(context, screenshotPath, execOptions, streamOptions);
     } else {
       result = await streamCodex(context, screenshotPath, execOptions, streamOptions);
     }
@@ -1409,6 +1427,263 @@ async function streamClaude(context, screenshotPath, execOptions = {}, emit = {}
   };
 }
 
+async function executeDroid(context, screenshotPath, execOptions = {}) {
+  const capabilities = await detectCLI('droid');
+
+  if (!capabilities.available) {
+    return {
+      error: 'Droid CLI not available',
+      message: 'Please install Factory Droid CLI (curl -fsSL https://app.factory.ai/cli | sh) and set FACTORY_API_KEY'
+    };
+  }
+
+  const prompt = buildPrompt(context);
+  const args = ['exec'];
+
+  // Model selection
+  if (capabilities.supportsModel && config.droid.model) {
+    args.push('-m', config.droid.model);
+  }
+
+  // Auto level for permissions
+  if (capabilities.supportsAuto && config.droid.autoLevel) {
+    args.push('--auto', config.droid.autoLevel);
+  }
+
+  // Output format for structured parsing
+  if (capabilities.supportsOutputFormat) {
+    args.push('-o', 'json');
+  }
+
+  // Working directory
+  const cwd = execOptions.cwd || config.workingDirectory;
+  args.push('--cwd', cwd);
+
+  // Extra user-defined args
+  const extraArgs = parseArgs(config.droid.extraArgs);
+  if (extraArgs.length) {
+    args.push(...extraArgs);
+  }
+
+  // Prompt - droid exec takes prompt as last argument or from stdin
+  const useStdin = prompt.length > 500 || /\n/.test(prompt);
+  if (!useStdin) {
+    args.push(prompt);
+  }
+
+  log('Executing Droid:', args.slice(0, 6).join(' '), '...');
+
+  const result = await runCommand(capabilities.bin || 'droid', args, {
+    timeout: 3600000,
+    cwd,
+    stdin: useStdin ? prompt : null
+  });
+
+  if (screenshotPath) {
+    try { fs.unlinkSync(screenshotPath); } catch (_) { }
+  }
+
+  if (result.exitCode !== 0) {
+    return {
+      error: 'Droid execution failed',
+      message: result.stderr || result.stdout,
+      exitCode: result.exitCode
+    };
+  }
+
+  const { parseToLumiResult } = require('./parse');
+  const lumiResult = parseToLumiResult('droid', result.stdout);
+
+  return {
+    success: true,
+    output: result.stdout,
+    stderr: result.stderr,
+    engine: 'droid',
+    lumiResult
+  };
+}
+
+async function streamDroid(context, screenshotPath, execOptions = {}, emit = {}) {
+  const { sendChunk, sendError, setProc } = emit;
+  const capabilities = await detectCLI('droid');
+
+  if (!capabilities.available) {
+    sendError?.('Droid CLI not available');
+    return {
+      success: false,
+      error: 'Droid CLI not available',
+      message: 'Please install Factory Droid CLI (curl -fsSL https://app.factory.ai/cli | sh) and set FACTORY_API_KEY'
+    };
+  }
+
+  if (!capabilities.supportsOutputFormat) {
+    const message = 'Droid CLI does not support --output-format stream-json; streaming timeline unavailable';
+    sendError?.(message);
+    return { success: false, error: message };
+  }
+
+  const prompt = buildPrompt(context);
+  const args = ['exec'];
+
+  // Model selection
+  if (capabilities.supportsModel && config.droid.model) {
+    args.push('-m', config.droid.model);
+  }
+
+  // Auto level for permissions
+  if (capabilities.supportsAuto && config.droid.autoLevel) {
+    args.push('--auto', config.droid.autoLevel);
+  }
+
+  // Stream-json output format for real-time events
+  args.push('-o', 'stream-json');
+
+  // Working directory
+  const cwd = execOptions.cwd || config.workingDirectory;
+  args.push('--cwd', cwd);
+
+  // Extra user-defined args
+  const extraArgs = parseArgs(config.droid.extraArgs);
+  if (extraArgs.length) {
+    args.push(...extraArgs);
+  }
+
+  // Prompt handling
+  const useStdin = prompt.length > 500 || /\n/.test(prompt);
+  if (!useStdin) {
+    args.push(prompt);
+  }
+
+  log('Streaming Droid:', args.slice(0, 6).join(' '), '...');
+  log('--- Droid stream started ---');
+  log('Working directory:', cwd);
+
+  const proc = spawn(capabilities.bin || 'droid', args, {
+    shell: false,
+    timeout: 3600000,
+    cwd,
+    stdio: useStdin ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe']
+  });
+  if (setProc) setProc(proc);
+
+  const { droidEventToChunks, createChunkFactory } = require('./parse/droid-stream-json');
+  const { parseToLumiResult, buildTimelineFromChunks } = require('./parse');
+  const stamp = createChunkFactory();
+  const chunks = [];
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+  const aggregatedText = [];
+  let summary = '';
+
+  let leftover = '';
+  const processLine = (line) => {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return;
+    try {
+      const event = JSON.parse(trimmed);
+      const partial = droidEventToChunks(event, stamp);
+      if (partial.summary && !summary) summary = partial.summary;
+      if (Array.isArray(partial.aggregatedText) && partial.aggregatedText.length) {
+        aggregatedText.push(...partial.aggregatedText);
+      }
+      partial.chunks.forEach((chunk) => {
+        chunks.push(chunk);
+        sendChunk?.(chunk);
+      });
+    } catch (_) {
+      // Ignore malformed lines
+    }
+  };
+
+  proc.stdout.on('data', (data) => {
+    const text = data.toString();
+    stdoutBuffer += text;
+    leftover += text;
+    const parts = leftover.split(/\r?\n/);
+    leftover = parts.pop() || '';
+    parts.forEach(processLine);
+  });
+
+  proc.stderr.on('data', (data) => {
+    stderrBuffer += data.toString();
+  });
+
+  if (useStdin && proc.stdin) {
+    try {
+      proc.stdin.write(prompt);
+      proc.stdin.end();
+    } catch (_) {
+      // ignore stdin errors
+    }
+  }
+
+  let exitCode = 0;
+  await new Promise((resolve) => {
+    proc.on('close', (code) => {
+      exitCode = typeof code === 'number' ? code : 0;
+      resolve();
+    });
+    proc.on('error', (error) => {
+      stderrBuffer += error?.message || '';
+      exitCode = exitCode || -1;
+      resolve();
+    });
+  });
+
+  if (leftover.trim()) {
+    processLine(leftover.trim());
+  }
+
+  if (exitCode !== 0 && !chunks.some((c) => c && c.type === 'error')) {
+    const errorChunk = stamp({
+      type: 'error',
+      text: `Droid exited with code ${exitCode}`
+    });
+    chunks.push(errorChunk);
+    sendChunk?.(errorChunk);
+  }
+
+  log('--- Droid stream ended ---');
+
+  const outputPayload = aggregatedText.join('\n') || stdoutBuffer;
+  const lumiResult = parseToLumiResult('droid', outputPayload);
+  if (summary) {
+    if (!lumiResult.summary) lumiResult.summary = {};
+    if (!lumiResult.summary.title || lumiResult.summary.title === 'Proposed changes') {
+      lumiResult.summary.title = summary;
+    }
+    if (!lumiResult.summary.description) {
+      lumiResult.summary.description = summary;
+    }
+  }
+
+  let timelineEntries = null;
+  let turnSummary = null;
+  if (chunks.length) {
+    try {
+      const built = buildTimelineFromChunks(chunks, {});
+      if (built) {
+        timelineEntries = built.timeline;
+        turnSummary = built.summary;
+      }
+    } catch (error) {
+      logError('Failed to build timeline from Droid stream:', error.message);
+    }
+  }
+
+  return {
+    success: exitCode === 0,
+    output: outputPayload,
+    stderr: stderrBuffer,
+    engine: 'droid',
+    lumiResult,
+    chunks,
+    ...(timelineEntries ? { timelineEntries } : {}),
+    ...(turnSummary ? { turnSummary } : {}),
+    ...(exitCode !== 0 ? { error: stderrBuffer || 'Droid execution failed' } : {})
+  };
+}
+
 async function detectCLI(cliName) {
   const cached = cliCapabilities[cliName];
   if (cached && Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) {
@@ -1425,14 +1700,22 @@ async function detectCLI(cliName) {
     supportsModel: false,
     supportsSandbox: false,
     supportsPrompt: false,
+    supportsAuto: false,
     timestamp: Date.now()
   };
 
   try {
     // Resolve the actual binary name for this CLI
-    const resolved = cliName === 'codex'
-      ? await resolveCLIName('codex', ['codex-cli', 'openai-codex'])
-      : await resolveCLIName('claude', ['claude-code']);
+    let resolved;
+    if (cliName === 'codex') {
+      resolved = await resolveCLIName('codex', ['codex-cli', 'openai-codex']);
+    } else if (cliName === 'claude') {
+      resolved = await resolveCLIName('claude', ['claude-code']);
+    } else if (cliName === 'droid') {
+      resolved = await resolveCLIName('droid', []);
+    } else {
+      resolved = await resolveCLIName(cliName, []);
+    }
     capabilities.bin = resolved || cliName;
 
     const versionResult = await runCommand(capabilities.bin, ['--version'], { timeout: 5000 });
@@ -1442,7 +1725,14 @@ async function detectCLI(cliName) {
       capabilities.version = versionResult.stdout.trim().split('\n')[0];
     }
 
-    const helpResult = await runCommand(capabilities.bin, ['--help'], { timeout: 5000 });
+    // For droid, check exec subcommand help
+    let helpResult;
+    if (cliName === 'droid') {
+      helpResult = await runCommand(capabilities.bin, ['exec', '--help'], { timeout: 5000 });
+    } else {
+      helpResult = await runCommand(capabilities.bin, ['--help'], { timeout: 5000 });
+    }
+
     if (helpResult.exitCode === 0) {
       const helpText = helpResult.stdout + helpResult.stderr;
 
@@ -1465,6 +1755,11 @@ async function detectCLI(cliName) {
       } else if (cliName === 'claude') {
         capabilities.supportsOutputFormat = helpText.includes('--output-format');
         capabilities.supportsPrompt = helpText.includes('-p');
+      } else if (cliName === 'droid') {
+        capabilities.supportsOutputFormat = helpText.includes('--output-format') || helpText.includes('-o');
+        capabilities.supportsModel = helpText.includes('--model') || helpText.includes('-m');
+        capabilities.supportsAuto = helpText.includes('--auto');
+        capabilities.supportsPrompt = true; // droid exec accepts prompt as argument
       }
     }
   } catch (error) {
@@ -1483,6 +1778,30 @@ async function detectCLI(cliName) {
 
 function buildPrompt(context) {
   let prompt = `# User Intent\n${context.intent}\n\n`;
+
+  // Task Summary - clearly categorize what this request includes
+  const hasElements = Array.isArray(context.elements) && context.elements.length > 0;
+  const hasScreenshots = Array.isArray(context.screenshots) && context.screenshots.length > 0;
+  const hasEdits = Array.isArray(context.edits) && context.edits.length > 0;
+
+  if (hasElements || hasScreenshots) {
+    prompt += `# Task Summary\n`;
+    prompt += `This request includes:\n`;
+
+    if (hasEdits) {
+      const editTags = context.edits.map(e => e.tag).join(', ');
+      prompt += `- **WYSIWYG Edits**: Apply style changes to ${editTags}\n`;
+    }
+    if (hasScreenshots) {
+      const screenshotTags = context.screenshots.map(s => s.tag).join(', ');
+      prompt += `- **Visual Reference**: Use ${screenshotTags} as design reference\n`;
+    }
+    if (hasElements && !hasEdits) {
+      const elementTags = context.elements.map(e => e.tag).join(', ');
+      prompt += `- **Element Changes**: Modify ${elementTags} based on user intent\n`;
+    }
+    prompt += `\n`;
+  }
 
   // Context Reference Map
   prompt += `# Context Reference Map\n`;
@@ -1546,8 +1865,12 @@ function buildPrompt(context) {
 
   // Instructions
   prompt += `\n# Instructions\n`;
-  prompt += `- The user's intent may reference tags like ${context.elements?.[0]?.tag || '@element1'}\n`;
+  const exampleTag = context.elements?.[0]?.tag || context.screenshots?.[0]?.tag || '@element1';
+  prompt += `- The user's intent may reference tags like ${exampleTag}\n`;
   prompt += `- Use the Reference Map above to understand which element/screenshot each tag refers to\n`;
+  if (hasScreenshots) {
+    prompt += `- **For screenshots**: Examine the image carefully and apply all visual changes or annotations shown\n`;
+  }
   prompt += `- Apply changes ONLY to the referenced elements in the user's intent\n`;
   prompt += `- For WYSIWYG edits, apply the exact before→after changes shown\n`;
   prompt += `- Modify files directly; maintain code quality and accessibility\n`;
@@ -1623,6 +1946,7 @@ async function startServer() {
   log('Detecting CLIs...');
   await detectCLI('codex');
   await detectCLI('claude');
+  await detectCLI('droid');
   log('CLI capabilities:', JSON.stringify(cliCapabilities, null, 2));
 
   const server = app.listen(PORT, '127.0.0.1', () => {

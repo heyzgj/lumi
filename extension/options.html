@@ -21,6 +21,7 @@
         <button class="nav-link" data-target="projects-panel">Projects</button>
         <button class="nav-link" data-target="codex-panel">Codex</button>
         <button class="nav-link" data-target="claude-panel">Claude</button>
+        <button class="nav-link" data-target="droid-panel">Droid</button>
       </nav>
     </aside>
 
@@ -51,6 +52,7 @@
             <div class="radio-group">
               <label><input type="radio" name="defaultEngine" value="codex"> Codex</label>
               <label><input type="radio" name="defaultEngine" value="claude"> Claude Code</label>
+              <label><input type="radio" name="defaultEngine" value="droid"> Droid (Factory)</label>
             </div>
           </div>
         </div>
@@ -64,7 +66,8 @@
         <header class="panel-header">
           <div>
             <h2>Projects</h2>
-            <p class="helper">Tell LUMI where your code lives. For each project, provide a working directory and at least one Host / URL.</p>
+            <p class="helper">Tell LUMI where your code lives. For each project, provide a working directory and at
+              least one Host / URL.</p>
           </div>
           <button id="addProject" class="ghost">Add</button>
         </header>
@@ -172,6 +175,48 @@
           <button class="primary section-save" data-section="claude">Save</button>
         </footer>
       </section>
+
+      <section class="panel" id="droid-panel">
+        <header class="panel-header">
+          <h2>Droid (Factory AI)</h2>
+        </header>
+        <div class="panel-body">
+          <div class="grid">
+            <div class="field">
+              <label for="droidModel">Model</label>
+              <input id="droidModel" list="droidModels" placeholder="claude-sonnet-4-5-20250929">
+              <datalist id="droidModels">
+                <option value="claude-opus-4-5-20251101"></option>
+                <option value="claude-sonnet-4-5-20250929"></option>
+                <option value="claude-haiku-4-5-20251001"></option>
+                <option value="gpt-5.1-codex"></option>
+                <option value="gpt-5.1"></option>
+                <option value="gemini-3-pro-preview"></option>
+              </datalist>
+            </div>
+            <div class="field">
+              <label for="droidAutoLevel">Auto Level</label>
+              <select id="droidAutoLevel">
+                <option value="low">low (file edits only)</option>
+                <option value="medium">medium (npm install, git commit)</option>
+                <option value="high">high (git push, deploys)</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="droidExtraArgs">Extra CLI Flags</label>
+            <input id="droidExtraArgs" type="text" placeholder="e.g. --reasoning-effort high">
+          </div>
+          <div class="field">
+            <small>Droid requires <code>FACTORY_API_KEY</code> environment variable. Install:
+              <code>curl -fsSL https://app.factory.ai/cli | sh</code></small>
+          </div>
+        </div>
+        <footer class="panel-actions">
+          <button class="ghost section-reset" data-section="droid">Reset</button>
+          <button class="primary section-save" data-section="droid">Save</button>
+        </footer>
+      </section>
     </main>
   </div>
 
@@ -189,7 +234,8 @@
         <label for="projectModalHosts">Host / URL</label>
         <input id="projectModalHosts" type="text"
           placeholder="Paste a URL (e.g., http://localhost:3000 or file:///Users/you/project/index.html)" />
-        <small>Paste the page URL or host. For web pages, LUMI uses the host (e.g., localhost:3000). For local HTML, it uses the file path prefix (e.g., /Users/you/project/).</small>
+        <small>Paste the page URL or host. For web pages, LUMI uses the host (e.g., localhost:3000). For local HTML, it
+          uses the file path prefix (e.g., /Users/you/project/).</small>
       </div>
       <div class="modal-actions">
         <button type="button" class="ghost" id="projectModalCancel">Cancel</button>

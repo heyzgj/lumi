@@ -33,7 +33,7 @@ Lumi is a Chrome extension that turns your visual edits and annotations into hig
 ## Upcoming Features
 
 1. **Real time AI generated preview**  
-2. **Support more CLI coding agents like gemini CLI**  
+2. **Support more CLI coding agents**  
 
 
 ## Requirements
@@ -43,8 +43,66 @@ Lumi is a Chrome extension that turns your visual edits and annotations into hig
 - Chrome 115+
 
 **Optional (for AI Mode):**
-- Codex CLI and/or Claude Code
+- One or more supported AI CLIs (see below)
+
 *(Not required if you only plan to use the "Copy Prompt" feature with Cursor/Lovable)*
+
+## Supported Providers
+
+LUMI works with the following AI coding agents:
+
+<details>
+<summary><b>OpenAI Codex</b> - <code>codex</code></summary>
+
+### Installation
+Follow the official [Codex CLI](https://github.com/openai/codex) installation guide.
+
+### Authentication
+Browser-based OAuth login. Just install and run once to authenticate:
+```bash
+codex --version   # Will prompt to login if needed
+```
+
+No API key required for LUMI integration.
+</details>
+
+<details>
+<summary><b>Claude Code</b> - <code>claude</code></summary>
+
+### Installation
+Follow the official [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installation guide.
+
+### Authentication
+Browser-based OAuth login. Just install and run once to authenticate:
+```bash
+claude --version  # Will prompt to login if needed
+```
+
+No API key required for LUMI integration.
+</details>
+
+<details>
+<summary><b>Factory Droid</b> - <code>droid</code> ⚠️ <em>Requires API Key</em></summary>
+
+### Installation
+```bash
+curl -fsSL https://app.factory.ai/cli | sh
+```
+
+See [Droid CLI docs](https://docs.factory.ai/cli/droid-exec/overview) for more details.
+
+### Authentication
+Droid's non-interactive mode (`droid exec`) requires an API key:
+
+1. **Get your API key** from [Factory Settings](https://app.factory.ai/settings/api-keys)
+2. **Export it in your environment** (before starting LUMI server):
+   ```bash
+   export FACTORY_API_KEY=fk-...
+   ```
+3. Then start the server: `npm run dev`
+
+> **Important:** The `FACTORY_API_KEY` must be set in the same terminal session where you run the LUMI server.
+</details>
 
 
 ## Quick Start
@@ -117,7 +175,8 @@ Click the "Test" button - should show "Connected" in green.
 
 ## Troubleshooting
 - **Port busy** → `lsof -nP -iTCP:3456` then kill the process, or run with a different `LUMI_PORT` and update the Options Page.
-- **CLI not found** → ensure `codex --version` / `claude --version` work in the same shell; delete `<configDir>/cli-capabilities.json` to refresh detection.
+- **CLI not found** → ensure `codex --version` / `claude --version` / `droid --version` work in the same shell; delete `<configDir>/cli-capabilities.json` to refresh detection.
+- **Droid not working** → make sure `FACTORY_API_KEY` is exported in the terminal before starting the server.
 - **"Not configured for this page"** → add the current host in the Projects panel and save.
 - **Dock not appearing** → Reload the page and click the launcher orb in the bottom-right corner.
 

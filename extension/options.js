@@ -15,6 +15,11 @@ const DEFAULT_SETTINGS = {
     permissionMode: 'acceptEdits',
     extraArgs: ''
   },
+  droid: {
+    model: 'claude-sonnet-4-5-20250929',
+    autoLevel: 'medium',
+    extraArgs: ''
+  },
   projects: []
 };
 
@@ -471,6 +476,10 @@ function mergeSettings(input) {
       ...DEFAULT_SETTINGS.claude,
       ...(input.claude || {})
     },
+    droid: {
+      ...DEFAULT_SETTINGS.droid,
+      ...(input.droid || {})
+    },
     projects: Array.isArray(input.projects) ? input.projects : DEFAULT_SETTINGS.projects
   };
 }
@@ -495,6 +504,11 @@ function applySettings(settings) {
   document.querySelectorAll('fieldset input[type="checkbox"]').forEach((checkbox) => {
     checkbox.checked = tools.has(checkbox.value);
   });
+
+  // Droid settings
+  $('droidModel').value = settings.droid?.model || DEFAULT_SETTINGS.droid.model;
+  $('droidAutoLevel').value = settings.droid?.autoLevel || DEFAULT_SETTINGS.droid.autoLevel;
+  $('droidExtraArgs').value = settings.droid?.extraArgs || '';
 
   renderProjects(settings.projects || []);
 }
@@ -524,6 +538,11 @@ function collectSettings() {
       outputFormat: $('claudeOutputFormat').value,
       permissionMode: $('claudePermissionMode').value,
       extraArgs: $('claudeExtraArgs').value.trim()
+    },
+    droid: {
+      model: $('droidModel').value.trim() || DEFAULT_SETTINGS.droid.model,
+      autoLevel: $('droidAutoLevel').value,
+      extraArgs: $('droidExtraArgs').value.trim()
     },
     projects
   };
@@ -561,6 +580,8 @@ function labelFor(section) {
       return 'codex';
     case 'claude':
       return 'claude';
+    case 'droid':
+      return 'droid';
     default:
       return 'settings';
   }
@@ -629,6 +650,12 @@ function resetSection(section) {
       });
       break;
     }
+    case 'droid': {
+      $('droidModel').value = DEFAULT_SETTINGS.droid.model;
+      $('droidAutoLevel').value = DEFAULT_SETTINGS.droid.autoLevel;
+      $('droidExtraArgs').value = DEFAULT_SETTINGS.droid.extraArgs;
+      break;
+    }
     default:
       applySettings(DEFAULT_SETTINGS);
       break;
@@ -655,7 +682,8 @@ async function testConnection() {
     const data = await response.json();
     const codexAvailable = Boolean(data?.config?.cliCapabilities?.codex?.available);
     const claudeAvailable = Boolean(data?.config?.cliCapabilities?.claude?.available);
-    setStatus(`Connected. Codex ${codexAvailable ? 'yes' : 'no'} · Claude ${claudeAvailable ? 'yes' : 'no'}`, 'success');
+    const droidAvailable = Boolean(data?.config?.cliCapabilities?.droid?.available);
+    setStatus(`Connected. Codex ${codexAvailable ? 'yes' : 'no'} · Claude ${claudeAvailable ? 'yes' : 'no'} · Droid ${droidAvailable ? 'yes' : 'no'}`, 'success');
   } catch (error) {
     setStatus(`Connection failed. ${error.message}`, 'error');
   } finally {

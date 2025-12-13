@@ -1,7 +1,9 @@
 const { parseCodexOutput } = require('./codex');
 const { parseClaudeOutput } = require('./claude');
+const { parseDroidOutput } = require('./droid');
 const { parseCodexJsonOutput } = require('./codex-json');
 const { parseClaudeStreamJson } = require('./claude-stream-json');
+const { parseDroidStreamJson } = require('./droid-stream-json');
 
 // ---------------------------------------------------------------------------
 // Timeline / Summary helpers (v1 chronological model)
@@ -195,6 +197,7 @@ function parseToLumiResult(engine, output) {
   try {
     if (engine === 'codex') return parseCodexOutput(String(output || ''));
     if (engine === 'claude') return parseClaudeOutput(output);
+    if (engine === 'droid') return parseDroidOutput(String(output || ''));
   } catch (e) {
     // fallthrough
   }
@@ -213,6 +216,7 @@ module.exports = {
   parseToLumiResult,
   parseCodexJsonOutput,
   parseClaudeStreamJson,
+  parseDroidStreamJson,
   buildTimelineFromChunks,
   EntryKind,
   EntryStatus

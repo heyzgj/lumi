@@ -88,16 +88,17 @@ export default class HealthChecker {
       if (result.healthy && caps) {
         const codexAvailable = !!(caps.codex && caps.codex.available);
         const claudeAvailable = !!(caps.claude && caps.claude.available);
+        const droidAvailable = !!(caps.droid && caps.droid.available);
 
         // Update engine availability through EngineManager (respects init state)
-        this.engineManager.updateAvailability(codexAvailable, claudeAvailable);
+        this.engineManager.updateAvailability(codexAvailable, claudeAvailable, droidAvailable);
       } else if (result.healthy) {
         // Server healthy but no capabilities payload; keep previous availability
         const prev = this.engineManager.getAvailableEngines() || {};
-        this.engineManager.updateAvailability(!!prev.codex, !!prev.claude);
+        this.engineManager.updateAvailability(!!prev.codex, !!prev.claude, !!prev.droid);
       } else {
         // Server not healthy
-        this.engineManager.updateAvailability(false, false);
+        this.engineManager.updateAvailability(false, false, false);
       }
 
       this.eventBus.emit('health-check:completed', {
@@ -107,7 +108,7 @@ export default class HealthChecker {
     } catch (error) {
       console.error('[HealthChecker] Check failed:', error);
       this.stateManager.set('engine.serverHealthy', false);
-      this.engineManager.updateAvailability(false, false);
+      this.engineManager.updateAvailability(false, false, false);
 
       this.eventBus.emit('health-check:error', error);
       this.stateManager.batch({

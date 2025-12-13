@@ -21,6 +21,11 @@ const DEFAULT_SETTINGS = {
     permissionMode: 'acceptEdits',
     extraArgs: ''
   },
+  droid: {
+    model: 'claude-sonnet-4-5-20250929',
+    autoLevel: 'medium',
+    extraArgs: ''
+  },
   projects: []
 };
 
@@ -167,6 +172,10 @@ function mergeSettings(input = {}) {
     claude: {
       ...DEFAULT_SETTINGS.claude,
       ...(input.claude || {})
+    },
+    droid: {
+      ...DEFAULT_SETTINGS.droid,
+      ...(input.droid || {})
     },
     projects: sanitizeProjects(input.projects)
   };
@@ -448,6 +457,7 @@ async function handleApplySettings(payload = {}) {
         workingDirectory: merged.workingDirectory,
         codex: merged.codex,
         claude: merged.claude,
+        droid: merged.droid,
         projects
       })
     });

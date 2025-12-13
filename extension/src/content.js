@@ -1229,9 +1229,12 @@ function bootstrap() {
 
       const engine = engineManager.getCurrentEngine();
       if (!engineManager.isEngineAvailable(engine)) {
-        const message = engine === 'claude'
-          ? 'Claude CLI not detected. Please install Claude Code CLI to enable.'
-          : 'Codex CLI not detected. Please install Codex CLI to enable.';
+        let message = 'Codex CLI not detected. Please install Codex CLI to enable.';
+        if (engine === 'claude') {
+          message = 'Claude CLI not detected. Please install Claude Code CLI to enable.';
+        } else if (engine === 'droid') {
+          message = 'Droid CLI not detected. Please install Factory Droid CLI and set FACTORY_API_KEY.';
+        }
         topBanner.update(message);
         setTimeout(() => topBanner.hide(), 2200);
         return;
@@ -1313,7 +1316,7 @@ function bootstrap() {
         let result = null;
         let usedStream = false;
         const streamId = streamMsgId ? ('st' + Math.random().toString(36).slice(2)) : null;
-        const canUseStream = engine === 'codex';
+        const canUseStream = engine === 'codex' || engine === 'claude' || engine === 'droid';
 
         if (streamId && sessionId && canUseStream) {
           activeStreams.set(streamId, { sessionId, messageId: streamMsgId });
