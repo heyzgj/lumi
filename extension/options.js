@@ -1,241 +1,199 @@
+/**
+ * LUMI Options Page
+ * Handles settings for server, projects, and AI providers.
+ */
+
 const STORAGE_KEY = 'lumiSettings';
+
+// Default settings structure
 const DEFAULT_SETTINGS = {
   serverUrl: 'http://127.0.0.1:3456',
-  defaultEngine: 'codex',
   codex: {
-    model: 'gpt-5-codex-high',
+    model: 'o4-mini',
     sandbox: 'workspace-write',
-    approvals: 'never',
     extraArgs: ''
   },
   claude: {
-    model: 'claude-sonnet-4.5',
-    tools: ['TextEditor', 'Read'],
-    outputFormat: 'json',
+    model: 'claude-sonnet-4-5',
     permissionMode: 'acceptEdits',
     extraArgs: ''
   },
   droid: {
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-opus-4-5-20251101',
     autoLevel: 'medium',
     extraArgs: ''
   },
   projects: []
 };
 
+// Fallback model lists (when server unavailable)
+// Source: CLI --help and official documentation
+const FALLBACK_MODELS = {
+  codex: ['o4-mini', 'o3', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5-codex'],
+  claude: ['claude-sonnet-4-5-20250929', 'claude-opus-4-5-20251101', 'claude-haiku-4-5-20251001', 'sonnet', 'opus', 'haiku'],
+  droid: ['claude-opus-4-5-20251101', 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex', 'gemini-3-pro']
+};
+
+// State
 let currentProjects = [];
-let lastInvalidProjectCount = 0;
+let providerStatus = { codex: false, claude: false, droid: false };
+let activeProvider = 'codex';
 let toastTimeout = null;
-let lastSavedProjects = [];
 
+// DOM helpers
+const $ = (id) => document.getElementById(id);
+
+// Toast notifications
 function showToast(message, type = 'info') {
-  const toast = document.getElementById('toast');
-  if (!toast) return;
-
-  if (!message) {
-    toast.classList.remove('visible', 'success', 'error', 'info');
-    return;
-  }
-
+  const toast = $('toast');
   toast.textContent = message;
-  toast.classList.remove('success', 'error', 'info');
-  toast.classList.add(type || 'info');
-
-  requestAnimationFrame(() => {
-    toast.classList.add('visible');
-  });
-
-  if (toastTimeout) {
-    clearTimeout(toastTimeout);
-  }
-
+  toast.className = `visible ${type}`;
+  clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => {
     toast.classList.remove('visible');
-  }, 3400);
+  }, 3000);
 }
 
-function $(id) {
-  return document.getElementById(id);
+// Status banner
+function setStatus(message, type = 'info') {
+  const banner = $('statusBanner');
+  const msg = $('statusMessage');
+  if (!message) {
+    banner.hidden = true;
+    return;
+  }
+  msg.textContent = message;
+  banner.className = `status-banner ${type}`;
+  banner.hidden = false;
 }
 
+// Generate unique project ID
 function generateProjectId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `project-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  return 'proj_' + Math.random().toString(36).slice(2, 10);
 }
 
+// Normalize host pattern from URL input
 function normalizeHostPattern(value) {
-  if (!value) return '';
-  let input = String(value).trim();
-  if (!input) return '';
+  if (!value || typeof value !== 'string') return '';
+  const trimmed = value.trim();
 
-  const lower = input.toLowerCase();
-
-  // file:// URL → local path prefix
-  if (lower.startsWith('file://')) {
+  // Handle file:// URLs
+  if (trimmed.startsWith('file://')) {
     try {
-      const url = new URL(input);
-      let pathname = url.pathname || '';
-      if (!pathname) return '';
-      if (!pathname.endsWith('/')) {
-        const idx = pathname.lastIndexOf('/');
-        if (idx > 0) pathname = pathname.slice(0, idx + 1);
-      }
-      if (!pathname.startsWith('/')) pathname = `/${pathname}`;
-      return pathname;
-    } catch (_) {
-      let path = input.slice('file://'.length);
-      if (!path.startsWith('/')) path = `/${path}`;
-      if (!path.endsWith('/')) {
-        const idx = path.lastIndexOf('/');
-        if (idx > 0) path = path.slice(0, idx + 1);
-      }
-      return path;
+      const url = new URL(trimmed);
+      return url.pathname.split('/').slice(0, -1).join('/') + '/';
+    } catch {
+      return trimmed.replace('file://', '');
     }
   }
 
-  // Absolute filesystem path
-  if (input.startsWith('/')) {
-    let path = input;
-    if (!path.endsWith('/')) {
-      const idx = path.lastIndexOf('/');
-      if (idx > 0) path = path.slice(0, idx + 1);
-    }
-    return path;
-  }
-
-  // HTTP(S) URL or bare host
-  let hostPart = '';
-
-  if (lower.startsWith('http://') || lower.startsWith('https://')) {
+  // Handle http(s):// URLs
+  if (/^https?:\/\//i.test(trimmed)) {
     try {
-      const url = new URL(input);
-      hostPart = url.host;
-    } catch (_) {
-      hostPart = input.replace(/^https?:\/\//i, '');
+      const url = new URL(trimmed);
+      return url.host;
+    } catch {
+      return trimmed;
     }
-  } else if (lower.startsWith('//')) {
-    try {
-      const url = new URL(`http:${input}`);
-      hostPart = url.host;
-    } catch (_) {
-      hostPart = input.slice(2);
-    }
-  } else {
-    const slashIndex = input.indexOf('/');
-    hostPart = slashIndex >= 0 ? input.slice(0, slashIndex) : input;
   }
 
-  hostPart = hostPart.trim().toLowerCase();
-  if (!hostPart) return '';
-  while (hostPart.endsWith('/')) {
-    hostPart = hostPart.slice(0, -1);
-  }
-  return hostPart;
+  // Already a host pattern
+  return trimmed;
 }
 
-function sanitizeProjects(projects = []) {
-  if (!Array.isArray(projects)) return [];
-  return projects
-    .map((project, index) => {
-      if (!project || typeof project !== 'object') return null;
-      const id = typeof project.id === 'string' && project.id.trim().length
-        ? project.id.trim()
-        : generateProjectId() + `-${index}`;
-      const name = typeof project.name === 'string' ? project.name.trim() : '';
-      const workingDirectory = typeof project.workingDirectory === 'string'
-        ? project.workingDirectory.trim()
-        : '';
-      const hosts = Array.isArray(project.hosts)
-        ? project.hosts.map((host) => normalizeHostPattern(host)).filter(Boolean)
-        : [];
-      const enabled = project.enabled !== false;
+// ==================== Provider Tab Logic ====================
 
-      if (!workingDirectory || hosts.length === 0) {
-        return null;
-      }
-
-      return {
-        id,
-        name,
-        workingDirectory,
-        hosts,
-        enabled,
-        note: typeof project.note === 'string' ? project.note : undefined
-      };
-    })
-    .filter(Boolean);
-}
-
-function ensureProjectShape(project) {
-  const base = project && typeof project === 'object' ? { ...project } : {};
-  if (!base.id) base.id = generateProjectId();
-  base.name = typeof base.name === 'string' ? base.name : '';
-  base.workingDirectory = typeof base.workingDirectory === 'string'
-    ? base.workingDirectory
-    : '';
-  base.hosts = Array.isArray(base.hosts)
-    ? base.hosts.map((host) => normalizeHostPattern(host)).filter(Boolean)
-    : [];
-  base.hostsText = typeof base.hostsText === 'string'
-    ? base.hostsText
-    : base.hosts.join(', ');
-  base.enabled = base.enabled !== false;
-  return base;
-}
-
-function updateProject(id, updates) {
-  const index = currentProjects.findIndex((project) => project.id === id);
-  if (index === -1) return;
-  currentProjects[index] = { ...currentProjects[index], ...updates };
-}
-
-function syncProjectsFromUI() {
-  const list = $('projectsList');
-  if (!list) return;
-  const rows = Array.from(list.querySelectorAll('.project-row'));
-  rows.forEach((row) => {
-    const id = row.dataset.id;
-    if (!id) return;
-    const nameInput = row.querySelector('.project-name');
-    const directoryInput = row.querySelector('.project-directory');
-    const hostsInput = row.querySelector('.project-hosts');
-    const hostsValue = hostsInput?.value || '';
-    const normalizedHosts = hostsValue
-      .split(',')
-      .map((host) => normalizeHostPattern(host))
-      .filter(Boolean);
-    updateProject(id, {
-      name: nameInput?.value || '',
-      workingDirectory: directoryInput?.value || '',
-      hostsText: hostsValue,
-      hosts: normalizedHosts
+function initProviderSelector() {
+  const dropdown = $('providerSelect');
+  if (dropdown) {
+    dropdown.addEventListener('change', () => {
+      selectProvider(dropdown.value);
     });
+  }
+}
+
+function selectProvider(providerId) {
+  activeProvider = providerId;
+
+  // Sync dropdown value
+  const dropdown = $('providerSelect');
+  if (dropdown && dropdown.value !== providerId) {
+    dropdown.value = providerId;
+  }
+
+  // Update panel visibility - hide all, show only active if available
+  document.querySelectorAll('.provider-panel').forEach(panel => {
+    const isActive = panel.dataset.provider === providerId;
+    const isAvailable = providerStatus[panel.dataset.provider];
+    panel.classList.toggle('active', isActive && isAvailable);
+  });
+
+  // Update status indicator
+  const statusIndicator = $('selectedProviderStatus');
+  const isAvailable = providerStatus[providerId];
+  if (statusIndicator) {
+    statusIndicator.className = 'status-indicator ' + (isAvailable ? 'available' : 'unavailable');
+    statusIndicator.textContent = isAvailable ? 'Installed' : 'Not Installed';
+  }
+
+  // Show unavailable message if selected provider not installed
+  $('providerUnavailable').hidden = isAvailable;
+}
+
+function updateProviderStatus(status) {
+  providerStatus = status;
+
+  // Update dropdown options with status
+  const dropdown = $('providerSelect');
+  if (dropdown) {
+    Array.from(dropdown.options).forEach(opt => {
+      const available = status[opt.value];
+      opt.textContent = available ? opt.value.charAt(0).toUpperCase() + opt.value.slice(1)
+        : `${opt.value.charAt(0).toUpperCase() + opt.value.slice(1)} (not installed)`;
+    });
+  }
+
+  // Update status indicator for current selection
+  selectProvider(activeProvider);
+
+  // If current provider unavailable, switch to first available
+  if (!status[activeProvider]) {
+    const firstAvailable = Object.keys(status).find(k => status[k]);
+    if (firstAvailable) {
+      selectProvider(firstAvailable);
+    }
+  }
+}
+
+function populateModelDropdown(providerId, models) {
+  const select = $(`${providerId}Model`);
+  if (!select) return;
+
+  select.innerHTML = '';
+  models.forEach(model => {
+    const opt = document.createElement('option');
+    opt.value = model;
+    opt.textContent = model;
+    select.appendChild(opt);
   });
 }
 
-function renderProjects(projects = currentProjects) {
-  currentProjects = Array.isArray(projects)
-    ? projects.map((project) => ensureProjectShape(project))
-    : [];
+// ==================== Projects ====================
 
+function renderProjects(projects = currentProjects) {
   const list = $('projectsList');
-  const emptyState = $('projectsEmpty');
-  if (!list || !emptyState) return;
+  const empty = $('projectsEmpty');
 
   list.innerHTML = '';
 
-  if (currentProjects.length === 0) {
-    emptyState.hidden = false;
+  if (!projects.length) {
+    empty.hidden = false;
     return;
   }
 
-  emptyState.hidden = true;
-
-  currentProjects.forEach((project) => {
-    const row = createProjectRow(project);
-    list.appendChild(row);
+  empty.hidden = true;
+  projects.forEach(project => {
+    list.appendChild(createProjectRow(project));
   });
 }
 
@@ -244,528 +202,373 @@ function createProjectRow(project) {
   row.className = 'project-row';
   row.dataset.id = project.id;
 
+  const displayName = project.name || project.directory?.split('/').pop() || 'Unnamed';
+
   row.innerHTML = `
-    <div class="row-header">
-      <h3>${project.name ? project.name : 'Unnamed Project'}</h3>
-      <div class="row-actions">
-        <button type="button" class="remove-project">Remove</button>
-      </div>
+    <div class="project-row-header">
+      <h3>${escapeHtml(displayName)}</h3>
+      <button class="btn-danger remove-project">Remove</button>
     </div>
-    <div class="row-body">
+    <div class="project-row-body">
       <div class="field">
         <label>Display Name</label>
-        <input type="text" class="project-name" placeholder="Marketing Site" />
+        <input type="text" class="project-name" value="${escapeHtml(project.name || '')}">
       </div>
       <div class="field">
         <label>Working Directory</label>
-        <input type="text" class="project-directory directory-input" placeholder="/Users/you/project" />
-        <small>Absolute path where Codex/Claude should run.</small>
+        <input type="text" class="project-directory" value="${escapeHtml(project.directory || '')}">
       </div>
       <div class="field">
         <label>Host Patterns</label>
-        <input type="text" class="project-hosts hosts-input" placeholder="localhost:3000, staging.example.com" />
-        <small>Comma separated. Supports * wildcards, e.g., *.example.com</small>
+        <input type="text" class="project-hosts" value="${escapeHtml((project.hosts || []).join(', '))}">
       </div>
     </div>
   `;
 
-  const title = row.querySelector('.row-header h3');
-  const nameInput = row.querySelector('.project-name');
-  const directoryInput = row.querySelector('.project-directory');
-  const hostsInput = row.querySelector('.project-hosts');
-  const removeBtn = row.querySelector('.remove-project');
+  // Remove handler
+  row.querySelector('.remove-project').addEventListener('click', () => {
+    currentProjects = currentProjects.filter(p => p.id !== project.id);
+    renderProjects();
+  });
 
-  if (nameInput) {
-    nameInput.value = project.name || '';
-    nameInput.addEventListener('input', () => {
-      updateProject(project.id, { name: nameInput.value });
-      title.textContent = nameInput.value.trim() || 'Unnamed Project';
-    });
-  }
-
-  if (directoryInput) {
-    directoryInput.value = project.workingDirectory || '';
-    directoryInput.addEventListener('input', () => {
-      updateProject(project.id, { workingDirectory: directoryInput.value });
-    });
-  }
-
-  if (hostsInput) {
-    hostsInput.value = project.hostsText || project.hosts?.join(', ') || '';
-    const scheduleNormalize = () => {
-      const raw = hostsInput.value || '';
-      const normalized = raw
-        .split(',')
-        .map((host) => normalizeHostPattern(host))
-        .filter(Boolean);
-      updateProject(project.id, {
-        hostsText: raw,
-        hosts: normalized
-      });
-    };
-    hostsInput.addEventListener('input', scheduleNormalize);
-    hostsInput.addEventListener('blur', () => {
-      scheduleNormalize();
-      const latest = currentProjects.find((item) => item.id === project.id);
-      if (latest && Array.isArray(latest.hosts)) {
-        hostsInput.value = latest.hosts.join(', ');
-      }
-    });
-  }
-
-  if (removeBtn) {
-    removeBtn.addEventListener('click', () => {
-      syncProjectsFromUI();
-      currentProjects = currentProjects.filter((item) => item.id !== project.id);
-      renderProjects();
-    });
-  }
+  // Update on input
+  row.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', () => syncProjectsFromUI());
+  });
 
   return row;
 }
 
-function collectProjects() {
-  syncProjectsFromUI();
-  const sanitized = sanitizeProjects(currentProjects);
-  lastInvalidProjectCount = currentProjects.length - sanitized.length;
-  return sanitized;
-}
+function syncProjectsFromUI() {
+  const rows = document.querySelectorAll('.project-row');
+  currentProjects = Array.from(rows).map(row => {
+    const id = row.dataset.id;
+    const name = row.querySelector('.project-name').value.trim();
+    const directory = row.querySelector('.project-directory').value.trim();
+    const hostsRaw = row.querySelector('.project-hosts').value;
+    const hosts = hostsRaw.split(/[,\s]+/).map(h => h.trim()).filter(Boolean);
 
-function addNewProject() {
-  syncProjectsFromUI();
-  const newProject = ensureProjectShape({
-    id: generateProjectId(),
-    name: 'New Project',
-    workingDirectory: '',
-    hosts: [],
-    hostsText: ''
+    return { id, name: name || directory.split('/').pop(), directory, hosts };
   });
-  currentProjects = [...currentProjects, newProject];
-  renderProjects();
 }
 
 function openProjectModal() {
-  const modal = $('projectModal');
-  if (!modal) return;
-  const dirInput = $('projectModalDirectory');
-  const hostsInput = $('projectModalHosts');
-  if (dirInput) dirInput.value = '';
-  if (hostsInput) hostsInput.value = '';
-  modal.classList.add('visible');
-  modal.hidden = false;
-  if (dirInput) dirInput.focus();
+  $('projectModalDirectory').value = '';
+  $('projectModalHosts').value = '';
+  $('projectModal').classList.add('visible');
+  $('projectModal').hidden = false;
 }
 
 function closeProjectModal() {
-  const modal = $('projectModal');
-  if (!modal) return;
-  modal.classList.remove('visible');
-  modal.hidden = true;
+  $('projectModal').classList.remove('visible');
+  $('projectModal').hidden = true;
 }
 
 function addProjectFromModal() {
-  const dirInput = $('projectModalDirectory');
-  const hostsInput = $('projectModalHosts');
-  if (!dirInput) return;
-  const workingDirectory = dirInput.value.trim();
-  const hostsRaw = (hostsInput?.value || '').trim();
-  if (!workingDirectory) {
-    dirInput.focus();
-    return;
-  }
-  if (!hostsRaw) {
-    if (hostsInput) hostsInput.focus();
+  const directory = $('projectModalDirectory').value.trim();
+  const hostInput = $('projectModalHosts').value.trim();
+
+  if (!directory) {
+    showToast('Please enter a working directory', 'error');
     return;
   }
 
-  const hosts = hostsRaw
-    .split(',')
-    .map((host) => normalizeHostPattern(host))
-    .filter(Boolean);
+  const host = normalizeHostPattern(hostInput);
+  const name = directory.split('/').filter(Boolean).pop() || 'Project';
 
-  if (!hosts.length) {
-    if (hostsInput) hostsInput.focus();
-    return;
-  }
-
-  syncProjectsFromUI();
-
-  // Derive a default name from the directory basename
-  let name = '';
-  try {
-    const cleaned = workingDirectory.replace(/[\\/]+$/, '');
-    const parts = cleaned.split(/[\\/]/);
-    name = parts[parts.length - 1] || cleaned;
-  } catch (_) {
-    name = '';
-  }
-
-  const newProject = ensureProjectShape({
+  const newProject = {
     id: generateProjectId(),
     name,
-    workingDirectory,
-    hosts,
-    hostsText: hostsRaw
-  });
-  currentProjects = [...currentProjects, newProject];
+    directory,
+    hosts: host ? [host] : []
+  };
+
+  currentProjects.push(newProject);
   renderProjects();
   closeProjectModal();
+  showToast('Project added');
 }
 
-function cleanupSessionsForRemovedProjects(removedProjectIds = []) {
-  if (!Array.isArray(removedProjectIds) || removedProjectIds.length === 0) return;
-
-  const keys = removedProjectIds
-    .filter((id) => typeof id === 'string' && id.trim().length)
-    .map((id) => `lumi.sessions:project:${id.trim()}`);
-
-  if (!keys.length) return;
-
-  try {
-    chrome.storage.local.remove(keys, () => {
-      const err = chrome.runtime && chrome.runtime.lastError;
-      if (err && err.message) {
-        console.warn('[LUMI] Failed to cleanup project sessions:', err.message);
-      }
-    });
-  } catch (error) {
-    console.warn('[LUMI] Failed to cleanup project sessions:', error && error.message ? error.message : error);
-  }
-}
-
-function sendMessage(message) {
-  return new Promise((resolve, reject) => {
-    try {
-      chrome.runtime.sendMessage(message, (response) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(response);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
+// ==================== Settings Load/Save ====================
 
 async function loadSettings() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEY, 'engine'], (result) => {
-      const stored = result[STORAGE_KEY];
-      const merged = mergeSettings(stored || {});
-      if (!merged.defaultEngine && result.engine) {
-        merged.defaultEngine = result.engine;
-      }
-      lastSavedProjects = sanitizeProjects(merged.projects || []);
-      resolve(merged);
-    });
-  });
+  try {
+    const data = await chrome.storage.local.get([STORAGE_KEY]);
+    const stored = data[STORAGE_KEY] || {};
+    return mergeSettings(stored);
+  } catch (err) {
+    console.error('[Options] Load settings failed:', err);
+    return { ...DEFAULT_SETTINGS };
+  }
 }
 
 function mergeSettings(input) {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...input,
-    codex: {
-      ...DEFAULT_SETTINGS.codex,
-      ...(input.codex || {})
-    },
-    claude: {
-      ...DEFAULT_SETTINGS.claude,
-      ...(input.claude || {})
-    },
-    droid: {
-      ...DEFAULT_SETTINGS.droid,
-      ...(input.droid || {})
-    },
-    projects: Array.isArray(input.projects) ? input.projects : DEFAULT_SETTINGS.projects
-  };
+  const merged = { ...DEFAULT_SETTINGS };
+
+  if (input.serverUrl) merged.serverUrl = input.serverUrl;
+  if (Array.isArray(input.projects)) merged.projects = input.projects;
+
+  ['codex', 'claude', 'droid'].forEach(p => {
+    if (input[p]) {
+      merged[p] = { ...DEFAULT_SETTINGS[p], ...input[p] };
+    }
+  });
+
+  return merged;
 }
 
 function applySettings(settings) {
-  $('serverUrl').value = settings.serverUrl;
-  document.querySelectorAll('input[name="defaultEngine"]').forEach((radio) => {
-    radio.checked = radio.value === settings.defaultEngine;
+  // Server
+  $('serverUrl').value = settings.serverUrl || DEFAULT_SETTINGS.serverUrl;
+
+  // Projects - handle both 'directory' (local) and 'workingDirectory' (server/legacy) field names
+  currentProjects = (settings.projects || []).map(p => ({
+    id: p.id || generateProjectId(),
+    name: p.name || '',
+    directory: p.directory || p.workingDirectory || '', // Support both field names
+    hosts: Array.isArray(p.hosts) ? p.hosts : []
+  }));
+  renderProjects();
+
+  // Providers
+  ['codex', 'claude', 'droid'].forEach(p => {
+    const config = settings[p] || DEFAULT_SETTINGS[p];
+    const modelSelect = $(`${p}Model`);
+    const permSelect = $(`${p}Permission`);
+    const extraInput = $(`${p}ExtraArgs`);
+
+    if (modelSelect && config.model) {
+      // Ensure model is in options
+      if (!Array.from(modelSelect.options).some(o => o.value === config.model)) {
+        const opt = document.createElement('option');
+        opt.value = config.model;
+        opt.textContent = config.model;
+        modelSelect.appendChild(opt);
+      }
+      modelSelect.value = config.model;
+    }
+
+    // Use provider-specific permission field
+    if (permSelect) {
+      const permValue = p === 'codex' ? config.sandbox :
+        p === 'claude' ? config.permissionMode :
+          config.autoLevel;
+      permSelect.value = permValue || permSelect.options[1].value; // default to second option
+    }
+    if (extraInput) extraInput.value = config.extraArgs || '';
   });
-
-  $('codexModel').value = settings.codex.model;
-  $('codexSandbox').value = settings.codex.sandbox;
-  $('codexApprovals').value = settings.codex.approvals;
-  $('codexExtraArgs').value = settings.codex.extraArgs || '';
-
-  $('claudeModel').value = settings.claude.model;
-  $('claudeOutputFormat').value = settings.claude.outputFormat;
-  $('claudePermissionMode').value = settings.claude.permissionMode;
-  $('claudeExtraArgs').value = settings.claude.extraArgs || '';
-
-  const tools = new Set(settings.claude.tools || []);
-  document.querySelectorAll('fieldset input[type="checkbox"]').forEach((checkbox) => {
-    checkbox.checked = tools.has(checkbox.value);
-  });
-
-  // Droid settings
-  $('droidModel').value = settings.droid?.model || DEFAULT_SETTINGS.droid.model;
-  $('droidAutoLevel').value = settings.droid?.autoLevel || DEFAULT_SETTINGS.droid.autoLevel;
-  $('droidExtraArgs').value = settings.droid?.extraArgs || '';
-
-  renderProjects(settings.projects || []);
 }
 
 function collectSettings() {
-  const defaultEngine = document.querySelector('input[name="defaultEngine"]:checked')?.value || 'codex';
-  const serverUrl = $('serverUrl').value.trim() || DEFAULT_SETTINGS.serverUrl;
+  syncProjectsFromUI();
 
-  const claudeTools = Array.from(document.querySelectorAll('fieldset input[type="checkbox"]'))
-    .filter((checkbox) => checkbox.checked)
-    .map((checkbox) => checkbox.value);
-
-  const projects = collectProjects();
-
-  return {
-    serverUrl,
-    defaultEngine,
+  const settings = {
+    serverUrl: $('serverUrl').value.trim() || DEFAULT_SETTINGS.serverUrl,
+    projects: currentProjects,
     codex: {
-      model: $('codexModel').value.trim() || DEFAULT_SETTINGS.codex.model,
-      sandbox: $('codexSandbox').value,
-      approvals: $('codexApprovals').value,
+      model: $('codexModel').value,
+      sandbox: $('codexPermission').value,
       extraArgs: $('codexExtraArgs').value.trim()
     },
     claude: {
-      model: $('claudeModel').value.trim() || DEFAULT_SETTINGS.claude.model,
-      tools: claudeTools.length ? claudeTools : DEFAULT_SETTINGS.claude.tools,
-      outputFormat: $('claudeOutputFormat').value,
-      permissionMode: $('claudePermissionMode').value,
+      model: $('claudeModel').value,
+      permissionMode: $('claudePermission').value,
       extraArgs: $('claudeExtraArgs').value.trim()
     },
     droid: {
-      model: $('droidModel').value.trim() || DEFAULT_SETTINGS.droid.model,
-      autoLevel: $('droidAutoLevel').value,
+      model: $('droidModel').value,
+      autoLevel: $('droidPermission').value,
       extraArgs: $('droidExtraArgs').value.trim()
-    },
-    projects
+    }
   };
+
+  return settings;
 }
 
-function setStatus(message, type = 'info') {
-  const card = document.getElementById('statusCard');
-  const content = document.getElementById('statusMessage');
-  if (!message) {
-    card.hidden = true;
-    card.classList.remove('success', 'error', 'info');
-    content.textContent = '';
-    showToast('');
-    return;
-  }
-  card.hidden = false;
-  card.classList.remove('success', 'error', 'info');
-  if (type === 'success') card.classList.add('success');
-  if (type === 'error') card.classList.add('error');
-  if (type === 'info') card.classList.add('info');
-  content.textContent = message;
-
-  if (type === 'success' || type === 'error') {
-    showToast(message, type);
-  }
-}
-
-function labelFor(section) {
-  switch (section) {
-    case 'connection':
-      return 'connection';
-    case 'projects':
-      return 'projects';
-    case 'codex':
-      return 'codex';
-    case 'claude':
-      return 'claude';
-    case 'droid':
-      return 'droid';
-    default:
-      return 'settings';
-  }
-}
-
-async function saveSettings(section) {
-  const settings = collectSettings();
-  let invalidNotice = '';
-  if (lastInvalidProjectCount > 0) {
-    invalidNotice = ` Skipped ${lastInvalidProjectCount}.`;
-    lastInvalidProjectCount = 0;
-  }
-  let removedProjectIds = [];
-  if (!section || section === 'projects') {
-    const previous = Array.isArray(lastSavedProjects) ? lastSavedProjects : [];
-    const next = Array.isArray(settings.projects) ? settings.projects : [];
-    const prevIds = new Set(previous.map((project) => (typeof project.id === 'string' ? project.id.trim() : '')).filter(Boolean));
-    const nextIds = new Set(next.map((project) => (typeof project.id === 'string' ? project.id.trim() : '')).filter(Boolean));
-    removedProjectIds = Array.from(prevIds).filter((id) => !nextIds.has(id));
-  }
+async function saveSettings() {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEY]: settings, engine: settings.defaultEngine });
-    await sendMessage({ type: 'APPLY_SETTINGS', payload: settings });
-    renderProjects(settings.projects);
-    if (!section || section === 'projects') {
-      cleanupSessionsForRemovedProjects(removedProjectIds);
-      lastSavedProjects = sanitizeProjects(settings.projects || []);
-    }
-    const label = labelFor(section);
-    setStatus(`Saved ${label}.${invalidNotice}`, 'success');
-  } catch (error) {
-    setStatus(`Save failed. ${error.message}`, 'error');
+    const settings = collectSettings();
+    await chrome.storage.local.set({ [STORAGE_KEY]: settings });
+
+    // Sync to server
+    await syncSettingsToServer(settings);
+
+    showToast('Settings saved', 'success');
+  } catch (err) {
+    console.error('[Options] Save failed:', err);
+    showToast('Failed to save: ' + err.message, 'error');
   }
 }
 
-function resetSection(section) {
-  const label = labelFor(section);
-  switch (section) {
-    case 'connection': {
-      $('serverUrl').value = DEFAULT_SETTINGS.serverUrl;
-      document.querySelectorAll('input[name="defaultEngine"]').forEach((radio) => {
-        radio.checked = radio.value === DEFAULT_SETTINGS.defaultEngine;
-      });
-      break;
+async function syncSettingsToServer(settings) {
+  const serverUrl = settings.serverUrl || DEFAULT_SETTINGS.serverUrl;
+
+  // Settings now store CLI-native values directly
+  const payload = {
+    codex: {
+      model: settings.codex.model,
+      sandbox: settings.codex.sandbox,
+      extraArgs: settings.codex.extraArgs
+    },
+    claude: {
+      model: settings.claude.model,
+      permissionMode: settings.claude.permissionMode,
+      extraArgs: settings.claude.extraArgs
+    },
+    droid: {
+      model: settings.droid.model,
+      autoLevel: settings.droid.autoLevel,
+      extraArgs: settings.droid.extraArgs
+    },
+    projects: settings.projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      workingDirectory: p.directory, // Map to expected field name
+      hosts: p.hosts
+    }))
+  };
+
+  try {
+    const resp = await fetch(`${serverUrl}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      console.warn('[Options] Server sync returned:', resp.status);
     }
-    case 'projects': {
-      currentProjects = [];
-      renderProjects();
-      break;
-    }
-    case 'codex': {
-      $('codexModel').value = DEFAULT_SETTINGS.codex.model;
-      $('codexSandbox').value = DEFAULT_SETTINGS.codex.sandbox;
-      $('codexApprovals').value = DEFAULT_SETTINGS.codex.approvals;
-      $('codexExtraArgs').value = DEFAULT_SETTINGS.codex.extraArgs;
-      break;
-    }
-    case 'claude': {
-      $('claudeModel').value = DEFAULT_SETTINGS.claude.model;
-      $('claudeOutputFormat').value = DEFAULT_SETTINGS.claude.outputFormat;
-      $('claudePermissionMode').value = DEFAULT_SETTINGS.claude.permissionMode;
-      $('claudeExtraArgs').value = DEFAULT_SETTINGS.claude.extraArgs;
-      const tools = new Set(DEFAULT_SETTINGS.claude.tools);
-      document.querySelectorAll('fieldset input[type="checkbox"]').forEach((checkbox) => {
-        checkbox.checked = tools.has(checkbox.value);
-      });
-      break;
-    }
-    case 'droid': {
-      $('droidModel').value = DEFAULT_SETTINGS.droid.model;
-      $('droidAutoLevel').value = DEFAULT_SETTINGS.droid.autoLevel;
-      $('droidExtraArgs').value = DEFAULT_SETTINGS.droid.extraArgs;
-      break;
-    }
-    default:
-      applySettings(DEFAULT_SETTINGS);
-      break;
+  } catch (err) {
+    console.warn('[Options] Server sync failed:', err);
   }
-  setStatus(`Reset ${label}.`, 'info');
 }
 
-function normalizeUrl(url) {
-  if (!url) return DEFAULT_SETTINGS.serverUrl;
-  return url.endsWith('/') ? url.slice(0, -1) : url;
+function resetAllSettings() {
+  if (!confirm('Reset all settings to defaults?')) return;
+
+  applySettings(DEFAULT_SETTINGS);
+  showToast('Settings reset to defaults');
 }
+
+// ==================== Server Connection ====================
 
 async function testConnection() {
-  setStatus('Testing...', 'info');
-  const button = document.getElementById('testConnection');
-  button.disabled = true;
+  const serverUrl = $('serverUrl').value.trim() || DEFAULT_SETTINGS.serverUrl;
+  setStatus('Testing connection...', 'info');
+
   try {
-    const { serverUrl } = collectSettings();
-    const normalized = normalizeUrl(serverUrl);
-    const response = await fetch(`${normalized}/health`, { method: 'GET' });
-    if (!response.ok) {
-      throw new Error(`Server responded with ${response.status}`);
-    }
-    const data = await response.json();
-    const codexAvailable = Boolean(data?.config?.cliCapabilities?.codex?.available);
-    const claudeAvailable = Boolean(data?.config?.cliCapabilities?.claude?.available);
-    const droidAvailable = Boolean(data?.config?.cliCapabilities?.droid?.available);
-    setStatus(`Connected. Codex ${codexAvailable ? 'yes' : 'no'} · Claude ${claudeAvailable ? 'yes' : 'no'} · Droid ${droidAvailable ? 'yes' : 'no'}`, 'success');
-  } catch (error) {
-    setStatus(`Connection failed. ${error.message}`, 'error');
-  } finally {
-    button.disabled = false;
+    const resp = await fetch(`${serverUrl}/capabilities`, { timeout: 5000 });
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+
+    const data = await resp.json();
+    const caps = data.cliCapabilities || {};
+
+    // Update provider status
+    const status = {
+      codex: !!caps.codex?.available,
+      claude: !!caps.claude?.available,
+      droid: !!caps.droid?.available
+    };
+    updateProviderStatus(status);
+
+    // Populate model dropdowns from server or use fallback
+    ['codex', 'claude', 'droid'].forEach(p => {
+      const models = caps[p]?.models || FALLBACK_MODELS[p];
+      populateModelDropdown(p, models);
+    });
+
+    setStatus('Connected to LUMI server. All settings synced.', 'success');
+    setTimeout(() => setStatus(''), 3000);
+
+  } catch (err) {
+    setStatus(`Connection failed: ${err.message}`, 'error');
+
+    // Use fallback models
+    ['codex', 'claude', 'droid'].forEach(p => {
+      populateModelDropdown(p, FALLBACK_MODELS[p]);
+    });
+    updateProviderStatus({ codex: true, claude: true, droid: true });
   }
 }
 
-function setActiveSection(panelId) {
-  document.querySelectorAll('.panel').forEach((panel) => {
-    panel.classList.toggle('active', panel.id === panelId);
-  });
-  document.querySelectorAll('.nav-link').forEach((link) => {
-    link.classList.toggle('active', link.dataset.target === panelId);
-  });
+async function fetchProviders() {
+  const serverUrl = $('serverUrl').value.trim() || DEFAULT_SETTINGS.serverUrl;
+
+  try {
+    const resp = await fetch(`${serverUrl}/capabilities`);
+    const data = await resp.json();
+    const caps = data.cliCapabilities || {};
+
+    const status = {
+      codex: !!caps.codex?.available,
+      claude: !!caps.claude?.available,
+      droid: !!caps.droid?.available
+    };
+    updateProviderStatus(status);
+
+    ['codex', 'claude', 'droid'].forEach(p => {
+      const models = caps[p]?.models || FALLBACK_MODELS[p];
+      populateModelDropdown(p, models);
+    });
+
+  } catch (err) {
+    // Fallback: assume all available with default models
+    ['codex', 'claude', 'droid'].forEach(p => {
+      populateModelDropdown(p, FALLBACK_MODELS[p]);
+    });
+    updateProviderStatus({ codex: true, claude: true, droid: true });
+  }
 }
 
-function registerEvents() {
-  $('testConnection').addEventListener('click', (event) => {
-    event.preventDefault();
-    testConnection();
-  });
-  const addProjectBtn = $('addProject');
-  if (addProjectBtn) {
-    addProjectBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      openProjectModal();
-    });
-  }
+// ==================== Utilities ====================
 
-  const modalAdd = $('projectModalAdd');
-  if (modalAdd) {
-    modalAdd.addEventListener('click', (event) => {
-      event.preventDefault();
-      addProjectFromModal();
-    });
-  }
-  const modalCancel = $('projectModalCancel');
-  if (modalCancel) {
-    modalCancel.addEventListener('click', (event) => {
-      event.preventDefault();
-      closeProjectModal();
-    });
-  }
-  const modal = $('projectModal');
-  if (modal) {
-    modal.addEventListener('click', (event) => {
-      if (event.target === modal) {
-        closeProjectModal();
-      }
-    });
-  }
-
-  document.querySelectorAll('.nav-link').forEach((link) => {
-    link.addEventListener('click', (event) => {
-      event.preventDefault();
-      setActiveSection(link.dataset.target);
-    });
-  });
-
-  document.querySelectorAll('.section-save').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      saveSettings(button.dataset.section);
-    });
-  });
-
-  document.querySelectorAll('.section-reset').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      resetSection(button.dataset.section);
-    });
-  });
-
-  setActiveSection('connection-panel');
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
+
+// ==================== Init ====================
 
 async function init() {
+  // Provider tabs
+  initProviderSelector();
+
+  // Populate fallback models first
+  ['codex', 'claude', 'droid'].forEach(p => {
+    populateModelDropdown(p, FALLBACK_MODELS[p]);
+  });
+
+  // Load saved settings
   const settings = await loadSettings();
   applySettings(settings);
-  registerEvents();
+
+  // Fetch provider status from server
+  await fetchProviders();
+
+  // Event listeners
+  $('testConnection').addEventListener('click', testConnection);
+  $('addProject').addEventListener('click', openProjectModal);
+  $('projectModalCancel').addEventListener('click', closeProjectModal);
+  $('projectModalAdd').addEventListener('click', addProjectFromModal);
+  $('saveAll').addEventListener('click', saveSettings);
+  $('resetAll').addEventListener('click', resetAllSettings);
+
+  // Modal backdrop click
+  $('projectModal').querySelector('.modal-backdrop').addEventListener('click', closeProjectModal);
+
+  // Close modal on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeProjectModal();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  init().catch((error) => setStatus(`Initialization failed: ${error.message}`, 'error'));
+  init().catch(err => {
+    console.error('[Options] Init failed:', err);
+    setStatus('Initialization failed: ' + err.message, 'error');
+  });
 });

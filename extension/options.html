@@ -11,238 +11,174 @@
 
 <body>
   <div class="page">
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <span class="sidebar-logo">LUMI</span>
-        <span class="sidebar-subtitle">Settings</span>
+    <header class="page-header">
+      <div class="brand">
+        <span class="logo">LUMI</span>
+        <span class="subtitle">Settings</span>
       </div>
-      <nav class="sidebar-nav">
-        <button class="nav-link active" data-target="connection-panel">Connection</button>
-        <button class="nav-link" data-target="projects-panel">Projects</button>
-        <button class="nav-link" data-target="codex-panel">Codex</button>
-        <button class="nav-link" data-target="claude-panel">Claude</button>
-        <button class="nav-link" data-target="droid-panel">Droid</button>
-      </nav>
-    </aside>
+    </header>
 
     <main class="content">
-      <header class="content-header">
-        <div>
-          <h1>Configure LUMI</h1>
-          <p class="subtitle">Adjust bridge, projects, and engines when needed.</p>
+      <!-- Server Card -->
+      <section class="card" id="server-card">
+        <div class="card-header">
+          <h2>🔗 Server</h2>
+          <button id="testConnection" class="btn-ghost">Test</button>
         </div>
-        <button id="testConnection" class="ghost">Test</button>
-      </header>
+        <div class="card-body">
+          <div class="field">
+            <label for="serverUrl">Bridge URL</label>
+            <input id="serverUrl" type="url" placeholder="http://127.0.0.1:3456">
+          </div>
+        </div>
+      </section>
 
-      <div class="status-banner" id="statusCard" hidden>
+      <!-- Status Banner -->
+      <div class="status-banner" id="statusBanner" hidden>
         <span id="statusMessage"></span>
       </div>
 
-      <section class="panel active" id="connection-panel">
-        <header class="panel-header">
-          <h2>Connection</h2>
-        </header>
-        <div class="panel-body">
-          <div class="field">
-            <label for="serverUrl">Server URL</label>
-            <input id="serverUrl" type="url" placeholder="http://127.0.0.1:3456" required>
-          </div>
-          <div class="field">
-            <label>Default Engine</label>
-            <div class="radio-group">
-              <label><input type="radio" name="defaultEngine" value="codex"> Codex</label>
-              <label><input type="radio" name="defaultEngine" value="claude"> Claude Code</label>
-              <label><input type="radio" name="defaultEngine" value="droid"> Droid (Factory)</label>
-            </div>
-          </div>
-        </div>
-        <footer class="panel-actions">
-          <button class="ghost section-reset" data-section="connection">Reset</button>
-          <button class="primary section-save" data-section="connection">Save</button>
-        </footer>
-      </section>
-
-      <section class="panel" id="projects-panel">
-        <header class="panel-header">
+      <!-- Projects Card -->
+      <section class="card" id="projects-card">
+        <div class="card-header">
           <div>
-            <h2>Projects</h2>
-            <p class="helper">Tell LUMI where your code lives. For each project, provide a working directory and at
-              least one Host / URL.</p>
+            <h2>📁 Projects</h2>
+            <p class="helper">Map URLs to local directories where your code lives.</p>
           </div>
-          <button id="addProject" class="ghost">Add</button>
-        </header>
-        <div class="panel-body">
+          <button id="addProject" class="btn-ghost">+ Add</button>
+        </div>
+        <div class="card-body">
           <div id="projectsEmpty" class="empty-state" hidden>
-            <p>No projects yet. LUMI is disabled until you add at least one project (at least a working directory).</p>
+            <p>No projects added yet.</p>
           </div>
           <div id="projectsList" class="projects-list"></div>
         </div>
-        <footer class="panel-actions">
-          <button class="ghost section-reset" data-section="projects">Reset</button>
-          <button class="primary section-save" data-section="projects">Save</button>
-        </footer>
       </section>
 
-      <section class="panel" id="codex-panel">
-        <header class="panel-header">
-          <h2>Codex</h2>
-        </header>
-        <div class="panel-body">
-          <div class="grid">
-            <div class="field">
-              <label for="codexModel">Model</label>
-              <input id="codexModel" list="codexModels" placeholder="gpt-5-codex-high">
-              <datalist id="codexModels">
-                <option value="gpt-5-codex-high"></option>
-                <option value="gpt-5-codex"></option>
-                <option value="o3"></option>
-                <option value="o4-mini"></option>
-              </datalist>
+      <!-- Providers Card -->
+      <section class="card" id="providers-card">
+        <div class="card-header">
+          <h2>⚡ Providers</h2>
+        </div>
+        <div class="card-body">
+          <!-- Provider Selector -->
+          <div class="provider-selector">
+            <select id="providerSelect" class="provider-dropdown">
+              <option value="codex">Codex</option>
+              <option value="claude">Claude</option>
+              <option value="droid">Droid</option>
+            </select>
+            <span class="status-indicator" id="selectedProviderStatus"></span>
+          </div>
+
+          <!-- Provider Panels -->
+          <div class="provider-panel active" id="codex-panel" data-provider="codex">
+            <div class="field-grid">
+              <div class="field">
+                <label for="codexModel">Model</label>
+                <select id="codexModel"></select>
+              </div>
+              <div class="field">
+                <label for="codexPermission">Sandbox Mode</label>
+                <select id="codexPermission">
+                  <option value="read-only">Read Only</option>
+                  <option value="workspace-write" selected>Workspace Write</option>
+                  <option value="danger-full-access">Full Access (Danger)</option>
+                </select>
+              </div>
             </div>
             <div class="field">
-              <label for="codexSandbox">Sandbox</label>
-              <select id="codexSandbox">
-                <option value="workspace-write">workspace-write</option>
-                <option value="read-only">read-only</option>
-                <option value="danger-full-access">danger-full-access</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="codexApprovals">Approvals</label>
-              <select id="codexApprovals">
-                <option value="never">never</option>
-                <option value="on-request">on-request</option>
-                <option value="always">always</option>
-              </select>
+              <label for="codexExtraArgs">Extra CLI Flags</label>
+              <input id="codexExtraArgs" type="text" placeholder="e.g. --max-tokens 2048">
             </div>
           </div>
-          <div class="field">
-            <label for="codexExtraArgs">Extra CLI Flags</label>
-            <input id="codexExtraArgs" type="text" placeholder="e.g. --max-tokens 2048">
+
+          <div class="provider-panel" id="claude-panel" data-provider="claude">
+            <div class="field-grid">
+              <div class="field">
+                <label for="claudeModel">Model</label>
+                <select id="claudeModel"></select>
+              </div>
+              <div class="field">
+                <label for="claudePermission">Permission Mode</label>
+                <select id="claudePermission">
+                  <option value="default">Default (Ask)</option>
+                  <option value="acceptEdits" selected>Accept Edits</option>
+                  <option value="plan">Plan Only</option>
+                  <option value="dontAsk">Don't Ask</option>
+                  <option value="bypassPermissions">Bypass All (Danger)</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="claudeExtraArgs">Extra CLI Flags</label>
+              <input id="claudeExtraArgs" type="text" placeholder="e.g. --temperature 0.3">
+            </div>
+          </div>
+
+          <div class="provider-panel" id="droid-panel" data-provider="droid">
+            <div class="field-grid">
+              <div class="field">
+                <label for="droidModel">Model</label>
+                <select id="droidModel"></select>
+              </div>
+              <div class="field">
+                <label for="droidPermission">Auto Level</label>
+                <select id="droidPermission">
+                  <option value="low">Low (Basic files)</option>
+                  <option value="medium" selected>Medium (Development)</option>
+                  <option value="high">High (Production)</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="droidExtraArgs">Extra CLI Flags</label>
+              <input id="droidExtraArgs" type="text" placeholder="e.g. --reasoning-effort high">
+            </div>
+            <p class="provider-note">
+              ⚠ Droid requires <code>FACTORY_API_KEY</code> environment variable.
+            </p>
+          </div>
+
+          <div class="provider-unavailable" id="providerUnavailable" hidden>
+            <p>This provider is not installed. Install the CLI to configure.</p>
           </div>
         </div>
-        <footer class="panel-actions">
-          <button class="ghost section-reset" data-section="codex">Reset</button>
-          <button class="primary section-save" data-section="codex">Save</button>
-        </footer>
       </section>
 
-      <section class="panel" id="claude-panel">
-        <header class="panel-header">
-          <h2>Claude</h2>
-        </header>
-        <div class="panel-body">
-          <div class="grid">
-            <div class="field">
-              <label for="claudeModel">Model</label>
-              <input id="claudeModel" list="claudeModels" placeholder="claude-sonnet-4.5">
-              <datalist id="claudeModels">
-                <option value="claude-sonnet-4.5"></option>
-                <option value="claude-opus-4"></option>
-                <option value="claude-haiku-3"></option>
-              </datalist>
-            </div>
-            <div class="field">
-              <label for="claudeOutputFormat">Output Format</label>
-              <select id="claudeOutputFormat">
-                <option value="json">json</option>
-                <option value="text">text</option>
-                <option value="stream-json">stream-json</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="claudePermissionMode">Permission Mode</label>
-              <select id="claudePermissionMode">
-                <option value="acceptEdits">acceptEdits</option>
-                <option value="ask">ask</option>
-              </select>
-            </div>
-          </div>
-          <fieldset class="field">
-            <legend>Enabled Tools</legend>
-            <label><input type="checkbox" value="TextEditor" checked> TextEditor</label>
-            <label><input type="checkbox" value="Read" checked> Read</label>
-            <label><input type="checkbox" value="Search"> Search</label>
-            <label><input type="checkbox" value="Bash"> Bash</label>
-          </fieldset>
-          <div class="field">
-            <label for="claudeExtraArgs">Extra CLI Flags</label>
-            <input id="claudeExtraArgs" type="text" placeholder="e.g. --temperature 0.3">
-          </div>
-        </div>
-        <footer class="panel-actions">
-          <button class="ghost section-reset" data-section="claude">Reset</button>
-          <button class="primary section-save" data-section="claude">Save</button>
-        </footer>
-      </section>
-
-      <section class="panel" id="droid-panel">
-        <header class="panel-header">
-          <h2>Droid (Factory AI)</h2>
-        </header>
-        <div class="panel-body">
-          <div class="grid">
-            <div class="field">
-              <label for="droidModel">Model</label>
-              <input id="droidModel" list="droidModels" placeholder="claude-sonnet-4-5-20250929">
-              <datalist id="droidModels">
-                <option value="claude-opus-4-5-20251101"></option>
-                <option value="claude-sonnet-4-5-20250929"></option>
-                <option value="claude-haiku-4-5-20251001"></option>
-                <option value="gpt-5.1-codex"></option>
-                <option value="gpt-5.1"></option>
-                <option value="gemini-3-pro-preview"></option>
-              </datalist>
-            </div>
-            <div class="field">
-              <label for="droidAutoLevel">Auto Level</label>
-              <select id="droidAutoLevel">
-                <option value="low">low (file edits only)</option>
-                <option value="medium">medium (npm install, git commit)</option>
-                <option value="high">high (git push, deploys)</option>
-              </select>
-            </div>
-          </div>
-          <div class="field">
-            <label for="droidExtraArgs">Extra CLI Flags</label>
-            <input id="droidExtraArgs" type="text" placeholder="e.g. --reasoning-effort high">
-          </div>
-          <div class="field">
-            <small>Droid requires <code>FACTORY_API_KEY</code> environment variable. Install:
-              <code>curl -fsSL https://app.factory.ai/cli | sh</code></small>
-          </div>
-        </div>
-        <footer class="panel-actions">
-          <button class="ghost section-reset" data-section="droid">Reset</button>
-          <button class="primary section-save" data-section="droid">Save</button>
-        </footer>
-      </section>
+      <!-- Actions -->
+      <footer class="page-actions">
+        <button id="resetAll" class="btn-ghost">Reset All</button>
+        <button id="saveAll" class="btn-primary">Save Settings</button>
+      </footer>
     </main>
   </div>
 
-  <div id="toast" role="status" aria-live="polite"></div>
+  <!-- Add Project Modal -->
   <div id="projectModal" class="modal" hidden>
     <div class="modal-backdrop"></div>
     <div class="modal-card">
       <h3>Add Project</h3>
       <div class="field">
         <label for="projectModalDirectory">Working Directory</label>
-        <input id="projectModalDirectory" type="text" placeholder="/Users/you/project" />
-        <small>Absolute path where Codex/Claude should run.</small>
+        <input id="projectModalDirectory" type="text" placeholder="/Users/you/project">
+        <small>Absolute path where the AI CLI will run.</small>
       </div>
       <div class="field">
         <label for="projectModalHosts">Host / URL</label>
-        <input id="projectModalHosts" type="text"
-          placeholder="Paste a URL (e.g., http://localhost:3000 or file:///Users/you/project/index.html)" />
-        <small>Paste the page URL or host. For web pages, LUMI uses the host (e.g., localhost:3000). For local HTML, it
-          uses the file path prefix (e.g., /Users/you/project/).</small>
+        <input id="projectModalHosts" type="text" placeholder="localhost:3000 or paste full URL">
+        <small>The domain or file path prefix to match.</small>
       </div>
       <div class="modal-actions">
-        <button type="button" class="ghost" id="projectModalCancel">Cancel</button>
-        <button type="button" class="primary" id="projectModalAdd">Add</button>
+        <button id="projectModalCancel" class="btn-ghost">Cancel</button>
+        <button id="projectModalAdd" class="btn-primary">Add</button>
       </div>
     </div>
   </div>
+
+  <!-- Toast -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
   <script type="module" src="options.js"></script>
 </body>
 

@@ -1701,8 +1701,17 @@ async function detectCLI(cliName) {
     supportsSandbox: false,
     supportsPrompt: false,
     supportsAuto: false,
+    models: [], // Will be populated with available models
     timestamp: Date.now()
   };
+
+  // Default model lists per provider (from CLI --help and docs)
+  const defaultModels = {
+    codex: ['o4-mini', 'o3', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5-codex'],
+    claude: ['claude-sonnet-4-5-20250929', 'claude-opus-4-5-20251101', 'claude-haiku-4-5-20251001', 'sonnet', 'opus', 'haiku'],
+    droid: ['claude-opus-4-5-20251101', 'claude-sonnet-4-5-20250929', 'gpt-5.1-codex', 'gemini-3-pro']
+  };
+  capabilities.models = defaultModels[cliName] || [];
 
   try {
     // Resolve the actual binary name for this CLI
