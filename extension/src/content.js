@@ -19,7 +19,7 @@ import EventBus from './lib/core/EventBus.js';
 import StateManager from './lib/core/StateManager.js';
 
 // UI
-// TopBanner removed; keep styles only
+import TopBanner from './lib/ui/TopBanner.js';
 import { GLOBAL_STYLES } from './lib/ui/styles.js';
 import { TOKENS_CSS } from '../shared/tokens.js';
 import { readableElementName } from './lib/utils/dom.js';
@@ -81,8 +81,7 @@ function bootstrap() {
   }
 
   // Initialize UI
-  // TopBanner removed; provide no-op API to keep calls harmless
-  const topBanner = { update: () => { }, hide: () => { }, setRightOffset: () => { } };
+  const topBanner = new TopBanner();
   let dockRoot = null;
   let editModal = null;
   const styleApplier = new StyleApplier(eventBus);
@@ -450,6 +449,13 @@ function bootstrap() {
         // Ensure chips are fully synced regardless of caret state
         try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
         try { dockRoot.updateSendState(); } catch (_) { }
+
+        // Auto-open edit modal for immediate value delivery
+        try {
+          if (editModal && typeof editModal.open === 'function') {
+            editModal.open({ element: item.element, index });
+          }
+        } catch (_) { }
       }
       // no-op (bubble removed)
       stateManager.set('ui.dockState', 'normal');
@@ -863,9 +869,13 @@ function bootstrap() {
       const state = stateManager.get('ui.dockState');
       const offset = open && state !== 'compact' ? 420 : 0;
       try { topBanner.setRightOffset(offset + 'px'); } catch (_) { }
+      // Offset top when viewport bar is visible to avoid overlap
+      const viewportOn = !!stateManager.get('ui.viewport.enabled');
+      try { topBanner.setTopOffset(viewportOn ? '48px' : '0px'); } catch (_) { }
     };
     stateManager.subscribe('ui.dockOpen', alignTopBanner);
     stateManager.subscribe('ui.dockState', alignTopBanner);
+    stateManager.subscribe('ui.viewport.enabled', alignTopBanner);
 
     // Input events
     eventBus.on('input:changed', () => {
@@ -1431,13 +1441,13 @@ function bootstrap() {
     });
 
     eventBus.on('projects:blocked', ({ host }) => {
-      if (stateManager.get('ui.dockOpen') !== false) {
-        topBanner.update('LUMI is not configured for this page. Open Settings to map it to a project.');
-      }
+      // Set flag for DockRoot to show tooltip on send button hover
+      stateManager.set('projects.blocked', true);
       if (dockRoot) dockRoot.updateSendState();
     });
 
     eventBus.on('projects:allowed', () => {
+      stateManager.set('projects.blocked', false);
       topBanner.hide();
       if (dockRoot) dockRoot.updateSendState();
     });
@@ -1675,6 +1685,26 @@ function bootstrap() {
         }
       })();
     } catch (_) { }
+
+    // First-run experience: auto-activate element select mode
+    try {
+      const storage = await chromeBridge.storageGet('lumi_first_run_done');
+      if (!storage || !storage.lumi_first_run_done) {
+        // Mark as completed (only auto-activate once)
+        await chromeBridge.storageSet({ lumi_first_run_done: true });
+        // Wait for all initial state to settle, then open dock and activate element mode
+        setTimeout(() => {
+          stateManager.set('ui.dockOpen', true);
+          if (dockRoot) dockRoot.setVisible(true);
+          // Activate element selection mode
+          if (elementSelector && typeof elementSelector.activate === 'function') {
+            elementSelector.activate();
+          }
+        }, 600);
+      }
+    } catch (err) {
+      console.warn('[LUMI] First-run check failed:', err);
+    }
   }
 
   // Persist/restore sessions (simplified: host-only key to avoid race conditions)

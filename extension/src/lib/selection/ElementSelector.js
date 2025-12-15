@@ -37,7 +37,7 @@ export default class ElementSelector {
     this.isActive = true;
     this.stateManager.set('ui.mode', 'element');
 
-    this.topBanner.update('Click to select element');
+    this.topBanner.update('Click to select element · ESC to exit');
 
     this.doc.addEventListener('mousemove', this.handleMouseMove, true);
     this.doc.addEventListener('click', this.handleClick, true);

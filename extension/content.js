@@ -347,6 +347,88 @@
   }
 
   /**
+   * TopBanner - Top notification banner for mode hints
+   */
+
+  class TopBanner {
+    constructor() {
+      this.banner = null;
+      this._rightOffset = '0px';
+      this._topOffset = '0px';
+    }
+
+    mount() {
+      if (this.banner) return;
+
+      this.banner = document.createElement('div');
+      this.banner.id = 'lumi-top-banner';
+      this.banner.style.cssText = `
+      position: fixed;
+      top: ${this._topOffset};
+      left: 0;
+      right: 0;
+      z-index: 2147483646;
+      padding: 12px 24px;
+      background: var(--lumi-accent);
+      backdrop-filter: blur(12px);
+      color: var(--lumi-on-accent);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      box-shadow: var(--shadow);
+      display: none;
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    `;
+
+      document.body.appendChild(this.banner);
+    }
+
+    show(message) {
+      if (!this.banner) this.mount();
+      this.banner.textContent = message;
+      this.banner.style.right = this._rightOffset || '0px';
+      this.banner.style.top = this._topOffset || '0px';
+      this.banner.style.display = 'block';
+    }
+
+    hide() {
+      if (this.banner) {
+        this.banner.style.display = 'none';
+      }
+    }
+
+    update(message) {
+      if (!message) {
+        this.hide();
+      } else {
+        this.show(message);
+      }
+    }
+
+    setRightOffset(px) {
+      this._rightOffset = typeof px === 'string' ? px : `${px || 0}px`;
+      if (this.banner && this.banner.style.display === 'block') {
+        this.banner.style.right = this._rightOffset;
+      }
+    }
+
+    setTopOffset(px) {
+      this._topOffset = typeof px === 'string' ? px : `${px || 0}px`;
+      if (this.banner && this.banner.style.display === 'block') {
+        this.banner.style.top = this._topOffset;
+      }
+    }
+
+    destroy() {
+      if (this.banner) {
+        this.banner.remove();
+        this.banner = null;
+      }
+    }
+  }
+
+  /**
    * UI Styles - Global CSS definitions
    */
 
@@ -1042,7 +1124,7 @@
       this.isActive = true;
       this.stateManager.set('ui.mode', 'element');
 
-      this.topBanner.update('Click to select element');
+      this.topBanner.update('Click to select element · ESC to exit');
 
       this.doc.addEventListener('mousemove', this.handleMouseMove, true);
       this.doc.addEventListener('click', this.handleClick, true);
@@ -2999,7 +3081,87 @@ ${TOKENS_CSS}
 
   /* Chat */
   .chat-list { display: flex; flex-direction: column; gap: 22px; }
-  .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
+  .chat-empty { 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+  }
+  .empty-state-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 280px;
+  }
+  .empty-state-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .empty-state-icon svg {
+    color: var(--dock-fg-2);
+    opacity: 0.6;
+  }
+  .empty-state-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--dock-fg);
+    margin-bottom: 6px;
+  }
+  .empty-state-desc {
+    font-size: 13px;
+    color: var(--dock-fg-2);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .empty-state-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .empty-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--dock-stroke);
+    background: var(--surface);
+    color: var(--dock-fg);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .empty-action-btn:hover {
+    background: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+    border-color: color-mix(in srgb, var(--dock-fg) 15%, transparent);
+    transform: translateY(-1px);
+  }
+  .empty-action-btn:active {
+    transform: scale(0.97);
+  }
+  .empty-action-btn.primary {
+    background: var(--dock-fg);
+    color: var(--dock-bg);
+    border-color: var(--dock-fg);
+  }
+  .empty-action-btn.primary:hover {
+    background: color-mix(in srgb, var(--dock-fg) 90%, transparent);
+    transform: translateY(-1px);
+  }
+  .empty-action-btn svg {
+    flex-shrink: 0;
+  }
 
   /* Amp-style messages: user has border, assistant plain */
   .msg {
@@ -4611,7 +4773,32 @@ ${TOKENS_CSS}
       if (!session || session.transcript.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'chat-empty';
-        empty.textContent = 'Start by selecting elements or typing a message.';
+        empty.innerHTML = `
+        <div class="empty-state-content">
+          <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 15h6"/>
+            </svg>
+          </div>
+          <div class="empty-state-title">Start editing any element</div>
+          <div class="empty-state-desc">Select elements on the page to modify styles, or capture a screenshot for AI context</div>
+          <div class="empty-state-actions">
+            <button class="empty-action-btn primary" id="empty-select-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-6 2-3 6z"/></svg>
+              Select Element
+            </button>
+            <button class="empty-action-btn" id="empty-shot-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              Screenshot
+            </button>
+          </div>
+        </div>
+      `;
+        // Bind action buttons
+        const selectBtn = empty.querySelector('#empty-select-btn');
+        const shotBtn = empty.querySelector('#empty-shot-btn');
+        if (selectBtn) selectBtn.addEventListener('click', () => this.eventBus.emit('mode:toggle-element'));
+        if (shotBtn) shotBtn.addEventListener('click', () => this.eventBus.emit('mode:toggle-screenshot'));
         pane.appendChild(empty);
         return;
       }
@@ -5390,8 +5577,16 @@ ${TOKENS_CSS}
         || (Array.isArray(elements) && elements.some(e => e && e.edited));
       const isProcessing = this.stateManager.get('processing.active');
       const projectAllowed = this.stateManager.get('projects.allowed');
+      const projectBlocked = this.stateManager.get('projects.blocked');
       this.sendBtn.disabled = !hasContext || !(hasIntent || hasEdits) || isProcessing || projectAllowed === false;
       this.sendBtn.classList.toggle('processing', !!isProcessing);
+
+      // Update tooltip when project is not configured
+      if (projectBlocked || projectAllowed === false) {
+        this.sendBtn.title = 'Open Settings to map this page to a project';
+      } else {
+        this.sendBtn.title = 'Send';
+      }
     }
 
     getPlainText() {
@@ -9188,8 +9383,7 @@ ${TOKENS_CSS}
     }
 
     // Initialize UI
-    // TopBanner removed; provide no-op API to keep calls harmless
-    const topBanner = { update: () => { }, hide: () => { }, setRightOffset: () => { } };
+    const topBanner = new TopBanner();
     let dockRoot = null;
     let editModal = null;
     const styleApplier = new StyleApplier(eventBus);
@@ -9546,6 +9740,13 @@ ${TOKENS_CSS}
           // Ensure chips are fully synced regardless of caret state
           try { dockRoot.renderChips(stateManager.get('selection.elements') || []); } catch (_) { }
           try { dockRoot.updateSendState(); } catch (_) { }
+
+          // Auto-open edit modal for immediate value delivery
+          try {
+            if (editModal && typeof editModal.open === 'function') {
+              editModal.open({ element: item.element, index });
+            }
+          } catch (_) { }
         }
         // no-op (bubble removed)
         stateManager.set('ui.dockState', 'normal');
@@ -9959,9 +10160,13 @@ ${TOKENS_CSS}
         const state = stateManager.get('ui.dockState');
         const offset = open && state !== 'compact' ? 420 : 0;
         try { topBanner.setRightOffset(offset + 'px'); } catch (_) { }
+        // Offset top when viewport bar is visible to avoid overlap
+        const viewportOn = !!stateManager.get('ui.viewport.enabled');
+        try { topBanner.setTopOffset(viewportOn ? '48px' : '0px'); } catch (_) { }
       };
       stateManager.subscribe('ui.dockOpen', alignTopBanner);
       stateManager.subscribe('ui.dockState', alignTopBanner);
+      stateManager.subscribe('ui.viewport.enabled', alignTopBanner);
 
       // Input events
       eventBus.on('input:changed', () => {
@@ -10527,13 +10732,13 @@ ${TOKENS_CSS}
       });
 
       eventBus.on('projects:blocked', ({ host }) => {
-        if (stateManager.get('ui.dockOpen') !== false) {
-          topBanner.update('LUMI is not configured for this page. Open Settings to map it to a project.');
-        }
+        // Set flag for DockRoot to show tooltip on send button hover
+        stateManager.set('projects.blocked', true);
         if (dockRoot) dockRoot.updateSendState();
       });
 
       eventBus.on('projects:allowed', () => {
+        stateManager.set('projects.blocked', false);
         topBanner.hide();
         if (dockRoot) dockRoot.updateSendState();
       });
@@ -10771,6 +10976,26 @@ ${TOKENS_CSS}
           }
         })();
       } catch (_) { }
+
+      // First-run experience: auto-activate element select mode
+      try {
+        const storage = await chromeBridge.storageGet('lumi_first_run_done');
+        if (!storage || !storage.lumi_first_run_done) {
+          // Mark as completed (only auto-activate once)
+          await chromeBridge.storageSet({ lumi_first_run_done: true });
+          // Wait for all initial state to settle, then open dock and activate element mode
+          setTimeout(() => {
+            stateManager.set('ui.dockOpen', true);
+            if (dockRoot) dockRoot.setVisible(true);
+            // Activate element selection mode
+            if (elementSelector && typeof elementSelector.activate === 'function') {
+              elementSelector.activate();
+            }
+          }, 600);
+        }
+      } catch (err) {
+        console.warn('[LUMI] First-run check failed:', err);
+      }
     }
 
     // Persist/restore sessions (simplified: host-only key to avoid race conditions)

@@ -6,16 +6,17 @@ export default class TopBanner {
   constructor() {
     this.banner = null;
     this._rightOffset = '0px';
+    this._topOffset = '0px';
   }
 
   mount() {
     if (this.banner) return;
-    
+
     this.banner = document.createElement('div');
     this.banner.id = 'lumi-top-banner';
     this.banner.style.cssText = `
       position: fixed;
-      top: 0;
+      top: ${this._topOffset};
       left: 0;
       right: 0;
       z-index: 2147483646;
@@ -31,7 +32,7 @@ export default class TopBanner {
       display: none;
       animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     `;
-    
+
     document.body.appendChild(this.banner);
   }
 
@@ -39,6 +40,7 @@ export default class TopBanner {
     if (!this.banner) this.mount();
     this.banner.textContent = message;
     this.banner.style.right = this._rightOffset || '0px';
+    this.banner.style.top = this._topOffset || '0px';
     this.banner.style.display = 'block';
   }
 
@@ -60,6 +62,13 @@ export default class TopBanner {
     this._rightOffset = typeof px === 'string' ? px : `${px || 0}px`;
     if (this.banner && this.banner.style.display === 'block') {
       this.banner.style.right = this._rightOffset;
+    }
+  }
+
+  setTopOffset(px) {
+    this._topOffset = typeof px === 'string' ? px : `${px || 0}px`;
+    if (this.banner && this.banner.style.display === 'block') {
+      this.banner.style.top = this._topOffset;
     }
   }
 

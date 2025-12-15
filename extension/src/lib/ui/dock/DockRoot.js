@@ -472,7 +472,32 @@ export default class DockRoot {
     if (!session || session.transcript.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'chat-empty';
-      empty.textContent = 'Start by selecting elements or typing a message.';
+      empty.innerHTML = `
+        <div class="empty-state-content">
+          <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 15h6"/>
+            </svg>
+          </div>
+          <div class="empty-state-title">Start editing any element</div>
+          <div class="empty-state-desc">Select elements on the page to modify styles, or capture a screenshot for AI context</div>
+          <div class="empty-state-actions">
+            <button class="empty-action-btn primary" id="empty-select-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-6 2-3 6z"/></svg>
+              Select Element
+            </button>
+            <button class="empty-action-btn" id="empty-shot-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              Screenshot
+            </button>
+          </div>
+        </div>
+      `;
+      // Bind action buttons
+      const selectBtn = empty.querySelector('#empty-select-btn');
+      const shotBtn = empty.querySelector('#empty-shot-btn');
+      if (selectBtn) selectBtn.addEventListener('click', () => this.eventBus.emit('mode:toggle-element'));
+      if (shotBtn) shotBtn.addEventListener('click', () => this.eventBus.emit('mode:toggle-screenshot'));
       pane.appendChild(empty);
       return;
     }
@@ -1255,8 +1280,16 @@ export default class DockRoot {
       || (Array.isArray(elements) && elements.some(e => e && e.edited));
     const isProcessing = this.stateManager.get('processing.active');
     const projectAllowed = this.stateManager.get('projects.allowed');
+    const projectBlocked = this.stateManager.get('projects.blocked');
     this.sendBtn.disabled = !hasContext || !(hasIntent || hasEdits) || isProcessing || projectAllowed === false;
     this.sendBtn.classList.toggle('processing', !!isProcessing);
+
+    // Update tooltip when project is not configured
+    if (projectBlocked || projectAllowed === false) {
+      this.sendBtn.title = 'Open Settings to map this page to a project';
+    } else {
+      this.sendBtn.title = 'Send';
+    }
   }
 
   getPlainText() {

@@ -94,7 +94,87 @@ export const DOCK_STYLES = `
 
   /* Chat */
   .chat-list { display: flex; flex-direction: column; gap: 22px; }
-  .chat-empty { color: var(--hint); font-size: 13px; text-align: center; padding: 40px 0; }
+  .chat-empty { 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+  }
+  .empty-state-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 280px;
+  }
+  .empty-state-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .empty-state-icon svg {
+    color: var(--dock-fg-2);
+    opacity: 0.6;
+  }
+  .empty-state-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--dock-fg);
+    margin-bottom: 6px;
+  }
+  .empty-state-desc {
+    font-size: 13px;
+    color: var(--dock-fg-2);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .empty-state-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .empty-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--dock-stroke);
+    background: var(--surface);
+    color: var(--dock-fg);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .empty-action-btn:hover {
+    background: color-mix(in srgb, var(--dock-fg) 5%, transparent);
+    border-color: color-mix(in srgb, var(--dock-fg) 15%, transparent);
+    transform: translateY(-1px);
+  }
+  .empty-action-btn:active {
+    transform: scale(0.97);
+  }
+  .empty-action-btn.primary {
+    background: var(--dock-fg);
+    color: var(--dock-bg);
+    border-color: var(--dock-fg);
+  }
+  .empty-action-btn.primary:hover {
+    background: color-mix(in srgb, var(--dock-fg) 90%, transparent);
+    transform: translateY(-1px);
+  }
+  .empty-action-btn svg {
+    flex-shrink: 0;
+  }
 
   /* Amp-style messages: user has border, assistant plain */
   .msg {
