@@ -114,7 +114,8 @@ export async function startServer(projectDir) {
 │  1. Open Chrome → chrome://extensions                       │
 │  2. Enable "Developer mode" (top right toggle)              │
 │  3. Click "Load unpacked"                                   │
-│  4. Select: ${extensionPath.padEnd(45)}│
+│  4. Select this folder:                                     │
+│     ${extensionPath}
 │                                                             │
 │  Then click the Lumi icon → Options to add your project.    │
 └─────────────────────────────────────────────────────────────┘
