@@ -1,6 +1,6 @@
 {
     "name": "create-lumi",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Create a new Lumi project - Visual Prompt Layer for Coding Agents",
     "type": "module",
     "bin": {
