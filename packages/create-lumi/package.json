@@ -1,0 +1,33 @@
+{
+    "name": "create-lumi",
+    "version": "0.1.1",
+    "description": "Create a new Lumi project - Visual Prompt Layer for Coding Agents",
+    "type": "module",
+    "bin": {
+        "create-lumi": "./bin/create-lumi.js"
+    },
+    "files": [
+        "bin",
+        "lib"
+    ],
+    "keywords": [
+        "lumi",
+        "chrome-extension",
+        "ai",
+        "codex",
+        "claude",
+        "cursor",
+        "windsurf",
+        "coding-agent"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/heyzgj/lumi"
+    },
+    "homepage": "https://github.com/heyzgj/lumi",
+    "author": "heyzgj",
+    "license": "MIT",
+    "engines": {
+        "node": ">=16"
+    }
+}

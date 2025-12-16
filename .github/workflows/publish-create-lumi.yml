@@ -1,0 +1,81 @@
+# Publish create-lumi to npm
+#
+# Triggered when:
+# 1. Manual dispatch
+# 2. Push to main with changes in packages/create-lumi/
+#
+# Requirements:
+# - lumi secret must be set in repository settings
+
+name: Publish create-lumi
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version bump type (patch, minor, major) or specific version'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/create-lumi
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+      
+      - name: Bump version
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
+      
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.LUMI }}
+      
+      - name: Get new version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      
+      - name: Commit and push version bump
+        run: |
+          git add package.json
+          git commit -m "chore: release create-lumi v${{ steps.version.outputs.version }}"
+          git push
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: create-lumi-v${{ steps.version.outputs.version }}
+          name: create-lumi v${{ steps.version.outputs.version }}
+          body: |
+            ## create-lumi v${{ steps.version.outputs.version }}
+            
+            Install with:
+            ```bash
+            npx create-lumi my-project
+            ```
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

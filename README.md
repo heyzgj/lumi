@@ -106,6 +106,23 @@ Droid's non-interactive mode (`droid exec`) requires an API key:
 
 
 ## Quick Start
+
+### Option 1: One-Command Setup (Recommended)
+
+```bash
+npx create-lumi lumi
+cd lumi
+```
+
+This will clone, install dependencies, build the extension, and start the server.
+
+**Then load the extension in Chrome:**
+1. Open `chrome://extensions`
+2. Enable "Developer mode" (top right)
+3. Click "Load unpacked" → select the `extension` folder
+
+### Option 2: Manual Setup
+
 1. **Clone the repository**
    ```bash
    git clone https://github.com/heyzgj/lumi
