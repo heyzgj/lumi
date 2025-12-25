@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Visual Prompt Layer for Coding Agents.
+  Visual Editors for Coding Agents.
 </p>
 <p align="center">
   <a href="https://deepwiki.com/heyzgj/lumi"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
@@ -18,16 +18,16 @@ Lumi is a Chrome extension that turns your visual edits and annotations into hig
 
 ## Key Features
 
-1. **Visual DOM Editor (WYSIWYG)**  
+1. **Visual Editor**  
    Click any element to adjust spacing, colors, typography, and layout with live preview. Lumi records every change as a precise DOM/CSS diff.
 
-2. **Intent‑Based Annotation**  
+2. **Annotation Mode**  
    Draw, highlight, and comment directly on top of the UI. Use it to describe flows, logic changes, and refactors visually.
 
-3. **Universal Context Export**  
+3. **Take Your Context Anywhere**  
    One click “Copy Prompt” exports diffs + screenshots + intent into a portable context block you can drop into Cursor, Claude, Windsurf, Lovable, etc.
 
-4. **Native CLI Integration** *(Optional)*  
+4. **Run With Local Agents** 
    Wire Lumi to your local CLI (e.g. Codex or Claude Code). Send visual context straight from the browser to your terminal, keeping the whole loop in one place.
 
 ## Upcoming Features
@@ -42,7 +42,7 @@ Lumi is a Chrome extension that turns your visual edits and annotations into hig
 - Node.js 20+
 - Chrome 115+
 
-**Optional (for AI Mode):**
+**Optional (for Chat Mode):**
 - One or more supported AI CLIs (see below)
 
 *(Not required if you only plan to use the "Copy Prompt" feature with Cursor/Lovable)*
@@ -107,7 +107,17 @@ Droid's non-interactive mode (`droid exec`) requires an API key:
 
 ## Quick Start
 
-### Option 1: One-Command Setup (Recommended)
+### Option 1: Download Pre-built Extension (Fastest)
+
+1. Download `lumi-extension.zip` from [Latest Release](https://github.com/heyzgj/lumi/releases/latest)
+2. Unzip the file
+3. Open Chrome → `chrome://extensions`
+4. Enable "Developer mode" (top right)
+5. Click "Load unpacked" → Select the unzipped folder
+
+> **Note:** This only includes the extension. For Chat Mode with local CLI agents, you'll also need to run the server (see Option 2 or 3).
+
+### Option 2: One-Command Setup (Recommended for Chat Mode)
 
 ```bash
 npx create-lumi lumi
@@ -121,7 +131,7 @@ This will clone, install dependencies, build the extension, and start the server
 2. Enable "Developer mode" (top right)
 3. Click "Load unpacked" → select the `extension` folder
 
-### Option 2: Manual Setup
+### Option 3: Manual Setup
 
 1. **Clone the repository**
    ```bash
