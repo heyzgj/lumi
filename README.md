@@ -12,6 +12,23 @@
 <p align="center">
   <a href="https://deepwiki.com/heyzgj/lumi"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
+
+---
+
+<p align="center">
+  <b>✨ Now Available on Chrome Web Store! ✨</b>
+</p>
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/lumi/pbinkdolcnolpkipcpandngjaboiieai">
+    <img src="https://storage.googleapis.com/web-dev-uploads/image/WlD8wC6g8khYWPJUsQceQkhXSlv1/iNEddTyWiMfLSwFD6qGq.png" alt="Available in the Chrome Web Store" height="58">
+  </a>
+</p>
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/lumi/pbinkdolcnolpkipcpandngjaboiieai"><b>Install Lumi from Chrome Web Store →</b></a>
+</p>
+
+---
+
 <p align="center">
   <img src="assets/demo_showcase.gif" alt="LUMI DEMO" width="700" />
 </p>
@@ -111,7 +128,15 @@ Droid's non-interactive mode (`droid exec`) requires an API key:
 
 ## Quick Start
 
-### Option 1: Download Pre-built Extension (Fastest)
+### Option 1: Install from Chrome Web Store (Easiest)
+
+**[📥 Install Lumi from Chrome Web Store](https://chromewebstore.google.com/detail/lumi/pbinkdolcnolpkipcpandngjaboiieai)**
+
+Simply click the link above and install with one click! 
+
+> **Note:** This only includes the extension. For Chat Mode with local CLI agents, you'll also need to run the server (see Option 3 or 4).
+
+### Option 2: Download Pre-built Extension
 
 1. Download `lumi-extension.zip` from [Latest Release](https://github.com/heyzgj/lumi/releases/latest)
 2. Unzip the file
@@ -119,9 +144,9 @@ Droid's non-interactive mode (`droid exec`) requires an API key:
 4. Enable "Developer mode" (top right)
 5. Click "Load unpacked" → Select the unzipped folder
 
-> **Note:** This only includes the extension. For Chat Mode with local CLI agents, you'll also need to run the server (see Option 2 or 3).
+> **Note:** This only includes the extension. For Chat Mode with local CLI agents, you'll also need to run the server (see Option 3 or 4).
 
-### Option 2: One-Command Setup (Recommended for Chat Mode)
+### Option 3: One-Command Setup (Recommended for Chat Mode)
 
 ```bash
 npx create-lumi lumi
@@ -135,7 +160,7 @@ This will clone, install dependencies, build the extension, and start the server
 2. Enable "Developer mode" (top right)
 3. Click "Load unpacked" → select the `extension` folder
 
-### Option 3: Manual Setup
+### Option 4: Manual Setup
 
 1. **Clone the repository**
    ```bash
